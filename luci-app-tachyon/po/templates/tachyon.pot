@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-26 12:00+0300\n"
-"PO-Revision-Date: 2026-11-26 12:00+0300\n"
+"POT-Creation-Date: 2026-11-26 12:53+0300\n"
+"PO-Revision-Date: 2026-11-26 12:53+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -478,11 +478,11 @@ msgid "Actions"
 msgstr ""
 
 #: src/tachyon/commandPalette.ts:461
-#: src/tachyon/tabs/dashboard/initController.ts:2858
-#: src/tachyon/tabs/dashboard/initController.ts:6194
-#: src/tachyon/tabs/dashboard/initController.ts:6795
-#: src/tachyon/tabs/dashboard/initController.ts:7056
-#: src/tachyon/tabs/dashboard/initController.ts:7302
+#: src/tachyon/tabs/dashboard/initController.ts:2868
+#: src/tachyon/tabs/dashboard/initController.ts:6204
+#: src/tachyon/tabs/dashboard/initController.ts:6805
+#: src/tachyon/tabs/dashboard/initController.ts:7066
+#: src/tachyon/tabs/dashboard/initController.ts:7312
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4368
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2139
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2452
@@ -543,13 +543,13 @@ msgstr ""
 msgid "Active Check Interval"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6376
+#: src/tachyon/tabs/dashboard/initController.ts:6386
 #: src/tachyon/tabs/dashboard/partials/renderConnections.ts:104
 #: src/tachyon/tabs/dashboard/partials/renderConnections.ts:301
 msgid "Active Clients"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6360
+#: src/tachyon/tabs/dashboard/initController.ts:6370
 msgid "Active Connections"
 msgstr ""
 
@@ -569,7 +569,7 @@ msgstr ""
 msgid "Active Pool Size (Top N Nodes)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6200
+#: src/tachyon/tabs/dashboard/initController.ts:6210
 msgid "Active Route"
 msgstr ""
 
@@ -898,7 +898,7 @@ msgstr ""
 msgid "Advertise routes"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3108
+#: src/tachyon/tabs/dashboard/initController.ts:3118
 msgid "Algorithm"
 msgstr ""
 
@@ -969,7 +969,7 @@ msgstr ""
 msgid "All Sources"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2206
+#: src/tachyon/tabs/dashboard/initController.ts:2216
 msgid "All URLs must respond (worst latency)"
 msgstr ""
 
@@ -1418,7 +1418,7 @@ msgstr ""
 msgid "Applying rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6294
+#: src/tachyon/tabs/dashboard/initController.ts:6304
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:386
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:422
 msgid "Applying..."
@@ -1448,7 +1448,7 @@ msgstr ""
 msgid "At least one Admin Chat ID is required"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2198
+#: src/tachyon/tabs/dashboard/initController.ts:2208
 msgid "At least one URL (best latency)"
 msgstr ""
 
@@ -1511,8 +1511,8 @@ msgstr ""
 msgid "Authentication settings saved."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2453
-#: src/tachyon/tabs/dashboard/initController.ts:3608
+#: src/tachyon/tabs/dashboard/initController.ts:2463
+#: src/tachyon/tabs/dashboard/initController.ts:3618
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2054
 #: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:916
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:36
@@ -1827,7 +1827,7 @@ msgstr ""
 msgid "Automatically runs a diagnostic probe against the target service, evaluates transit packet filtering behavior, and synthesizes 3-5 custom desync profiles."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3787
+#: src/tachyon/tabs/dashboard/initController.ts:3797
 #: src/views/section.ts:5749
 msgid "Automatically select the fastest node in the current level"
 msgstr ""
@@ -1869,7 +1869,7 @@ msgstr ""
 msgid "Average (Mean latency across all URLs)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2204
+#: src/tachyon/tabs/dashboard/initController.ts:2214
 msgid "Average latency across URLs"
 msgstr ""
 
@@ -2347,16 +2347,16 @@ msgstr ""
 msgid "COMPOSITE"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6707
+#: src/tachyon/tabs/dashboard/initController.ts:6717
 msgid "CORE ONLINE"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6417
-#: src/tachyon/tabs/dashboard/initController.ts:6599
+#: src/tachyon/tabs/dashboard/initController.ts:6427
+#: src/tachyon/tabs/dashboard/initController.ts:6609
 msgid "CPU Load"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6425
+#: src/tachyon/tabs/dashboard/initController.ts:6435
 msgid "CPU Load & Temp"
 msgstr ""
 
@@ -2547,7 +2547,7 @@ msgstr ""
 msgid "Check Connection"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6452
+#: src/tachyon/tabs/dashboard/initController.ts:6462
 msgid "Check IPv6/DNS"
 msgstr ""
 
@@ -2567,7 +2567,7 @@ msgstr ""
 msgid "Check Timeout"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3756
+#: src/tachyon/tabs/dashboard/initController.ts:3766
 #: src/views/section.ts:5223
 #: src/views/section.ts:5687
 msgid "Check URL"
@@ -2577,7 +2577,7 @@ msgstr ""
 msgid "Check URL Reachability"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3756
+#: src/tachyon/tabs/dashboard/initController.ts:3766
 msgid "Check URLs"
 msgstr ""
 
@@ -2607,7 +2607,7 @@ msgstr ""
 msgid "Check domain"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3774
+#: src/tachyon/tabs/dashboard/initController.ts:3784
 #: src/views/section.ts:10916
 #: src/views/section.ts:5197
 #: src/views/section.ts:5700
@@ -2630,7 +2630,7 @@ msgstr ""
 msgid "Checking"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4089
+#: src/tachyon/tabs/dashboard/initController.ts:4099
 msgid "Checking Connection..."
 msgstr ""
 
@@ -2665,8 +2665,8 @@ msgid "Checking, please wait"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/exitCountry.ts:191
-#: src/tachyon/tabs/dashboard/initController.ts:6003
-#: src/tachyon/tabs/dashboard/initController.ts:6081
+#: src/tachyon/tabs/dashboard/initController.ts:6013
+#: src/tachyon/tabs/dashboard/initController.ts:6091
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3443
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1893
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1941
@@ -2860,8 +2860,8 @@ msgstr ""
 msgid "Click to choose section icon"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2414
-#: src/tachyon/tabs/dashboard/initController.ts:3720
+#: src/tachyon/tabs/dashboard/initController.ts:2424
+#: src/tachyon/tabs/dashboard/initController.ts:3730
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2116
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2499
 msgid "Click to customize prefix colors"
@@ -2910,7 +2910,7 @@ msgstr ""
 msgid "Click to show"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2692
+#: src/tachyon/tabs/dashboard/initController.ts:2702
 msgid "Click to test latency"
 msgstr ""
 
@@ -3071,8 +3071,8 @@ msgstr ""
 #: src/tachyon/appShell.ts:963
 #: src/tachyon/appShell.ts:964
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1229
-#: src/tachyon/tabs/dashboard/initController.ts:3081
-#: src/tachyon/tabs/dashboard/initController.ts:4735
+#: src/tachyon/tabs/dashboard/initController.ts:3091
+#: src/tachyon/tabs/dashboard/initController.ts:4745
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:233
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:772
 #: src/tachyon/tabs/diagnostic/partials/renderDiagnosticsModal.ts:261
@@ -3246,7 +3246,7 @@ msgstr ""
 msgid "Compound BadSeq + BadAck + TS-Up + BadSum"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6243
+#: src/tachyon/tabs/dashboard/initController.ts:6253
 msgid "Comprehensive eco mode for low-power MIPS/MIPSEL routers (QCA9531 / MT7628): lower proxy priority (nice 15), nftables ct mark Short-Circuit + connlimit, tighter conntrack limits (600s / 256KB), and Control Plane hibernation under heavy load"
 msgstr ""
 
@@ -3291,8 +3291,8 @@ msgstr ""
 msgid "Conditions"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4448
-#: src/tachyon/tabs/dashboard/initController.ts:4890
+#: src/tachyon/tabs/dashboard/initController.ts:4458
+#: src/tachyon/tabs/dashboard/initController.ts:4900
 msgid "Conditions & Rules"
 msgstr ""
 
@@ -3377,11 +3377,11 @@ msgstr ""
 msgid "Configure router (LuCI) login or separate panel credentials"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4831
+#: src/tachyon/tabs/dashboard/initController.ts:4841
 msgid "Configure section & rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4718
+#: src/tachyon/tabs/dashboard/initController.ts:4728
 msgid "Configure section & rules →"
 msgstr ""
 
@@ -3523,8 +3523,8 @@ msgid "Connection links (text)"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1190
-#: src/tachyon/tabs/dashboard/initController.ts:2749
-#: src/tachyon/tabs/dashboard/initController.ts:6178
+#: src/tachyon/tabs/dashboard/initController.ts:2759
+#: src/tachyon/tabs/dashboard/initController.ts:6188
 msgid "Connections"
 msgstr ""
 
@@ -3653,7 +3653,7 @@ msgid "Copy log"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:4757
-#: src/tachyon/tabs/dashboard/initController.ts:2932
+#: src/tachyon/tabs/dashboard/initController.ts:2942
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2213
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2214
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2595
@@ -3678,7 +3678,7 @@ msgstr ""
 msgid "Core Safe Mode"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6696
+#: src/tachyon/tabs/dashboard/initController.ts:6706
 msgid "Core Telemetry HUD"
 msgstr ""
 
@@ -5030,7 +5030,7 @@ msgstr ""
 msgid "Dont Touch My DHCP!"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6132
+#: src/tachyon/tabs/dashboard/initController.ts:6142
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:445
 msgid "Downlink"
 msgstr ""
@@ -5408,7 +5408,7 @@ msgstr ""
 msgid "Enabled"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6352
+#: src/tachyon/tabs/dashboard/initController.ts:6362
 msgid "Enabled (MIPS Eco)"
 msgstr ""
 
@@ -5596,7 +5596,7 @@ msgstr ""
 msgid "Enter your current password to confirm the change."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6499
+#: src/tachyon/tabs/dashboard/initController.ts:6509
 #: src/tachyon/tabs/diagnostic/initController.ts:1773
 msgid "Environment"
 msgstr ""
@@ -5656,7 +5656,7 @@ msgstr ""
 msgid "Event bus journal and syslog monitoring report clean operation."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2365
+#: src/tachyon/tabs/dashboard/initController.ts:2375
 msgid "Every"
 msgstr ""
 
@@ -5807,7 +5807,7 @@ msgstr ""
 msgid "Excluded servers"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6255
+#: src/tachyon/tabs/dashboard/initController.ts:6265
 msgid "Exit Country"
 msgstr ""
 
@@ -6371,7 +6371,7 @@ msgstr ""
 msgid "Failed to stop watchdog"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1408
+#: src/tachyon/tabs/dashboard/initController.ts:1418
 msgid "Failed to switch proxy"
 msgstr ""
 
@@ -6385,8 +6385,8 @@ msgstr ""
 msgid "Failed to toggle Eco Mode"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6330
-#: src/tachyon/tabs/dashboard/initController.ts:6341
+#: src/tachyon/tabs/dashboard/initController.ts:6340
+#: src/tachyon/tabs/dashboard/initController.ts:6351
 msgid "Failed to toggle Tachyon Lite"
 msgstr ""
 
@@ -6407,13 +6407,13 @@ msgstr ""
 msgid "Failed to update subscription."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3999
-#: src/tachyon/tabs/dashboard/initController.ts:4008
-#: src/tachyon/tabs/dashboard/initController.ts:846
-#: src/tachyon/tabs/dashboard/initController.ts:847
-#: src/tachyon/tabs/dashboard/initController.ts:867
-#: src/tachyon/tabs/dashboard/initController.ts:922
-#: src/tachyon/tabs/dashboard/initController.ts:926
+#: src/tachyon/tabs/dashboard/initController.ts:4009
+#: src/tachyon/tabs/dashboard/initController.ts:4018
+#: src/tachyon/tabs/dashboard/initController.ts:856
+#: src/tachyon/tabs/dashboard/initController.ts:857
+#: src/tachyon/tabs/dashboard/initController.ts:877
+#: src/tachyon/tabs/dashboard/initController.ts:932
+#: src/tachyon/tabs/dashboard/initController.ts:936
 msgid "Failed to update subscriptions"
 msgstr ""
 
@@ -6431,7 +6431,7 @@ msgid "Failover & Balancer Groups"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:1468
-#: src/tachyon/tabs/dashboard/initController.ts:2231
+#: src/tachyon/tabs/dashboard/initController.ts:2241
 #: src/views/balancers.ts:653
 msgid "Failover (Pin Current Until Failure)"
 msgstr ""
@@ -6630,7 +6630,7 @@ msgstr ""
 msgid "Faster node in the same tier"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3793
+#: src/tachyon/tabs/dashboard/initController.ts:3803
 #: src/views/balancers.ts:949
 #: src/views/section.ts:5760
 msgid "Faster server search interval"
@@ -6641,7 +6641,7 @@ msgstr ""
 msgid "Fastest"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2235
+#: src/tachyon/tabs/dashboard/initController.ts:2245
 #: src/views/balancers.ts:643
 msgid "Fastest (Lowest RTT)"
 msgstr ""
@@ -7269,7 +7269,7 @@ msgid "Healthy"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:1374
-#: src/tachyon/tabs/dashboard/initController.ts:2223
+#: src/tachyon/tabs/dashboard/initController.ts:2233
 #: src/views/balancers.ts:649
 msgid "Hedged (Happy Eyeballs Parallel Backup)"
 msgstr ""
@@ -7458,7 +7458,7 @@ msgstr ""
 msgid "High-throughput QUIC proxy ideal for congested or lossy mobile networks"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3779
+#: src/tachyon/tabs/dashboard/initController.ts:3789
 #: src/views/section.ts:5724
 msgid "Higher-level check interval"
 msgstr ""
@@ -7776,7 +7776,7 @@ msgstr ""
 msgid "Idle Timeout"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3139
+#: src/tachyon/tabs/dashboard/initController.ts:3149
 #: src/views/section.ts:10965
 #: src/views/section.ts:5236
 #: src/views/server.ts:7056
@@ -8261,8 +8261,8 @@ msgstr ""
 msgid "Interrupt Existing Connections on Switch"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3141
-#: src/tachyon/tabs/dashboard/initController.ts:3799
+#: src/tachyon/tabs/dashboard/initController.ts:3151
+#: src/tachyon/tabs/dashboard/initController.ts:3809
 #: src/views/section.ts:10902
 msgid "Interrupt connections"
 msgstr ""
@@ -8277,7 +8277,7 @@ msgid "Interrupt existing connections when group URLTest switches the active ser
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:5690
-#: src/tachyon/tabs/dashboard/initController.ts:3131
+#: src/tachyon/tabs/dashboard/initController.ts:3141
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4435
 #: src/views/balancers.ts:501
 msgid "Interval"
@@ -8875,7 +8875,7 @@ msgstr ""
 msgid "Jc (Junk Packet Count)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2741
+#: src/tachyon/tabs/dashboard/initController.ts:2751
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:849
 msgid "Jitter"
 msgstr ""
@@ -9012,8 +9012,8 @@ msgstr ""
 msgid "Keyword must not contain spaces, commas, or slashes"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2753
-#: src/tachyon/tabs/dashboard/initController.ts:2799
+#: src/tachyon/tabs/dashboard/initController.ts:2763
+#: src/tachyon/tabs/dashboard/initController.ts:2809
 msgid "KiB/s"
 msgstr ""
 
@@ -9083,8 +9083,8 @@ msgstr ""
 msgid "Laptop / PC"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3019
-#: src/tachyon/tabs/dashboard/initController.ts:6111
+#: src/tachyon/tabs/dashboard/initController.ts:3029
+#: src/tachyon/tabs/dashboard/initController.ts:6121
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:181
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2695
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:53
@@ -9104,8 +9104,8 @@ msgstr ""
 msgid "Latency URLTest, Stability EWMA+Jitter, Sticky HRW, Least Load, Weighted, Hedged, Throughput, Quota, and tiered Priority failover."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2267
-#: src/tachyon/tabs/dashboard/initController.ts:2276
+#: src/tachyon/tabs/dashboard/initController.ts:2277
+#: src/tachyon/tabs/dashboard/initController.ts:2286
 msgid "Latency by URL"
 msgstr ""
 
@@ -9159,7 +9159,7 @@ msgstr ""
 msgid "Leak protection, failover status and closed session log"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2217
+#: src/tachyon/tabs/dashboard/initController.ts:2227
 #: src/views/balancers.ts:646
 msgid "Least Load (Active Connections × RTT)"
 msgstr ""
@@ -9274,8 +9274,8 @@ msgstr ""
 msgid "Live 60-second traffic telemetry and route distribution"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3123
-#: src/tachyon/tabs/dashboard/initController.ts:3768
+#: src/tachyon/tabs/dashboard/initController.ts:3133
+#: src/tachyon/tabs/dashboard/initController.ts:3778
 msgid "Live check"
 msgstr ""
 
@@ -9615,8 +9615,8 @@ msgstr ""
 msgid "Managed by Tachyon"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2444
-#: src/tachyon/tabs/dashboard/initController.ts:3599
+#: src/tachyon/tabs/dashboard/initController.ts:2454
+#: src/tachyon/tabs/dashboard/initController.ts:3609
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2582
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2659
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2052
@@ -9823,7 +9823,7 @@ msgstr ""
 msgid "Metrics Retention (hours)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2757
+#: src/tachyon/tabs/dashboard/initController.ts:2767
 msgid "MiB"
 msgstr ""
 
@@ -9901,8 +9901,8 @@ msgid "Mixed Proxy Username"
 msgstr ""
 
 #: src/tachyon/switchHistory.ts:151
-#: src/tachyon/tabs/dashboard/initController.ts:6268
-#: src/tachyon/tabs/dashboard/initController.ts:6464
+#: src/tachyon/tabs/dashboard/initController.ts:6278
+#: src/tachyon/tabs/dashboard/initController.ts:6474
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2334
 #: src/views/parental.ts:910
 #: src/views/section.ts:14601
@@ -10017,8 +10017,8 @@ msgstr ""
 msgid "Multi-URL Evaluation Strategy"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3117
-#: src/tachyon/tabs/dashboard/initController.ts:3762
+#: src/tachyon/tabs/dashboard/initController.ts:3127
+#: src/tachyon/tabs/dashboard/initController.ts:3772
 msgid "Multi-URL strategy"
 msgstr ""
 
@@ -10189,10 +10189,10 @@ msgstr ""
 msgid "Next →"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2112
-#: src/tachyon/tabs/dashboard/initController.ts:2116
-#: src/tachyon/tabs/dashboard/initController.ts:2432
-#: src/tachyon/tabs/dashboard/initController.ts:3587
+#: src/tachyon/tabs/dashboard/initController.ts:2122
+#: src/tachyon/tabs/dashboard/initController.ts:2126
+#: src/tachyon/tabs/dashboard/initController.ts:2442
+#: src/tachyon/tabs/dashboard/initController.ts:3597
 #: src/views/settings.ts:5510
 msgid "No"
 msgstr ""
@@ -10422,8 +10422,8 @@ msgstr ""
 msgid "No sections selected"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2494
-#: src/tachyon/tabs/dashboard/initController.ts:3658
+#: src/tachyon/tabs/dashboard/initController.ts:2504
+#: src/tachyon/tabs/dashboard/initController.ts:3668
 msgid "No server reached all health check URLs; fallback mode is active (best partial match selected)."
 msgstr ""
 
@@ -10477,7 +10477,7 @@ msgstr ""
 msgid "Node"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2611
+#: src/tachyon/tabs/dashboard/initController.ts:2621
 msgid "Node list is empty"
 msgstr ""
 
@@ -10485,13 +10485,13 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:4502
 #: src/tachyon/studioDeck.ts:4554
 #: src/tachyon/studioDeck.ts:4558
-#: src/tachyon/tabs/dashboard/initController.ts:3009
+#: src/tachyon/tabs/dashboard/initController.ts:3019
 #: src/views/settings.ts:1900
 msgid "Nodes"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4433
-#: src/tachyon/tabs/dashboard/initController.ts:4875
+#: src/tachyon/tabs/dashboard/initController.ts:4443
+#: src/tachyon/tabs/dashboard/initController.ts:4885
 msgid "Nodes & Balancers"
 msgstr ""
 
@@ -10772,7 +10772,7 @@ msgstr ""
 msgid "Observed test queries"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6353
+#: src/tachyon/tabs/dashboard/initController.ts:6363
 #: src/views/outbounds.ts:6227
 #: src/views/server.ts:6653
 #: src/views/settings.ts:5552
@@ -10792,7 +10792,7 @@ msgstr ""
 msgid "Off now: Fail-Closed is set in sections: %s."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:7375
+#: src/tachyon/tabs/dashboard/initController.ts:7385
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3447
 msgid "Offline"
 msgstr ""
@@ -10839,7 +10839,7 @@ msgid "One record per line: <code>example.com 192.168.1.100</code>, <code>0.0.0.
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1092
-#: src/tachyon/tabs/dashboard/initController.ts:7375
+#: src/tachyon/tabs/dashboard/initController.ts:7385
 #: src/tachyon/themes/themeControls.ts:327
 msgid "Online"
 msgstr ""
@@ -10906,7 +10906,7 @@ msgstr ""
 msgid "Open firewall port"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4816
+#: src/tachyon/tabs/dashboard/initController.ts:4826
 #: src/tachyon/tabs/diagnostic/partials/renderDiagnosticsModal.ts:306
 msgid "Open in modal"
 msgstr ""
@@ -11150,7 +11150,7 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:7444
+#: src/tachyon/tabs/dashboard/initController.ts:7454
 msgid "Other peers"
 msgstr ""
 
@@ -11325,7 +11325,7 @@ msgid "Partial presence match — other AND conditions not supplied"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:1353
-#: src/tachyon/tabs/dashboard/initController.ts:2221
+#: src/tachyon/tabs/dashboard/initController.ts:2231
 #: src/views/balancers.ts:648
 msgid "Passive Circuit Breaker (Early-Abort Quarantine)"
 msgstr ""
@@ -11493,7 +11493,7 @@ msgstr ""
 msgid "Peer Public Key"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2745
+#: src/tachyon/tabs/dashboard/initController.ts:2755
 msgid "Penalty"
 msgstr ""
 
@@ -11990,7 +11990,7 @@ msgstr ""
 msgid "Priority"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2233
+#: src/tachyon/tabs/dashboard/initController.ts:2243
 #: src/views/balancers.ts:616
 msgid "Priority (Ordered Failover Tiers)"
 msgstr ""
@@ -12016,13 +12016,13 @@ msgstr ""
 msgid "Priority controller (1.x)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3826
+#: src/tachyon/tabs/dashboard/initController.ts:3836
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2233
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2234
 msgid "Priority details"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3739
+#: src/tachyon/tabs/dashboard/initController.ts:3749
 msgid "Priority details are unavailable"
 msgstr ""
 
@@ -12133,8 +12133,8 @@ msgstr ""
 
 #: src/helpers/formatOutboundType.ts:392
 #: src/tachyon/studioDeck.ts:4811
-#: src/tachyon/tabs/dashboard/initController.ts:3018
-#: src/tachyon/tabs/dashboard/initController.ts:6115
+#: src/tachyon/tabs/dashboard/initController.ts:3028
+#: src/tachyon/tabs/dashboard/initController.ts:6125
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2341
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2694
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:51
@@ -12248,7 +12248,7 @@ msgstr ""
 msgid "Proxy Share Links (vless://, hysteria2://, ss://, etc.)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2107
+#: src/tachyon/tabs/dashboard/initController.ts:2117
 msgid "Proxy link is unavailable"
 msgstr ""
 
@@ -12345,7 +12345,7 @@ msgstr ""
 msgid "QoS Priority Engine (DSCP)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2769
+#: src/tachyon/tabs/dashboard/initController.ts:2779
 msgid "Quarantine"
 msgstr ""
 
@@ -12418,7 +12418,7 @@ msgstr ""
 msgid "Quota (Traffic Cap Balancer)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2227
+#: src/tachyon/tabs/dashboard/initController.ts:2237
 #: src/views/balancers.ts:651
 msgid "Quota (Traffic Quota Balancer)"
 msgstr ""
@@ -13153,7 +13153,7 @@ msgid "Rose"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:1446
-#: src/tachyon/tabs/dashboard/initController.ts:2229
+#: src/tachyon/tabs/dashboard/initController.ts:2239
 #: src/views/balancers.ts:652
 msgid "Round-Robin Pool"
 msgstr ""
@@ -13334,13 +13334,13 @@ msgstr ""
 msgid "Router Network Interface (wg0 / awg0 / tun0)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6839
-#: src/tachyon/tabs/dashboard/initController.ts:7008
-#: src/tachyon/tabs/dashboard/initController.ts:7066
+#: src/tachyon/tabs/dashboard/initController.ts:6849
+#: src/tachyon/tabs/dashboard/initController.ts:7018
+#: src/tachyon/tabs/dashboard/initController.ts:7076
 msgid "Router Services"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6892
+#: src/tachyon/tabs/dashboard/initController.ts:6902
 msgid "Router Services Resources (RAM)"
 msgstr ""
 
@@ -13377,7 +13377,7 @@ msgstr ""
 msgid "Routes only (sections, nodes, subscriptions, balancers, conditions)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6759
+#: src/tachyon/tabs/dashboard/initController.ts:6769
 msgid "Routing"
 msgstr ""
 
@@ -13385,12 +13385,12 @@ msgstr ""
 msgid "Routing & Lists"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6793
-#: src/tachyon/tabs/dashboard/initController.ts:7062
+#: src/tachyon/tabs/dashboard/initController.ts:6803
+#: src/tachyon/tabs/dashboard/initController.ts:7072
 msgid "Routing & Rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6643
+#: src/tachyon/tabs/dashboard/initController.ts:6653
 msgid "Routing & System"
 msgstr ""
 
@@ -13403,7 +13403,7 @@ msgid "Routing Rule Tracer"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:2038
-#: src/tachyon/tabs/dashboard/initController.ts:6368
+#: src/tachyon/tabs/dashboard/initController.ts:6378
 msgid "Routing Sections"
 msgstr ""
 
@@ -13553,9 +13553,9 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:3870
 #: src/tachyon/methods/custom/getDashboardSections.ts:4274
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1432
-#: src/tachyon/tabs/dashboard/initController.ts:6650
-#: src/tachyon/tabs/dashboard/initController.ts:6753
-#: src/tachyon/tabs/dashboard/initController.ts:7420
+#: src/tachyon/tabs/dashboard/initController.ts:6660
+#: src/tachyon/tabs/dashboard/initController.ts:6763
+#: src/tachyon/tabs/dashboard/initController.ts:7430
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3454
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3462
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3531
@@ -13663,7 +13663,7 @@ msgstr ""
 msgid "STICKY • HRW AFFINITY"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6708
+#: src/tachyon/tabs/dashboard/initController.ts:6718
 msgid "STOPPED"
 msgstr ""
 
@@ -13830,8 +13830,8 @@ msgstr ""
 
 #: src/tachyon/configHistoryModal.ts:652
 #: src/tachyon/tabs/dashboard/inboundServers.ts:400
-#: src/tachyon/tabs/dashboard/initController.ts:5043
-#: src/tachyon/tabs/dashboard/initController.ts:6193
+#: src/tachyon/tabs/dashboard/initController.ts:5053
+#: src/tachyon/tabs/dashboard/initController.ts:6203
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:846
 #: src/tachyon/tabs/monitoring/filters.ts:824
 #: src/views/settings.ts:6630
@@ -13899,7 +13899,7 @@ msgstr ""
 msgid "Section cloned"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1405
+#: src/tachyon/tabs/dashboard/initController.ts:1415
 msgid "Section is not active in the routing core yet — click Save & Apply first, or check section configuration."
 msgstr ""
 
@@ -13919,7 +13919,7 @@ msgstr ""
 msgid "Section rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6157
+#: src/tachyon/tabs/dashboard/initController.ts:6167
 msgid "Section traffic"
 msgstr ""
 
@@ -13966,7 +13966,7 @@ msgstr ""
 msgid "Segment length or range in bytes for TCP fragmentation (e.g. 20-60)."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2913
+#: src/tachyon/tabs/dashboard/initController.ts:2923
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4390
 msgid "Select"
 msgstr ""
@@ -14140,7 +14140,7 @@ msgstr ""
 msgid "Select the WAN interfaces to be monitored"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3783
+#: src/tachyon/tabs/dashboard/initController.ts:3793
 #: src/views/balancers.ts:923
 #: src/views/section.ts:5738
 msgid "Select the fastest node"
@@ -14186,8 +14186,8 @@ msgstr ""
 msgid "Select which routing Sections use this Condition (automatically updates the section's Attached Conditions)."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3104
-#: src/tachyon/tabs/dashboard/initController.ts:3752
+#: src/tachyon/tabs/dashboard/initController.ts:3114
+#: src/tachyon/tabs/dashboard/initController.ts:3762
 msgid "Selected"
 msgstr ""
 
@@ -14220,7 +14220,7 @@ msgstr ""
 msgid "Selection Algorithm"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6100
+#: src/tachyon/tabs/dashboard/initController.ts:6110
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2290
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3780
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3951
@@ -14314,8 +14314,8 @@ msgstr ""
 
 #: src/tachyon/configHistoryModal.ts:662
 #: src/tachyon/studioDeck.ts:4810
-#: src/tachyon/tabs/dashboard/initController.ts:3017
-#: src/tachyon/tabs/dashboard/initController.ts:6086
+#: src/tachyon/tabs/dashboard/initController.ts:3027
+#: src/tachyon/tabs/dashboard/initController.ts:6096
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2289
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3762
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3931
@@ -14579,7 +14579,7 @@ msgstr ""
 msgid "Service vector icons (0 ms):"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6962
+#: src/tachyon/tabs/dashboard/initController.ts:6972
 #: src/views/conditions.ts:166
 msgid "Services"
 msgstr ""
@@ -14611,7 +14611,7 @@ msgstr ""
 msgid "Session peak"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6156
+#: src/tachyon/tabs/dashboard/initController.ts:6166
 msgid "Session total"
 msgstr ""
 
@@ -14776,7 +14776,7 @@ msgstr ""
 msgid "Show widget on dashboard"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:5243
+#: src/tachyon/tabs/dashboard/initController.ts:5253
 msgid "Showing a cached proxy snapshot. The current state may differ."
 msgstr ""
 
@@ -14896,8 +14896,8 @@ msgstr ""
 msgid "Snell proxy protocol with optional obfuscation"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6421
-#: src/tachyon/tabs/dashboard/initController.ts:6603
+#: src/tachyon/tabs/dashboard/initController.ts:6431
+#: src/tachyon/tabs/dashboard/initController.ts:6613
 msgid "SoC/CPU Temp"
 msgstr ""
 
@@ -15044,7 +15044,7 @@ msgstr ""
 msgid "Stability (EWMA + Jitter + Loss Filter)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2213
+#: src/tachyon/tabs/dashboard/initController.ts:2223
 #: src/views/balancers.ts:644
 msgid "Stability (EWMA + RFC 3550 Jitter + Loss Penalty)"
 msgstr ""
@@ -15099,7 +15099,7 @@ msgstr ""
 msgid "Standby"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:5882
+#: src/tachyon/tabs/dashboard/initController.ts:5892
 msgid "Standby / Direct"
 msgstr ""
 
@@ -15172,7 +15172,7 @@ msgstr ""
 msgid "Starting…"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:7417
+#: src/tachyon/tabs/dashboard/initController.ts:7427
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:438
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:508
 msgid "State"
@@ -15215,7 +15215,7 @@ msgstr ""
 msgid "Sticky Flow (Rendezvous HRW Affinity)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2215
+#: src/tachyon/tabs/dashboard/initController.ts:2225
 #: src/views/balancers.ts:645
 msgid "Sticky Flow (Rendezvous HRW by Client / Domain)"
 msgstr ""
@@ -15263,10 +15263,10 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:4278
 #: src/tachyon/studioDeck.ts:6083
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1407
-#: src/tachyon/tabs/dashboard/initController.ts:6651
-#: src/tachyon/tabs/dashboard/initController.ts:6754
-#: src/tachyon/tabs/dashboard/initController.ts:6796
-#: src/tachyon/tabs/dashboard/initController.ts:7311
+#: src/tachyon/tabs/dashboard/initController.ts:6661
+#: src/tachyon/tabs/dashboard/initController.ts:6764
+#: src/tachyon/tabs/dashboard/initController.ts:6806
+#: src/tachyon/tabs/dashboard/initController.ts:7321
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3532
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1703
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2334
@@ -15464,7 +15464,7 @@ msgstr ""
 msgid "Subscriptions"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:873
+#: src/tachyon/tabs/dashboard/initController.ts:883
 msgid "Subscriptions updated"
 msgstr ""
 
@@ -15561,7 +15561,7 @@ msgstr ""
 msgid "Switch to Simple Mode"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3064
+#: src/tachyon/tabs/dashboard/initController.ts:3074
 msgid "Switch to auto-selection"
 msgstr ""
 
@@ -15616,7 +15616,7 @@ msgstr ""
 msgid "System & Backup"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:7055
+#: src/tachyon/tabs/dashboard/initController.ts:7065
 msgid "System & Services"
 msgstr ""
 
@@ -15920,8 +15920,8 @@ msgstr ""
 msgid "Tab"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4489
-#: src/tachyon/tabs/dashboard/initController.ts:4784
+#: src/tachyon/tabs/dashboard/initController.ts:4499
+#: src/tachyon/tabs/dashboard/initController.ts:4794
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:398
 msgid "Table"
 msgstr ""
@@ -15988,12 +15988,12 @@ msgstr ""
 msgid "Tachyon IP & DNS Leak Detection"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6276
+#: src/tachyon/tabs/dashboard/initController.ts:6286
 msgid "Tachyon Lite"
 msgstr ""
 
 #: src/tachyon/appShell.ts:3195
-#: src/tachyon/tabs/dashboard/initController.ts:6316
+#: src/tachyon/tabs/dashboard/initController.ts:6326
 msgid "Tachyon Lite eco mode disabled"
 msgstr ""
 
@@ -16001,7 +16001,7 @@ msgstr ""
 msgid "Tachyon Lite eco mode enabled"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6312
+#: src/tachyon/tabs/dashboard/initController.ts:6322
 msgid "Tachyon Lite eco mode enabled (nice 15 + ct mark Short-Circuit)"
 msgstr ""
 
@@ -16134,7 +16134,7 @@ msgstr ""
 msgid "Target Services / Suites (select one or multiple for unified strategy)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2201
+#: src/tachyon/tabs/dashboard/initController.ts:2211
 msgid "Target URL #1 priority"
 msgstr ""
 
@@ -16216,7 +16216,7 @@ msgstr ""
 msgid "Test domains"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4199
+#: src/tachyon/tabs/dashboard/initController.ts:4209
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1051
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1059
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:3774
@@ -16283,13 +16283,13 @@ msgstr ""
 msgid "Testing"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3111
+#: src/tachyon/tabs/dashboard/initController.ts:3121
 #: src/views/balancers.ts:756
 #: src/views/section.ts:10949
 msgid "Testing URL"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3111
+#: src/tachyon/tabs/dashboard/initController.ts:3121
 msgid "Testing URLs"
 msgstr ""
 
@@ -16419,7 +16419,7 @@ msgstr ""
 msgid "This field is required"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:7432
+#: src/tachyon/tabs/dashboard/initController.ts:7442
 msgid "This router"
 msgstr ""
 
@@ -16455,7 +16455,7 @@ msgstr ""
 msgid "Through Tachyon Routing Rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2753
+#: src/tachyon/tabs/dashboard/initController.ts:2763
 msgid "Throughput"
 msgstr ""
 
@@ -16463,7 +16463,7 @@ msgstr ""
 msgid "Throughput & Traffic Split"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2225
+#: src/tachyon/tabs/dashboard/initController.ts:2235
 #: src/views/balancers.ts:650
 msgid "Throughput (Active Bandwidth Decay)"
 msgstr ""
@@ -16485,8 +16485,8 @@ msgstr ""
 msgid "Tiers"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4508
-#: src/tachyon/tabs/dashboard/initController.ts:4799
+#: src/tachyon/tabs/dashboard/initController.ts:4518
+#: src/tachyon/tabs/dashboard/initController.ts:4809
 msgid "Tiles"
 msgstr ""
 
@@ -16553,7 +16553,7 @@ msgid "Token is required when the bot is enabled"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:5702
-#: src/tachyon/tabs/dashboard/initController.ts:3133
+#: src/tachyon/tabs/dashboard/initController.ts:3143
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4445
 #: src/views/balancers.ts:501
 #: src/views/section.ts:5209
@@ -16652,14 +16652,14 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:4865
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1192
-#: src/tachyon/tabs/dashboard/initController.ts:2757
+#: src/tachyon/tabs/dashboard/initController.ts:2767
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3798
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4015
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:665
 msgid "Traffic"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6204
+#: src/tachyon/tabs/dashboard/initController.ts:6214
 msgid "Traffic & Speed"
 msgstr ""
 
@@ -16988,13 +16988,13 @@ msgstr ""
 msgid "URLTest check interval"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3460
+#: src/tachyon/tabs/dashboard/initController.ts:3470
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2252
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2253
 msgid "URLTest details"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3094
+#: src/tachyon/tabs/dashboard/initController.ts:3104
 msgid "URLTest details are unavailable"
 msgstr ""
 
@@ -17046,7 +17046,7 @@ msgstr ""
 msgid "Unable to read DNS speed test results."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3777
+#: src/tachyon/tabs/dashboard/initController.ts:3787
 #: src/views/section.ts:5712
 msgid "Unavailability timeout"
 msgstr ""
@@ -17271,7 +17271,7 @@ msgstr ""
 msgid "Update lists now"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:4163
+#: src/tachyon/tabs/dashboard/initController.ts:4173
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1028
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1041
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1042
@@ -17334,7 +17334,7 @@ msgid "Updating subscriptions..."
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:5202
-#: src/tachyon/tabs/dashboard/initController.ts:4162
+#: src/tachyon/tabs/dashboard/initController.ts:4172
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:722
 msgid "Updating..."
 msgstr ""
@@ -17347,7 +17347,7 @@ msgstr ""
 msgid "Upgrade Tachyon Core"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6143
+#: src/tachyon/tabs/dashboard/initController.ts:6153
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:456
 msgid "Uplink"
 msgstr ""
@@ -17387,7 +17387,7 @@ msgstr ""
 msgid "Upstream Provider / ASN"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:7208
+#: src/tachyon/tabs/dashboard/initController.ts:7218
 #: src/tachyon/tabs/diagnostic/initController.ts:1878
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:518
 msgid "Uptime"
@@ -18056,7 +18056,7 @@ msgid "Weekends (Sat-Sun)"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:1331
-#: src/tachyon/tabs/dashboard/initController.ts:2219
+#: src/tachyon/tabs/dashboard/initController.ts:2229
 #: src/views/balancers.ts:647
 msgid "Weighted (Smooth WRR by 1/RTT²)"
 msgstr ""
@@ -18209,7 +18209,7 @@ msgstr ""
 msgid "YACD Secret Key"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2112
+#: src/tachyon/tabs/dashboard/initController.ts:2122
 msgid "Yes"
 msgstr ""
 
@@ -18254,8 +18254,8 @@ msgstr ""
 msgid "chars"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:3390
-#: src/tachyon/tabs/dashboard/initController.ts:3397
+#: src/tachyon/tabs/dashboard/initController.ts:3400
+#: src/tachyon/tabs/dashboard/initController.ts:3407
 msgid "checking..."
 msgstr ""
 
@@ -18267,7 +18267,7 @@ msgstr ""
 msgid "confidence"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2791
+#: src/tachyon/tabs/dashboard/initController.ts:2801
 msgid "conn."
 msgstr ""
 
@@ -18572,11 +18572,11 @@ msgstr ""
 
 #: src/tachyon/switchHistory.ts:134
 #: src/tachyon/switchHistory.ts:273
-#: src/tachyon/tabs/dashboard/initController.ts:2738
-#: src/tachyon/tabs/dashboard/initController.ts:2741
-#: src/tachyon/tabs/dashboard/initController.ts:2745
-#: src/tachyon/tabs/dashboard/initController.ts:2782
-#: src/tachyon/tabs/dashboard/initController.ts:2786
+#: src/tachyon/tabs/dashboard/initController.ts:2748
+#: src/tachyon/tabs/dashboard/initController.ts:2751
+#: src/tachyon/tabs/dashboard/initController.ts:2755
+#: src/tachyon/tabs/dashboard/initController.ts:2792
+#: src/tachyon/tabs/dashboard/initController.ts:2796
 #: src/views/dns_speed_test.ts:72
 msgid "ms"
 msgstr ""
@@ -18608,17 +18608,17 @@ msgstr ""
 msgid "none (UDP Desync Only, TCP Unchanged)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6465
+#: src/tachyon/tabs/dashboard/initController.ts:6475
 msgid "not detected"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6466
-#: src/tachyon/tabs/dashboard/initController.ts:6467
+#: src/tachyon/tabs/dashboard/initController.ts:6476
+#: src/tachyon/tabs/dashboard/initController.ts:6477
 #: src/tachyon/tabs/diagnostic/initController.ts:1937
 msgid "off"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6467
+#: src/tachyon/tabs/dashboard/initController.ts:6477
 msgid "on"
 msgstr ""
 
@@ -18683,7 +18683,7 @@ msgstr ""
 msgid "rules"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2769
+#: src/tachyon/tabs/dashboard/initController.ts:2779
 msgid "s"
 msgstr ""
 
@@ -18766,7 +18766,7 @@ msgstr ""
 msgid "tier"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:2309
+#: src/tachyon/tabs/dashboard/initController.ts:2319
 msgid "timeout"
 msgstr ""
 

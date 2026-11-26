@@ -1,5 +1,7 @@
 export const DASHBOARD_EXPANDED_SECTIONS_KEY =
   'tachyon_dashboard_expanded_sections';
+export const EXPANDED_ROUTING_SECTIONS_KEY =
+  'tachyon_expanded_routing_sections_v1';
 
 export function getExpandedSections(): Set<string> {
   if (typeof localStorage === 'undefined') {
@@ -43,6 +45,31 @@ export function toggleSectionExpansion(
   }
 
   saveExpandedSections(next);
+
+  return {
+    expanded: !isCurrentlyExpanded,
+    nextSections: next,
+  };
+}
+
+export function toggleRoutingSectionExpansion(
+  expandedSections: Set<string>,
+  sectionCode: string,
+  sectionName?: string,
+): { expanded: boolean; nextSections: Set<string> } {
+  const next = new Set<string>(expandedSections);
+  const canonicalName = (sectionName || '').trim() || sectionCode;
+  const isCurrentlyExpanded =
+    (Boolean(canonicalName) && next.has(canonicalName)) ||
+    (Boolean(sectionCode) && next.has(sectionCode));
+
+  if (isCurrentlyExpanded) {
+    if (canonicalName) next.delete(canonicalName);
+    if (sectionCode) next.delete(sectionCode);
+  } else {
+    if (sectionCode) next.delete(sectionCode);
+    if (canonicalName) next.add(canonicalName);
+  }
 
   return {
     expanded: !isCurrentlyExpanded,

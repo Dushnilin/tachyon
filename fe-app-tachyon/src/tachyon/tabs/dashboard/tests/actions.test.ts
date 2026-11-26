@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   getExpandedSections,
   saveExpandedSections,
+  toggleRoutingSectionExpansion,
   toggleSectionExpansion,
   DASHBOARD_EXPANDED_SECTIONS_KEY,
 } from '../actions';
@@ -67,5 +68,37 @@ describe('dashboard actions', () => {
     expect(mockStorage[DASHBOARD_EXPANDED_SECTIONS_KEY]).toBe(
       JSON.stringify(['alpha', 'beta']),
     );
+  });
+
+  it('collapses routing section when only sectionName is stored and expands storing only sectionName', () => {
+    const withNameOnly = new Set<string>(['MainSection', 'other']);
+    const collapsedFromName = toggleRoutingSectionExpansion(
+      withNameOnly,
+      'sec_1',
+      'MainSection',
+    );
+    expect(collapsedFromName.expanded).toBe(false);
+    expect(collapsedFromName.nextSections.has('MainSection')).toBe(false);
+    expect(collapsedFromName.nextSections.has('sec_1')).toBe(false);
+    expect(collapsedFromName.nextSections.has('other')).toBe(true);
+
+    const withBoth = new Set<string>(['MainSection', 'sec_1']);
+    const collapsedFromBoth = toggleRoutingSectionExpansion(
+      withBoth,
+      'sec_1',
+      'MainSection',
+    );
+    expect(collapsedFromBoth.expanded).toBe(false);
+    expect(collapsedFromBoth.nextSections.has('MainSection')).toBe(false);
+    expect(collapsedFromBoth.nextSections.has('sec_1')).toBe(false);
+
+    const expandedAgain = toggleRoutingSectionExpansion(
+      collapsedFromBoth.nextSections,
+      'sec_1',
+      'MainSection',
+    );
+    expect(expandedAgain.expanded).toBe(true);
+    expect(expandedAgain.nextSections.has('MainSection')).toBe(true);
+    expect(expandedAgain.nextSections.has('sec_1')).toBe(false);
   });
 });

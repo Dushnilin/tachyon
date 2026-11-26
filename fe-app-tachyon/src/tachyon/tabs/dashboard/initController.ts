@@ -70,7 +70,12 @@ import {
 } from '../../methods/custom/getDashboardSections';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
-import { getExpandedSections, toggleSectionExpansion } from './actions';
+import {
+  EXPANDED_ROUTING_SECTIONS_KEY,
+  getExpandedSections,
+  toggleRoutingSectionExpansion,
+  toggleSectionExpansion,
+} from './actions';
 import {
   aggregateClientConnections,
   aggregateTopDomains,
@@ -116,7 +121,6 @@ import {
   renderInboundServersDashboardWidget,
 } from './inboundServers';
 
-const EXPANDED_ROUTING_SECTIONS_KEY = 'tachyon_expanded_routing_sections_v1';
 const COLLAPSED_SOURCE_GROUPS_KEY = 'tachyon_collapsed_source_groups_v1';
 
 function loadStringSetFromStorage(key: string): Set<string> {
@@ -216,11 +220,17 @@ function findDashboardSectionRowEl(codeOrName: string): HTMLElement | null {
 function toggleRoutingSectionExpanded(sectionCode: string) {
   const prevRow = findDashboardSectionRowEl(sectionCode);
   const prevTop = prevRow ? prevRow.getBoundingClientRect().top : null;
-
-  if (expandedRoutingSections.has(sectionCode)) {
-    expandedRoutingSections.delete(sectionCode);
-  } else {
-    expandedRoutingSections.add(sectionCode);
+  const sec = getSectionsWithCustomLatencies().find(
+    (s) => s.code === sectionCode || s.sectionName === sectionCode,
+  );
+  const { nextSections } = toggleRoutingSectionExpansion(
+    expandedRoutingSections,
+    sec?.code || sectionCode,
+    sec?.sectionName,
+  );
+  expandedRoutingSections.clear();
+  for (const key of nextSections) {
+    expandedRoutingSections.add(key);
   }
   saveStringSetToStorage(
     EXPANDED_ROUTING_SECTIONS_KEY,
