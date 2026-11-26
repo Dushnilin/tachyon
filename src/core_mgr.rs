@@ -1388,15 +1388,20 @@ impl CoreManager {
             format!("sel-{sec_id}"),
             format!("sec-{sec_id}"),
         ];
+        let exact_bal = format!("bal-{sec_id}");
+        let bal_prefix = format!("bal-{sec_id}-");
+        let matches_section_tag = |tag: &str| {
+            candidate_tags.iter().any(|c| c == tag)
+                || tag == exact_bal
+                || tag.starts_with(&bal_prefix)
+        };
         let has_group = cfg
             .get("outbounds")
             .and_then(Value::as_array)
             .is_some_and(|obs| {
                 obs.iter().any(|ob| {
                     let tag = ob.get("tag").and_then(Value::as_str).unwrap_or("");
-                    let matches_sec = candidate_tags.iter().any(|c| c == tag)
-                        || tag.starts_with(&format!("bal-{sec_id}-"));
-                    matches_sec
+                    matches_section_tag(tag)
                         && ob
                             .get("outbounds")
                             .and_then(Value::as_array)
@@ -1408,12 +1413,15 @@ impl CoreManager {
             .and_then(Value::as_array)
             .is_some_and(|rules| {
                 rules.iter().any(|r| {
-                    r.get("outbound").and_then(Value::as_str).is_some_and(|o| {
-                        candidate_tags.iter().any(|c| c == o)
-                            || o.starts_with(&format!("bal-{sec_id}-"))
-                    })
+                    r.get("outbound")
+                        .and_then(Value::as_str)
+                        .is_some_and(matches_section_tag)
                 })
-            });
+            })
+            || cfg
+                .pointer("/route/final")
+                .and_then(Value::as_str)
+                .is_some_and(matches_section_tag);
         has_group && has_rule
     }
 

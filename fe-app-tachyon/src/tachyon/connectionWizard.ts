@@ -156,7 +156,7 @@ const CUSTOM_PROTO_LIST: Array<{
     label: 'Mieru (TCP / UDP Multiplexed)',
     defaultPort: '2012-2022',
   },
-  { id: 'snell', label: 'Snell (v1–v4 + Obfs)', defaultPort: '443' },
+  { id: 'snell', label: 'Snell (v4–v6 + Obfs)', defaultPort: '443' },
   {
     id: 'sudoku',
     label: 'Sudoku (Polymorphic AEAD + HTTP Mask)',
@@ -3493,9 +3493,8 @@ export function openConnectionWizardModal(
                 } as any,
                 [
                   ['4', 'Snell v4 (рекомендуется)'],
-                  ['3', 'Snell v3'],
-                  ['2', 'Snell v2'],
-                  ['1', 'Snell v1'],
+                  ['5', 'Snell v5'],
+                  ['6', 'Snell v6'],
                 ].map(([val, lbl]) =>
                   E(
                     'option',

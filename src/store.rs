@@ -6107,6 +6107,7 @@ impl RouterStoreData {
                         testing_url: b
                             .opt("testing_url")
                             .or_else(|| b.opt("health_url"))
+                            .or_else(|| b.opt("url"))
                             .unwrap_or("https://www.gstatic.com/generate_204")
                             .to_string(),
                         testing_urls: b.list("testing_urls"),

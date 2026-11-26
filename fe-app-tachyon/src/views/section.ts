@@ -13549,9 +13549,8 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.value('4', 'v4');
-  o.value('3', 'v3');
-  o.value('2', 'v2');
-  o.value('1', 'v1');
+  o.value('5', 'v5');
+  o.value('6', 'v6');
   o.default = '4';
   o.depends('action', 'snell');
 

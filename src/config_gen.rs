@@ -854,12 +854,15 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             if userinfo.is_empty() {
                 return None;
             }
-            let version = params
+            let raw_version = params
                 .get("version")
                 .or_else(|| params.get("v"))
-                .and_then(|v| v.trim().parse::<u64>().ok())
-                .filter(|v| (1..=6).contains(v))
-                .unwrap_or(5);
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty());
+            let version = match raw_version {
+                Some(raw) => raw.parse::<u64>().ok().filter(|v| (4..=6).contains(v))?,
+                None => 5,
+            };
             let mut obj = Map::new();
             obj.insert("type".into(), json!("snell"));
             obj.insert("tag".into(), json!(tag));
@@ -867,11 +870,12 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             obj.insert("server_port".into(), json!(port));
             obj.insert("psk".into(), json!(userinfo));
             obj.insert("version".into(), json!(version));
-            if let Some(obfs) = params
-                .get("obfs")
-                .or_else(|| params.get("plugin"))
-                .map(|s| s.trim().to_ascii_lowercase())
-                .filter(|s| matches!(s.as_str(), "http" | "tls"))
+            if version != 6
+                && let Some(obfs) = params
+                    .get("obfs")
+                    .or_else(|| params.get("plugin"))
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .filter(|s| matches!(s.as_str(), "http" | "tls"))
             {
                 let mut om = Map::new();
                 om.insert("mode".into(), json!(obfs));
@@ -6510,7 +6514,7 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                 json!({
                     "type": "mtproto",
                     "tag": tag,
-                    "mode": if src.mtproto_telegram_ws { "telegram-ws" } else { "direct" }
+                    "mode": if src.mtproto_telegram_ws { "telegram-ws" } else { "mtproto" }
                 }),
             ));
         }
@@ -6864,24 +6868,24 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                     );
                 }
                 "snell" => {
-                    obj.insert(
-                        "version".into(),
-                        json!(if src.snell_version > 0 {
-                            src.snell_version
-                        } else {
-                            4
-                        }),
-                    );
-                    let obfs = src.snell_obfs.trim();
-                    if !obfs.is_empty() && !obfs.eq_ignore_ascii_case("none") {
-                        let mut obfs_obj = json!({ "type": obfs });
-                        if !src.snell_obfs_host.trim().is_empty() {
-                            obfs_obj["host"] = json!(src.snell_obfs_host.trim());
+                    let ver = if (4..=6).contains(&src.snell_version) {
+                        src.snell_version
+                    } else {
+                        4
+                    };
+                    obj.insert("version".into(), json!(ver));
+                    if ver != 6 {
+                        let obfs = src.snell_obfs.trim();
+                        if !obfs.is_empty() && !obfs.eq_ignore_ascii_case("none") {
+                            let mut obfs_obj = json!({ "type": obfs });
+                            if !src.snell_obfs_host.trim().is_empty() {
+                                obfs_obj["host"] = json!(src.snell_obfs_host.trim());
+                            }
+                            obj.insert("obfs".into(), obfs_obj);
                         }
-                        obj.insert("obfs".into(), obfs_obj);
-                    }
-                    if src.snell_uot {
-                        obj.insert("udp_over_tcp".into(), json!(true));
+                        if src.snell_uot {
+                            obj.insert("udp_over_tcp".into(), json!(true));
+                        }
                     }
                 }
                 "shadowtls" => {
@@ -8504,6 +8508,24 @@ pub(crate) fn normalize_singbox_json_outbounds(items: &[Value]) -> Vec<ParsedPro
             m.insert("tag".into(), json!(tag));
         }
         sanitize_outbound_dialer_fragments(&mut clean_val);
+        if otype == "snell" {
+            let Some(m) = clean_val.as_object_mut() else {
+                continue;
+            };
+            let Some(ver) = snell_outbound_valid_version(m) else {
+                continue;
+            };
+            if ver == 6 {
+                strip_snell_v6_incompatible_fields(m);
+            }
+        } else if otype == "mtproto" {
+            let Some(m) = clean_val.as_object_mut() else {
+                continue;
+            };
+            if !sanitize_mtproto_outbound_obj(m) {
+                continue;
+            }
+        }
         let is_hidden = item
             .get("__tachyon_hidden")
             .and_then(Value::as_bool)
@@ -9555,11 +9577,15 @@ fn normalize_clash_proxy(
             if psk.is_empty() {
                 return None;
             }
-            let version = clash_first_scalar(fields, &["version"])
-                .parse::<u64>()
-                .ok()
-                .filter(|v| (1..=6).contains(v))
-                .unwrap_or(5);
+            let raw_version = clash_first_scalar(fields, &["version"]);
+            let version = if raw_version.is_empty() {
+                5
+            } else {
+                raw_version
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|v| (4..=6).contains(v))?
+            };
             let mut obj = Map::new();
             obj.insert("type".into(), json!("snell"));
             obj.insert("tag".into(), json!(tag));
@@ -9568,7 +9594,7 @@ fn normalize_clash_proxy(
             obj.insert("psk".into(), json!(psk));
             obj.insert("version".into(), json!(version));
             let obfs_mode = clash_first_scalar(fields, &["obfs-opts.mode", "obfs"]);
-            if matches!(obfs_mode.to_ascii_lowercase().as_str(), "http" | "tls") {
+            if version != 6 && matches!(obfs_mode.to_ascii_lowercase().as_str(), "http" | "tls") {
                 let mut om = Map::new();
                 om.insert("mode".into(), json!(obfs_mode.to_ascii_lowercase()));
                 let oh = clash_first_scalar(fields, &["obfs-opts.host", "host"]);
@@ -12672,6 +12698,216 @@ fn sanitize_invalid_reality_outbounds(outbounds: &mut Vec<Value>, rules: &mut Ve
     }
 }
 
+fn snell_outbound_valid_version(obj: &Map<String, Value>) -> Option<i64> {
+    let ver = match obj.get("version")? {
+        Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_f64().filter(|f| f.fract() == 0.0).map(|f| f as i64))?,
+        _ => return None,
+    };
+    (4..=6).contains(&ver).then_some(ver)
+}
+
+fn strip_snell_v6_incompatible_fields(obj: &mut Map<String, Value>) {
+    for key in ["obfs", "obfs_mode", "obfs_host", "udp_over_tcp"] {
+        obj.remove(key);
+    }
+}
+
+fn decode_hex_utf8_domain(hex_str: &str) -> Option<String> {
+    if hex_str.is_empty() || !hex_str.len().is_multiple_of(2) {
+        return None;
+    }
+    let bytes = hex_str.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len() / 2);
+    for &pair in bytes.as_chunks::<2>().0 {
+        let hi = (pair[0] as char).to_digit(16)? as u8;
+        let lo = (pair[1] as char).to_digit(16)? as u8;
+        decoded.push((hi << 4) | lo);
+    }
+    let text = String::from_utf8(decoded).ok()?;
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn sanitize_mtproto_outbound_obj(obj: &mut Map<String, Value>) -> bool {
+    let mut padded_prefix = false;
+    let mut faketls_sni: Option<String> = None;
+
+    match obj.get("secret").cloned() {
+        None | Some(Value::Null) => {}
+        Some(Value::String(raw)) => {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                let norm = trimmed.to_ascii_lowercase();
+                if norm.len() >= 34
+                    && (norm.starts_with("ee") || norm.starts_with("dd"))
+                    && norm.as_bytes()[2..34].iter().all(|b| b.is_ascii_hexdigit())
+                {
+                    if norm.starts_with("dd") {
+                        padded_prefix = true;
+                    }
+                    if norm.starts_with("ee")
+                        && norm.len() > 34
+                        && let Some(dom) = decode_hex_utf8_domain(&norm[34..])
+                    {
+                        faketls_sni = Some(dom);
+                    }
+                    obj.insert("secret".into(), json!(&norm[2..34]));
+                } else {
+                    if norm.len() != 32 || !norm.bytes().all(|b| b.is_ascii_hexdigit()) {
+                        return false;
+                    }
+                    obj.insert("secret".into(), json!(norm));
+                }
+            } else {
+                obj.insert("secret".into(), json!(""));
+            }
+        }
+        Some(_) => return false,
+    }
+
+    for aux_key in ["faketls_domain", "faketls", "sni"] {
+        if let Some(val) = obj.remove(aux_key)
+            && faketls_sni.is_none()
+            && let Some(s) = val.as_str()
+        {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                faketls_sni = Some(trimmed.to_string());
+            }
+        }
+    }
+
+    let mut wants_tls = false;
+    if let Some(tr_val) = obj.remove("transport") {
+        if let Some(raw_tr) = tr_val.as_str() {
+            let tr = raw_tr.trim().to_ascii_lowercase();
+            match tr.as_str() {
+                "abridged"
+                | "intermediate"
+                | "padded_intermediate"
+                | "padded-intermediate"
+                | "full" => {
+                    obj.insert("transport".into(), json!(tr));
+                }
+                "dd" | "padded" => {
+                    obj.insert("transport".into(), json!("padded_intermediate"));
+                }
+                "faketls" | "fake_tls" | "fake-tls" | "ee" | "tls" => {
+                    wants_tls = true;
+                    if padded_prefix {
+                        obj.insert("transport".into(), json!("padded_intermediate"));
+                    }
+                }
+                _ => {
+                    if padded_prefix {
+                        obj.insert("transport".into(), json!("padded_intermediate"));
+                    }
+                }
+            }
+        } else if padded_prefix {
+            obj.insert("transport".into(), json!("padded_intermediate"));
+        }
+    } else if padded_prefix {
+        obj.insert("transport".into(), json!("padded_intermediate"));
+    }
+
+    if wants_tls || faketls_sni.is_some() {
+        match obj.get_mut("tls") {
+            Some(Value::Object(tls_map)) => {
+                tls_map.insert("enabled".into(), json!(true));
+                let has_sni = tls_map
+                    .get("server_name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.trim().is_empty());
+                if !has_sni && let Some(ref dom) = faketls_sni {
+                    tls_map.insert("server_name".into(), json!(dom));
+                }
+            }
+            _ => {
+                let mut tls_map = Map::new();
+                tls_map.insert("enabled".into(), json!(true));
+                if let Some(ref dom) = faketls_sni {
+                    tls_map.insert("server_name".into(), json!(dom));
+                }
+                obj.insert("tls".into(), Value::Object(tls_map));
+            }
+        }
+    }
+
+    if let Some(mode_val) = obj.remove("mode")
+        && let Some(raw_mode) = mode_val.as_str()
+    {
+        let mode = raw_mode.trim().to_ascii_lowercase();
+        match mode.as_str() {
+            "" | "mtproto" | "mtproxy" | "telegram-ws" | "kws" => {
+                obj.insert("mode".into(), json!(mode));
+            }
+            "direct" | "standard" => {
+                obj.insert("mode".into(), json!("mtproto"));
+            }
+            "fast" => {
+                obj.insert("mode".into(), json!("mtproxy"));
+            }
+            _ => {}
+        }
+    }
+
+    true
+}
+
+/// Drop or normalize `snell` and `mtproto` outbounds incompatible with `tachyon-core` schema
+/// before config check so a single legacy subscription node does not fail its parent section.
+fn sanitize_incompatible_snell_and_mtproto_outbounds(
+    outbounds: &mut Vec<Value>,
+    rules: &mut Vec<Value>,
+) {
+    let mut bad_tags = HashSet::new();
+    for ob in outbounds.iter_mut() {
+        let ty = ob.get("type").and_then(Value::as_str).unwrap_or("");
+        if ty == "snell" {
+            let tag = ob
+                .get("tag")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let Some(map) = ob.as_object_mut() else {
+                continue;
+            };
+            match snell_outbound_valid_version(map) {
+                Some(6) => strip_snell_v6_incompatible_fields(map),
+                Some(_) => {}
+                None => {
+                    if !tag.is_empty() && !matches!(tag.as_str(), "direct" | "block") {
+                        eprintln!("[tachyon] skipping outbound '{tag}': unsupported snell version");
+                        bad_tags.insert(tag);
+                    }
+                }
+            }
+        } else if ty == "mtproto" {
+            let tag = ob
+                .get("tag")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let Some(map) = ob.as_object_mut() else {
+                continue;
+            };
+            if !sanitize_mtproto_outbound_obj(map)
+                && !tag.is_empty()
+                && !matches!(tag.as_str(), "direct" | "block")
+            {
+                eprintln!("[tachyon] skipping outbound '{tag}': invalid mtproto outbound");
+                bad_tags.insert(tag);
+            }
+        }
+    }
+    if !bad_tags.is_empty() {
+        strip_removed_tags_from_groups_and_rules(outbounds, rules, bad_tags);
+    }
+}
+
 fn sanitize_xhttp_transports(outbounds: &mut [Value]) {
     for ob in outbounds {
         if let Some(tr) = ob.get_mut("transport").and_then(Value::as_object_mut)
@@ -15010,6 +15246,7 @@ fn compile_core_config_with_rt_dir(
     }
     sanitize_xhttp_transports(&mut outbounds);
     sanitize_invalid_reality_outbounds(&mut outbounds, &mut rules);
+    sanitize_incompatible_snell_and_mtproto_outbounds(&mut outbounds, &mut rules);
     sanitize_dialer_fragments(&mut outbounds);
     sanitize_dialer_fragments(&mut endpoints);
     apply_settings_tcp_profile(&mut outbounds, &mut endpoints, &store.settings.tcp_profile);
@@ -19810,36 +20047,52 @@ fn build_balancer_outbound(
     } else {
         (mode, bal.tolerance)
     };
+    let testing_url = {
+        let t = bal.testing_url.trim();
+        if t.starts_with("http://") || t.starts_with("https://") {
+            t
+        } else {
+            "https://www.gstatic.com/generate_204"
+        }
+    };
+    let idle_timeout_str = {
+        let t = bal.idle_timeout.trim();
+        if t.is_empty() || t == "0" {
+            "30m".to_string()
+        } else if t.bytes().all(|b| b.is_ascii_digit()) {
+            format!("{t}s")
+        } else {
+            let lower = t.to_ascii_lowercase();
+            if lower.ends_with("ms")
+                || lower.ends_with('s')
+                || lower.ends_with('m')
+                || lower.ends_with('h')
+            {
+                t.to_string()
+            } else {
+                "30m".to_string()
+            }
+        }
+    };
     let mut obj = Map::new();
     obj.insert("type".into(), json!("urltest"));
     obj.insert("tag".into(), json!(bal_tag));
     obj.insert("outbounds".into(), json!(tags));
     obj.insert("mode".into(), json!(effective_mode));
-    obj.insert(
-        "url".into(),
-        json!(if bal.testing_url.is_empty() {
-            "https://www.gstatic.com/generate_204"
-        } else {
-            &bal.testing_url
-        }),
-    );
+    obj.insert("url".into(), json!(testing_url));
     obj.insert(
         "interval".into(),
         json!(format!("{}s", bal.check_interval.max(15))),
     );
-    obj.insert("tolerance".into(), json!(effective_tolerance));
+    obj.insert(
+        "tolerance".into(),
+        json!(effective_tolerance.min(u16::MAX as u32)),
+    );
     obj.insert(
         "interrupt_exist_connections".into(),
         json!(bal.interrupt_exist_connections),
     );
-    obj.insert(
-        "idle_timeout".into(),
-        json!(if bal.idle_timeout.is_empty() {
-            "30m"
-        } else {
-            &bal.idle_timeout
-        }),
-    );
+    obj.insert("idle_timeout".into(), json!(idle_timeout_str));
     let mut balancer_opts = Map::new();
     if effective_mode == "sticky" {
         balancer_opts.insert(
@@ -32518,5 +32771,144 @@ proxies:
                 .all(|s| !s["tag"].as_str().unwrap_or("").starts_with("dns-fallback-")),
             "external fallback DNS must not be emitted for loopback primary DNS"
         );
+    }
+
+    #[test]
+    fn snell_and_mtproto_sanitization_drops_legacy_snell_and_normalizes_faketls() {
+        assert!(parse_proxy_uri("snell://psk@s.example.com:443?version=3#S3", 1).is_none());
+        let s4 = parse_proxy_uri("snell://psk@s.example.com:443?version=4&obfs=tls#S4", 2)
+            .expect("snell v4 accepted");
+        assert_eq!(s4.outbound_json["version"], 4);
+        assert_eq!(s4.outbound_json["obfs"]["mode"], "tls");
+        let s6 = parse_proxy_uri("snell://psk@s.example.com:443?version=6&obfs=tls#S6", 3)
+            .expect("snell v6 accepted");
+        assert_eq!(s6.outbound_json["version"], 6);
+        assert!(s6.outbound_json.get("obfs").is_none());
+
+        let clash_v3_only = "\
+proxies:
+  - name: s3-clash
+    type: snell
+    server: s.example.com
+    port: 443
+    psk: psk
+    version: 3
+";
+        assert!(parse_clash_yaml_subscription_payload(clash_v3_only).is_none());
+        let clash_mixed = "\
+proxies:
+  - name: s3-clash
+    type: snell
+    server: s.example.com
+    port: 443
+    psk: psk
+    version: 3
+  - name: s5-clash
+    type: snell
+    server: s.example.com
+    port: 444
+    psk: psk
+    version: 5
+";
+        let clash_nodes =
+            parse_clash_yaml_subscription_payload(clash_mixed).expect("snell v5 kept");
+        assert_eq!(clash_nodes.len(), 1);
+        assert_eq!(clash_nodes[0].tag, "s5-clash");
+
+        let normalized = normalize_singbox_json_outbounds(&[
+            json!({
+                "type": "snell",
+                "tag": "legacy-snell-3",
+                "server": "1.2.3.4",
+                "server_port": 443,
+                "psk": "psk",
+                "version": 3
+            }),
+            json!({
+                "type": "snell",
+                "tag": "valid-snell-6",
+                "server": "1.2.3.4",
+                "server_port": 443,
+                "psk": "psk",
+                "version": 6,
+                "obfs": { "mode": "tls" },
+                "udp_over_tcp": true
+            }),
+            json!({
+                "type": "mtproto",
+                "tag": "Telegram MTProto FakeTLS",
+                "server": "1.2.3.4",
+                "server_port": 443,
+                "secret": "EE00112233445566778899aabbccddeeff676f6f676c652e636f6d",
+                "transport": "faketls",
+                "mode": "direct"
+            }),
+        ]);
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized[0].tag, "valid-snell-6");
+        assert!(normalized[0].outbound_json.get("obfs").is_none());
+        assert!(normalized[0].outbound_json.get("udp_over_tcp").is_none());
+        assert_eq!(normalized[1].tag, "Telegram MTProto FakeTLS");
+        assert_eq!(
+            normalized[1].outbound_json["secret"],
+            "00112233445566778899aabbccddeeff"
+        );
+        assert!(normalized[1].outbound_json.get("transport").is_none());
+        assert_eq!(normalized[1].outbound_json["mode"], "mtproto");
+        assert_eq!(normalized[1].outbound_json["tls"]["enabled"], true);
+        assert_eq!(
+            normalized[1].outbound_json["tls"]["server_name"],
+            "google.com"
+        );
+
+        let mut obs = vec![
+            json!({ "type": "snell", "tag": "bad-s3", "version": 3 }),
+            json!({ "type": "vless", "tag": "good-node" }),
+            json!({ "type": "selector", "tag": "sel-s1", "outbounds": ["bad-s3", "good-node"] }),
+        ];
+        let mut rules = Vec::new();
+        sanitize_incompatible_snell_and_mtproto_outbounds(&mut obs, &mut rules);
+        assert!(obs.iter().all(|o| o["tag"] != "bad-s3"));
+        let sel = obs.iter().find(|o| o["tag"] == "sel-s1").unwrap();
+        assert_eq!(sel["outbounds"], json!(["good-node"]));
+
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(OutboundSource {
+            id: "mtp1".to_string(),
+            name: "MTProto".to_string(),
+            source_type: "mtproto".to_string(),
+            enabled: true,
+            mtproto_telegram_ws: false,
+            ..Default::default()
+        });
+        let cfg = compile_core_config(&store).expect("compile manual mtproto source");
+        let mtp = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "mtproto-mtp1")
+            .expect("mtproto-mtp1");
+        assert_eq!(mtp["mode"], "mtproto");
+
+        let legacy_bal = BalancerConfig {
+            id: "bal_legacy".to_string(),
+            enabled: true,
+            name: "Legacy".to_string(),
+            balancer_type: "urltest".to_string(),
+            testing_url: "gstatic".to_string(),
+            idle_timeout: "600".to_string(),
+            tolerance: 999_999,
+            ..Default::default()
+        };
+        let bal_json = build_balancer_outbound(
+            "bal-sec-legacy",
+            &legacy_bal,
+            vec!["good-node".to_string()],
+            &[],
+            None,
+        );
+        assert_eq!(bal_json["url"], "https://www.gstatic.com/generate_204");
+        assert_eq!(bal_json["idle_timeout"], "600s");
+        assert_eq!(bal_json["tolerance"], u16::MAX);
     }
 }
