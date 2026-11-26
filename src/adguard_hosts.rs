@@ -1182,11 +1182,17 @@ fn write_ruleset_bucket_in(
     suffix: &[String],
 ) -> anyhow::Result<bool> {
     let path = rt_dir.join(format!("{tag}.json"));
+    let trs_path = rt_dir.join(format!("{tag}.trs"));
     if exact.is_empty() && suffix.is_empty() {
-        if path.exists() {
-            return write_file_if_changed(&path, br#"{"version":3,"rules":[]}"#);
+        let mut changed = false;
+        if trs_path.exists() {
+            let _ = std::fs::remove_file(&trs_path);
+            changed = true;
         }
-        return Ok(false);
+        if path.exists() {
+            changed |= write_file_if_changed(&path, br#"{"version":3,"rules":[]}"#)?;
+        }
+        return Ok(changed);
     }
     let mut rule_obj = serde_json::Map::new();
     if !exact.is_empty() {
@@ -1201,6 +1207,110 @@ fn write_ruleset_bucket_in(
     });
     let bytes = serde_json::to_vec(&doc)?;
     write_file_if_changed(&path, &bytes)
+}
+
+const ADGUARD_TIER_TAGS: [&str; 4] = [
+    TAG_ALLOW_IMPORTANT,
+    TAG_BLOCK_IMPORTANT,
+    TAG_ALLOW,
+    TAG_BLOCK,
+];
+
+fn is_valid_adguard_trs_file(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.len() >= 96)
+        && CoreManager::file_has_valid_trs_magic(path)
+}
+
+/// Resolve the active rule-set path and format (`"trs"` or `"source"` JSON fallback) for a tier.
+pub fn resolve_tier_ruleset_in(rt_dir: &Path, tag: &str) -> Option<(PathBuf, &'static str)> {
+    let json_path = rt_dir.join(format!("{tag}.json"));
+    let trs_path = rt_dir.join(format!("{tag}.trs"));
+    let json_exists = json_path.exists();
+    let json_has_entries = ruleset_file_has_entries(&json_path);
+
+    if json_exists && !json_has_entries {
+        return None;
+    }
+    if is_valid_adguard_trs_file(&trs_path) {
+        return Some((trs_path, "trs"));
+    }
+    if json_has_entries {
+        return Some((json_path, "source"));
+    }
+    None
+}
+
+/// Compile non-empty `adguard-*.json` tier buckets into native `.trs` (`TSRS v2`) images.
+pub fn compile_adguard_tiers_to_trs_in(rt_dir: &Path, core_bin: &str) -> bool {
+    let bin = core_bin.trim();
+    if bin.is_empty() || !Path::new(bin).is_file() {
+        return false;
+    }
+
+    let mut any_changed = false;
+    for tag in ADGUARD_TIER_TAGS {
+        let json_path = rt_dir.join(format!("{tag}.json"));
+        let trs_path = rt_dir.join(format!("{tag}.trs"));
+        if !ruleset_file_has_entries(&json_path) {
+            if trs_path.exists() && std::fs::remove_file(&trs_path).is_ok() {
+                any_changed = true;
+            }
+            continue;
+        }
+
+        let trs_up_to_date = is_valid_adguard_trs_file(&trs_path)
+            && std::fs::metadata(&trs_path)
+                .and_then(|m| m.modified())
+                .ok()
+                .zip(
+                    std::fs::metadata(&json_path)
+                        .and_then(|m| m.modified())
+                        .ok(),
+                )
+                .is_some_and(|(trs_mtime, json_mtime)| trs_mtime >= json_mtime);
+        if trs_up_to_date {
+            continue;
+        }
+
+        let tmp_trs_path = rt_dir.join(format!("{tag}.trs.tmp"));
+        let _ = std::fs::remove_file(&tmp_trs_path);
+        let status = std::process::Command::new(bin)
+            .args([
+                "rule-set",
+                "compile",
+                "-f",
+                "trs",
+                &json_path.to_string_lossy(),
+                "-o",
+                &tmp_trs_path.to_string_lossy(),
+            ])
+            .status();
+
+        if status.is_ok_and(|s| s.success())
+            && is_valid_adguard_trs_file(&tmp_trs_path)
+            && let Ok(bytes) = std::fs::read(&tmp_trs_path)
+            && let Ok(changed) = write_file_if_changed(&trs_path, &bytes)
+        {
+            any_changed |= changed;
+        }
+        let _ = std::fs::remove_file(&tmp_trs_path);
+    }
+
+    any_changed
+}
+
+/// Ensure any non-empty `adguard-*.json` tier files are compiled to `.trs` via installed `tachyon-core`.
+pub async fn ensure_adguard_trs_compiled_in(rt_dir: &Path, core: &CoreManager) -> bool {
+    let core_bin = core.resolve_bin_path().await;
+    if core_bin.trim().is_empty() || !Path::new(core_bin.trim()).is_file() {
+        return false;
+    }
+    let dir = rt_dir.to_path_buf();
+    let job = tokio::task::spawn_blocking(move || compile_adguard_tiers_to_trs_in(&dir, &core_bin));
+    matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(30), job).await,
+        Ok(Ok(changed)) if changed
+    )
 }
 
 fn build_compat_hosts_txt(index: &CompiledAdguardIndex) -> String {
@@ -1291,7 +1401,9 @@ pub async fn update_hosts_lists_in(
     }
 
     let now = unix_now_secs();
-    let (index, changed) = compile_and_store_remote_lists_in(rt_dir, &fetched, now)?;
+    let (index, json_changed) = compile_and_store_remote_lists_in(rt_dir, &fetched, now)?;
+    let trs_changed = ensure_adguard_trs_compiled_in(rt_dir, core).await;
+    let changed = json_changed || trs_changed;
 
     let mut reloaded = false;
     if trigger_reload_on_change && changed {
@@ -3088,6 +3200,64 @@ example.com#%#//scriptlet('noop')
             query_dns_block_stats_in(&rt_dir, "24h", now + 16, &HashMap::new()).unwrap();
         assert_eq!(after_new.total_blocked, 1);
         assert_eq!(after_new.top_domains[0].domain, "149.154.167.91");
+
+        let _ = std::fs::remove_dir_all(&rt_dir);
+    }
+
+    #[test]
+    fn write_ruleset_bucket_removes_stale_trs_when_tier_becomes_empty() {
+        let rt_dir = temp_rt_dir("stale_trs");
+        write_ruleset_bucket_in(&rt_dir, TAG_BLOCK, &["ads.example.org".into()], &[]).unwrap();
+        let trs_path = rt_dir.join(format!("{TAG_BLOCK}.trs"));
+        let mut fake_trs = vec![0u8; 96];
+        fake_trs[0..4].copy_from_slice(b"TSRS");
+        fake_trs[4..8].copy_from_slice(&2u32.to_le_bytes());
+        std::fs::write(&trs_path, &fake_trs).unwrap();
+        assert!(trs_path.exists());
+
+        let changed = write_ruleset_bucket_in(&rt_dir, TAG_BLOCK, &[], &[]).unwrap();
+        assert!(changed);
+        assert!(!trs_path.exists());
+        assert!(resolve_tier_ruleset_in(&rt_dir, TAG_BLOCK).is_none());
+
+        let _ = std::fs::remove_dir_all(&rt_dir);
+    }
+
+    #[test]
+    fn resolve_tier_ruleset_prefers_valid_trs_and_falls_back_to_json() {
+        let rt_dir = temp_rt_dir("resolve_tier");
+        write_ruleset_bucket_in(&rt_dir, TAG_BLOCK, &["ads.example.org".into()], &[]).unwrap();
+
+        let (resolved_json, fmt_json) = resolve_tier_ruleset_in(&rt_dir, TAG_BLOCK).unwrap();
+        assert_eq!(fmt_json, "source");
+        assert!(resolved_json.ends_with(format!("{TAG_BLOCK}.json")));
+
+        let trs_path = rt_dir.join(format!("{TAG_BLOCK}.trs"));
+        std::fs::write(&trs_path, b"corrupt").unwrap();
+        let (fallback_path, fallback_fmt) = resolve_tier_ruleset_in(&rt_dir, TAG_BLOCK).unwrap();
+        assert_eq!(fallback_fmt, "source");
+        assert!(fallback_path.ends_with(format!("{TAG_BLOCK}.json")));
+
+        let mut valid_trs = vec![0u8; 96];
+        valid_trs[0..4].copy_from_slice(b"TSRS");
+        valid_trs[4..8].copy_from_slice(&2u32.to_le_bytes());
+        std::fs::write(&trs_path, &valid_trs).unwrap();
+        let (resolved_trs, fmt_trs) = resolve_tier_ruleset_in(&rt_dir, TAG_BLOCK).unwrap();
+        assert_eq!(fmt_trs, "trs");
+        assert_eq!(resolved_trs, trs_path);
+
+        let _ = std::fs::remove_dir_all(&rt_dir);
+    }
+
+    #[test]
+    fn compile_adguard_tiers_to_trs_in_skips_gracefully_when_binary_missing() {
+        let rt_dir = temp_rt_dir("missing_bin");
+        write_ruleset_bucket_in(&rt_dir, TAG_BLOCK, &["ads.example.org".into()], &[]).unwrap();
+        assert!(!compile_adguard_tiers_to_trs_in(
+            &rt_dir,
+            &rt_dir.join("nonexistent-tachyon-core").to_string_lossy()
+        ));
+        assert!(!rt_dir.join(format!("{TAG_BLOCK}.trs")).exists());
 
         let _ = std::fs::remove_dir_all(&rt_dir);
     }

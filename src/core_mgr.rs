@@ -502,7 +502,8 @@ impl CoreManager {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            if !tag.starts_with("trs-") && !tag.starts_with("builtin-") {
+            let is_adguard = tag.starts_with("adguard-");
+            if !tag.starts_with("trs-") && !tag.starts_with("builtin-") && !is_adguard {
                 continue;
             }
             let Some(rs_path_str) = obj.get("path").and_then(Value::as_str).map(str::to_string)
@@ -514,6 +515,19 @@ impl CoreManager {
             }
             let rs_path = Path::new(&rs_path_str);
             if Self::file_has_valid_trs_magic(rs_path) {
+                continue;
+            }
+            if is_adguard {
+                let _ = std::fs::remove_file(rs_path);
+                let json_path = rs_path.with_extension("json");
+                if crate::adguard_hosts::ruleset_file_has_entries(&json_path) {
+                    obj.insert("format".into(), json!("source"));
+                    obj.insert("path".into(), json!(json_path.to_string_lossy()));
+                } else {
+                    let fallback_json = Self::write_empty_ruleset_stub(&tag, Some(&rs_path_str));
+                    obj.insert("format".into(), json!("source"));
+                    obj.insert("path".into(), json!(fallback_json.to_string_lossy()));
+                }
                 continue;
             }
             let fname = rs_path
@@ -551,7 +565,10 @@ impl CoreManager {
             .and_then(Value::as_str)
             .unwrap_or("")
             .trim();
-        if !matches!(format, "source" | "binary" | "trs" | "tsr") {
+        if !matches!(
+            format,
+            "source" | "binary" | "trs" | "tsr" | "adblock" | "hosts"
+        ) {
             return Err(format!(
                 "custom local rule_set '{tag}' ({path_str}) has unsupported format '{format}'"
             ));
@@ -564,6 +581,11 @@ impl CoreManager {
             return Err(format!(
                 "custom local rule_set '{tag}' path '{path_str}' is not a regular file"
             ));
+        }
+        if matches!(format, "adblock" | "hosts") {
+            let _ = std::fs::read_to_string(path).map_err(|e| {
+                format!("custom local rule_set '{tag}' at '{path_str}' is not valid UTF-8: {e}")
+            })?;
         }
         if format == "source" {
             let raw = std::fs::read_to_string(path).map_err(|e| {
@@ -1536,6 +1558,11 @@ impl CoreManager {
         &self,
         store_snapshot: &crate::store::RouterStoreData,
     ) -> (Value, BTreeMap<String, String>) {
+        crate::adguard_hosts::ensure_adguard_trs_compiled_in(
+            &crate::store::runtime_state_dir(),
+            self,
+        )
+        .await;
         let mut seed_errors = BTreeMap::new();
         match config_gen::compile_core_config(store_snapshot) {
             Ok(v) => (v, seed_errors),

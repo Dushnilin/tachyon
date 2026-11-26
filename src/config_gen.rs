@@ -11800,7 +11800,7 @@ pub fn is_local_ruleset_path(token: &str) -> bool {
         return !t.chars().any(char::is_whitespace)
             || matches!(
                 ext_lc.as_str(),
-                "json" | "srs" | "trs" | "tsr" | "txt" | "lst"
+                "json" | "srs" | "trs" | "tsr" | "txt" | "lst" | "adblock" | "hosts"
             );
     }
     false
@@ -16589,7 +16589,7 @@ fn append_adguard_and_hosts_dns_rules(
     use crate::adguard_hosts::{
         RuleKind, TAG_ALLOW, TAG_ALLOW_IMPORTANT, TAG_BLOCK, TAG_BLOCK_IMPORTANT,
         collect_active_hosts_list_urls, collect_inline_rules, load_compiled_index_in,
-        ruleset_file_has_entries,
+        resolve_tier_ruleset_in,
     };
 
     let inline = collect_inline_rules(store);
@@ -16651,30 +16651,29 @@ fn append_adguard_and_hosts_dns_rules(
     for (kind, important, rs_tag) in tiers {
         push_adguard_rules_for_tier(&inline.rules, kind, important, dns_rules_vec);
 
-        if use_rt_dir_always || has_remote_urls {
-            let rs_path = rt_dir.join(format!("{rs_tag}.json"));
-            if ruleset_file_has_entries(&rs_path) {
-                if !seen_rule_sets.contains_key(rs_tag) {
-                    seen_rule_sets.insert(rs_tag.to_string(), true);
-                    rule_sets.push(json!({
-                        "tag": rs_tag,
-                        "type": "local",
-                        "format": "source",
-                        "path": rs_path.to_string_lossy(),
-                    }));
-                }
-                match kind {
-                    RuleKind::Allow => dns_rules_vec.push(json!({
-                        "rule_set": [rs_tag],
-                        "action": "route",
-                        "server": "dns-remote",
-                    })),
-                    RuleKind::Block => dns_rules_vec.push(json!({
-                        "rule_set": [rs_tag],
-                        "action": "predefined",
-                        "rcode": "NXDOMAIN",
-                    })),
-                }
+        if (use_rt_dir_always || has_remote_urls)
+            && let Some((rs_path, rs_fmt)) = resolve_tier_ruleset_in(rt_dir, rs_tag)
+        {
+            if !seen_rule_sets.contains_key(rs_tag) {
+                seen_rule_sets.insert(rs_tag.to_string(), true);
+                rule_sets.push(json!({
+                    "tag": rs_tag,
+                    "type": "local",
+                    "format": rs_fmt,
+                    "path": rs_path.to_string_lossy(),
+                }));
+            }
+            match kind {
+                RuleKind::Allow => dns_rules_vec.push(json!({
+                    "rule_set": [rs_tag],
+                    "action": "route",
+                    "server": "dns-remote",
+                })),
+                RuleKind::Block => dns_rules_vec.push(json!({
+                    "rule_set": [rs_tag],
+                    "action": "predefined",
+                    "rcode": "NXDOMAIN",
+                })),
             }
         }
 
@@ -20379,6 +20378,7 @@ fn infer_ruleset_format(reference: &str) -> Option<&'static str> {
         "json" => Some("source"),
         "trs" | "tsr" | "srs" => Some("binary"),
         "txt" | "lst" => Some("plain"),
+        "adblock" | "hosts" => Some("adblock"),
         _ => None,
     }
 }
@@ -20550,6 +20550,14 @@ fn register_ruleset_reference(
                         "path": clean
                     }));
                 }
+                Some("adblock") => {
+                    rule_sets.push(json!({
+                        "tag": tag,
+                        "type": "local",
+                        "format": "adblock",
+                        "path": clean
+                    }));
+                }
                 Some("plain") => {
                     let compiled_path =
                         compile_plain_local_ruleset(clean, &tag, rulesets_dir, enable_ipv6)
@@ -20582,6 +20590,7 @@ fn register_ruleset_reference(
             seen_rule_sets.insert(tag.clone(), true);
             let fmt = match infer_ruleset_format(clean) {
                 Some("source") => "source",
+                Some("adblock") => "adblock",
                 _ => "binary",
             };
             rule_sets.push(json!({
@@ -28116,6 +28125,108 @@ PersistentKeepalive = 25
                 .iter()
                 .any(|rs| rs["tag"] == crate::adguard_hosts::TAG_ALLOW && rs["type"] == "local")
         );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn adguard_tier_uses_trs_format_when_valid_trs_present() {
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon-cg-adguard-trs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let remote_a = (
+            "https://list-a.invalid/ads.txt".to_string(),
+            "||remote-ads.example.org^\n@@||ok-remote.example.org^\n".to_string(),
+            true,
+            String::new(),
+        );
+        crate::adguard_hosts::compile_and_store_remote_lists_in(
+            &tmp_dir,
+            &[remote_a],
+            1_700_300_100,
+        )
+        .unwrap();
+
+        let mut hdr = vec![0u8; 96];
+        hdr[0..4].copy_from_slice(b"TSRS");
+        hdr[4..8].copy_from_slice(&2u32.to_le_bytes());
+        std::fs::write(
+            tmp_dir.join(format!("{}.trs", crate::adguard_hosts::TAG_BLOCK)),
+            &hdr,
+        )
+        .unwrap();
+
+        let mut store = RouterStoreData::default();
+        store.settings.hosts_list_urls = vec!["https://list-a.invalid/ads.txt".into()];
+
+        let cfg = compile_core_config_with_adguard_dir(&store, false, &tmp_dir)
+            .expect("compile config with trs tier");
+        let route_rs = cfg["route"]["rule_set"].as_array().unwrap();
+        let block_rs = route_rs
+            .iter()
+            .find(|rs| rs["tag"] == crate::adguard_hosts::TAG_BLOCK)
+            .expect("block tier present");
+        assert_eq!(block_rs["format"], "trs");
+        assert!(
+            block_rs["path"]
+                .as_str()
+                .unwrap()
+                .ends_with(&format!("{}.trs", crate::adguard_hosts::TAG_BLOCK))
+        );
+
+        let allow_rs = route_rs
+            .iter()
+            .find(|rs| rs["tag"] == crate::adguard_hosts::TAG_ALLOW)
+            .expect("allow tier fallback present");
+        assert_eq!(allow_rs["format"], "source");
+        assert!(
+            allow_rs["path"]
+                .as_str()
+                .unwrap()
+                .ends_with(&format!("{}.json", crate::adguard_hosts::TAG_ALLOW))
+        );
+
+        let mut dummy_tags = Vec::new();
+        let mut dummy_tg = false;
+        let mut dummy_dc = false;
+        let mut custom_rs = Vec::new();
+        let mut custom_seen = HashMap::new();
+        assert!(register_ruleset_reference(
+            "/etc/tachyon/rulesets/filters.adblock",
+            false,
+            &mut dummy_tags,
+            &mut dummy_tg,
+            &mut dummy_dc,
+            "",
+            "",
+            &mut custom_rs,
+            &mut custom_seen,
+            true,
+        ));
+        assert!(register_ruleset_reference(
+            "https://example.com/list.hosts",
+            false,
+            &mut dummy_tags,
+            &mut dummy_tg,
+            &mut dummy_dc,
+            "",
+            "",
+            &mut custom_rs,
+            &mut custom_seen,
+            true,
+        ));
+        assert!(custom_rs.iter().any(|rs| {
+            rs["type"] == "local"
+                && rs["format"] == "adblock"
+                && rs["path"] == "/etc/tachyon/rulesets/filters.adblock"
+        }));
+        assert!(custom_rs.iter().any(|rs| {
+            rs["type"] == "remote"
+                && rs["format"] == "adblock"
+                && rs["url"] == "https://example.com/list.hosts"
+        }));
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
