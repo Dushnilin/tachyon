@@ -3688,6 +3688,8 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     } else {
       activeShellState.restoringTab = false;
     }
+  } else {
+    activeShellState.restoringTab = false;
   }
 
   // Keep sidebar footer status and topbar eco button in sync with store updates

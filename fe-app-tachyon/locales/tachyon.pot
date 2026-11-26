@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-26 08:23+0300\n"
-"PO-Revision-Date: 2026-11-26 08:23+0300\n"
+"POT-Creation-Date: 2026-11-26 09:26+0300\n"
+"PO-Revision-Date: 2026-11-26 09:26+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -414,7 +414,7 @@ msgstr ""
 msgid "Accept default DNS resolvers"
 msgstr ""
 
-#: src/views/tachyon.ts:3248
+#: src/views/tachyon.ts:3345
 msgid "Accept external proxy connections and route them with Tachyon Core."
 msgstr ""
 
@@ -728,15 +728,15 @@ msgstr ""
 msgid "Add URLs or local paths to .trs / .srs / .json / .lst / .txt lists. Subnets are ignored by default."
 msgstr ""
 
-#: src/views/tachyon.ts:3233
+#: src/views/tachyon.ts:3330
 msgid "Add a balancer"
 msgstr ""
 
-#: src/views/tachyon.ts:3197
+#: src/views/tachyon.ts:3294
 msgid "Add a condition"
 msgstr ""
 
-#: src/views/tachyon.ts:3281
+#: src/views/tachyon.ts:3378
 msgid "Add a family profile"
 msgstr ""
 
@@ -744,19 +744,19 @@ msgstr ""
 msgid "Add a randomized offset to automatic subscription updates (e.g. 15%, 25%, or 15m) so updates do not fire at fixed clock intervals."
 msgstr ""
 
-#: src/views/tachyon.ts:3300
+#: src/views/tachyon.ts:3397
 msgid "Add a schedule rule"
 msgstr ""
 
-#: src/views/tachyon.ts:3178
+#: src/views/tachyon.ts:3275
 msgid "Add a section"
 msgstr ""
 
-#: src/views/tachyon.ts:3256
+#: src/views/tachyon.ts:3353
 msgid "Add a server inbound"
 msgstr ""
 
-#: src/views/tachyon.ts:3215
+#: src/views/tachyon.ts:3312
 msgid "Add an outbound source"
 msgstr ""
 
@@ -1956,7 +1956,7 @@ msgstr ""
 #: src/tachyon/configHistoryModal.ts:660
 #: src/views/section.ts:3277
 #: src/views/section.ts:3325
-#: src/views/tachyon.ts:3232
+#: src/views/tachyon.ts:3329
 msgid "Balancer"
 msgstr ""
 
@@ -1974,8 +1974,8 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:2093
 #: src/views/settings.ts:1905
-#: src/views/tachyon.ts:2960
-#: src/views/tachyon.ts:3224
+#: src/views/tachyon.ts:3050
+#: src/views/tachyon.ts:3321
 msgid "Balancers"
 msgstr ""
 
@@ -2159,7 +2159,7 @@ msgstr ""
 msgid "Block in interval"
 msgstr ""
 
-#: src/views/tachyon.ts:3292
+#: src/views/tachyon.ts:3389
 msgid "Block internet access or specific proxy sections for family profiles or individual devices based on time and days."
 msgstr ""
 
@@ -3054,8 +3054,8 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:5311
 #: src/views/outbounds.ts:2706
 #: src/views/outbounds.ts:2751
-#: src/views/tachyon.ts:1195
-#: src/views/tachyon.ts:1196
+#: src/views/tachyon.ts:1284
+#: src/views/tachyon.ts:1285
 msgid "Clone"
 msgstr ""
 
@@ -3228,7 +3228,7 @@ msgstr ""
 msgid "Component update check interval"
 msgstr ""
 
-#: src/views/tachyon.ts:3355
+#: src/views/tachyon.ts:3452
 msgid "Components"
 msgstr ""
 
@@ -3255,7 +3255,7 @@ msgid "Concurrency"
 msgstr ""
 
 #: src/tachyon/configHistoryModal.ts:658
-#: src/views/tachyon.ts:3196
+#: src/views/tachyon.ts:3293
 msgid "Condition"
 msgstr ""
 
@@ -3286,8 +3286,8 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:4055
 #: src/views/section.ts:10668
 #: src/views/settings.ts:1908
-#: src/views/tachyon.ts:2958
-#: src/views/tachyon.ts:3188
+#: src/views/tachyon.ts:3048
+#: src/views/tachyon.ts:3285
 msgid "Conditions"
 msgstr ""
 
@@ -3332,7 +3332,7 @@ msgstr ""
 msgid "Configuration applied"
 msgstr ""
 
-#: src/views/tachyon.ts:1476
+#: src/views/tachyon.ts:1565
 msgid "Configuration for Tachyon service"
 msgstr ""
 
@@ -4321,7 +4321,7 @@ msgstr ""
 msgid "Dark base"
 msgstr ""
 
-#: src/views/tachyon.ts:3159
+#: src/views/tachyon.ts:3256
 msgid "Dashboard"
 msgstr ""
 
@@ -4647,7 +4647,7 @@ msgstr ""
 msgid "Diagnostic check failed to complete"
 msgstr ""
 
-#: src/views/tachyon.ts:3341
+#: src/views/tachyon.ts:3438
 msgid "Diagnostics"
 msgstr ""
 
@@ -5123,7 +5123,7 @@ msgstr ""
 msgid "Drag blocks with mouse (⠿) or ←↑ / ↓→ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns"
 msgstr ""
 
-#: src/views/tachyon.ts:3174
+#: src/views/tachyon.ts:3271
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr ""
 
@@ -5188,12 +5188,12 @@ msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/
 msgstr ""
 
 #: src/tachyon/appShell.ts:3232
-#: src/tachyon/appShell.ts:3737
+#: src/tachyon/appShell.ts:3739
 msgid "Eco Mode"
 msgstr ""
 
 #: src/tachyon/appShell.ts:3231
-#: src/tachyon/appShell.ts:3736
+#: src/tachyon/appShell.ts:3738
 msgid "Eco Mode: On"
 msgstr ""
 
@@ -6298,7 +6298,7 @@ msgstr ""
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr ""
 
-#: src/views/tachyon.ts:919
+#: src/views/tachyon.ts:1008
 msgid "Failed to save changes."
 msgstr ""
 
@@ -6604,13 +6604,13 @@ msgstr ""
 msgid "Family"
 msgstr ""
 
-#: src/views/tachyon.ts:3280
+#: src/views/tachyon.ts:3377
 msgid "Family Profile"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2175
 #: src/tachyon/studioDeck.ts:2130
-#: src/views/tachyon.ts:3272
+#: src/views/tachyon.ts:3369
 msgid "Family Profiles"
 msgstr ""
 
@@ -7121,7 +7121,7 @@ msgstr ""
 msgid "Group ID (UCI)"
 msgstr ""
 
-#: src/views/tachyon.ts:3273
+#: src/views/tachyon.ts:3370
 msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
 msgstr ""
 
@@ -7146,7 +7146,7 @@ msgid "Guest Devices (MAC / IP)"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2183
-#: src/views/tachyon.ts:3310
+#: src/views/tachyon.ts:3407
 msgid "Guest Mode"
 msgstr ""
 
@@ -7154,7 +7154,7 @@ msgstr ""
 msgid "Guest mode"
 msgstr ""
 
-#: src/views/tachyon.ts:3311
+#: src/views/tachyon.ts:3408
 msgid "Guest mode isolates guest devices from local LAN and router administration, while allowing internet access with daily quotas and schedules."
 msgstr ""
 
@@ -9135,7 +9135,7 @@ msgstr ""
 msgid "Launch Settings"
 msgstr ""
 
-#: src/views/tachyon.ts:3207
+#: src/views/tachyon.ts:3304
 msgid "Layer 1: Global Server Pool (subscriptions, proxy share links, network interfaces, JSON outbounds) imported once and shared across all groups and sections."
 msgstr ""
 
@@ -9929,7 +9929,7 @@ msgstr ""
 msgid "Monitored Interfaces"
 msgstr ""
 
-#: src/views/tachyon.ts:3327
+#: src/views/tachyon.ts:3424
 msgid "Monitoring"
 msgstr ""
 
@@ -11167,12 +11167,12 @@ msgstr ""
 msgid "Outbound JSON Objects"
 msgstr ""
 
-#: src/views/tachyon.ts:3214
+#: src/views/tachyon.ts:3311
 msgid "Outbound Source"
 msgstr ""
 
-#: src/views/tachyon.ts:2959
-#: src/views/tachyon.ts:3206
+#: src/views/tachyon.ts:3049
+#: src/views/tachyon.ts:3303
 msgid "Outbounds"
 msgstr ""
 
@@ -11303,7 +11303,7 @@ msgstr ""
 
 #: src/tachyon/appShell.ts:2179
 #: src/tachyon/studioDeck.ts:2144
-#: src/views/tachyon.ts:3291
+#: src/views/tachyon.ts:3388
 msgid "Parental Control"
 msgstr ""
 
@@ -12758,7 +12758,7 @@ msgid "Reload now"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2477
-#: src/tachyon/appShell.ts:3716
+#: src/tachyon/appShell.ts:3718
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:456
 msgid "Reloading..."
 msgstr ""
@@ -13098,11 +13098,11 @@ msgstr ""
 msgid "Returned to higher-priority node"
 msgstr ""
 
-#: src/views/tachyon.ts:3225
+#: src/views/tachyon.ts:3322
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
 msgstr ""
 
-#: src/views/tachyon.ts:3189
+#: src/views/tachyon.ts:3286
 msgid "Reusable atomic traffic conditions and composite boolean rules (AND / OR / NOT) with 2-mode Rule Tracer."
 msgstr ""
 
@@ -13491,8 +13491,8 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:4081
 #: src/views/server.ts:6117
-#: src/views/tachyon.ts:1180
-#: src/views/tachyon.ts:1187
+#: src/views/tachyon.ts:1269
+#: src/views/tachyon.ts:1276
 msgid "Rules"
 msgstr ""
 
@@ -13543,7 +13543,7 @@ msgid "Run the DNS speed test to see results."
 msgstr ""
 
 #: src/tachyon/appShell.ts:2480
-#: src/tachyon/appShell.ts:3719
+#: src/tachyon/appShell.ts:3721
 #: src/tachyon/methods/custom/getDashboardSections.ts:3853
 #: src/tachyon/methods/custom/getDashboardSections.ts:3870
 #: src/tachyon/methods/custom/getDashboardSections.ts:4274
@@ -13760,7 +13760,7 @@ msgstr ""
 msgid "Schedule"
 msgstr ""
 
-#: src/views/tachyon.ts:3299
+#: src/views/tachyon.ts:3396
 msgid "Schedule Rule"
 msgstr ""
 
@@ -13830,7 +13830,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:846
 #: src/tachyon/tabs/monitoring/filters.ts:824
 #: src/views/settings.ts:6630
-#: src/views/tachyon.ts:3178
+#: src/views/tachyon.ts:3275
 msgid "Section"
 msgstr ""
 
@@ -13890,7 +13890,7 @@ msgstr ""
 msgid "Section action"
 msgstr ""
 
-#: src/views/tachyon.ts:1217
+#: src/views/tachyon.ts:1306
 msgid "Section cloned"
 msgstr ""
 
@@ -13928,8 +13928,8 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:5857
 #: src/views/settings.ts:1899
-#: src/views/tachyon.ts:2957
-#: src/views/tachyon.ts:3173
+#: src/views/tachyon.ts:3047
+#: src/views/tachyon.ts:3270
 msgid "Sections"
 msgstr ""
 
@@ -14319,7 +14319,7 @@ msgstr ""
 #: src/views/outbounds.ts:3057
 #: src/views/section.ts:3304
 #: src/views/section.ts:3315
-#: src/views/tachyon.ts:3255
+#: src/views/tachyon.ts:3352
 msgid "Server"
 msgstr ""
 
@@ -14498,7 +14498,7 @@ msgstr ""
 #: src/views/outbounds.ts:1480
 #: src/views/outbounds.ts:2666
 #: src/views/section.ts:10669
-#: src/views/tachyon.ts:3247
+#: src/views/tachyon.ts:3344
 msgid "Servers"
 msgstr ""
 
@@ -14566,7 +14566,7 @@ msgid "Service list"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2484
-#: src/tachyon/appShell.ts:3723
+#: src/tachyon/appShell.ts:3725
 msgid "Service stopped"
 msgstr ""
 
@@ -14619,7 +14619,7 @@ msgstr ""
 #: src/tachyon/languageSelector.ts:83
 #: src/views/section.ts:10667
 #: src/views/section.ts:2387
-#: src/views/tachyon.ts:3369
+#: src/views/tachyon.ts:3466
 msgid "Settings"
 msgstr ""
 
@@ -15253,7 +15253,7 @@ msgid "Stop checking when URLTest group is not used. Use duration format like 1d
 msgstr ""
 
 #: src/tachyon/appShell.ts:2483
-#: src/tachyon/appShell.ts:3722
+#: src/tachyon/appShell.ts:3724
 #: src/tachyon/methods/custom/getDashboardSections.ts:3853
 #: src/tachyon/methods/custom/getDashboardSections.ts:4278
 #: src/tachyon/studioDeck.ts:6083
@@ -15648,7 +15648,7 @@ msgid "System information"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2481
-#: src/tachyon/appShell.ts:3720
+#: src/tachyon/appShell.ts:3722
 msgid "System running"
 msgstr ""
 
@@ -16008,7 +16008,7 @@ msgstr ""
 msgid "Tachyon Rules"
 msgstr ""
 
-#: src/views/tachyon.ts:1475
+#: src/views/tachyon.ts:1564
 msgid "Tachyon Settings"
 msgstr ""
 
@@ -16171,7 +16171,7 @@ msgstr ""
 msgid "Telegram Alerts"
 msgstr ""
 
-#: src/views/tachyon.ts:3383
+#: src/views/tachyon.ts:3480
 msgid "Telegram Bot"
 msgstr ""
 

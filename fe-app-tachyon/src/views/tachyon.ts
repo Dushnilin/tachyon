@@ -562,6 +562,95 @@ function attachModalNoOpParseGuard(modalMap, defaultSid) {
   };
 }
 
+function wrapMainMapNoOpSave(mapInstance) {
+  if (!mapInstance || mapInstance.__tachyonMainNoOpSaveWrapped) return;
+  const origMapSave =
+    typeof mapInstance.save === 'function' ? mapInstance.save : null;
+  if (!origMapSave) return;
+  mapInstance.__tachyonMainNoOpSaveWrapped = true;
+
+  const attachOptionParseGuard = (secObj) => {
+    if (!secObj || !Array.isArray(secObj.children)) return;
+    secObj.children.forEach((opt) => {
+      if (!opt || opt.disable) return;
+      if (opt.subsection) {
+        attachOptionParseGuard(opt.subsection);
+        return;
+      }
+      if (
+        opt.__tachyonMainNoOpParseWrapped ||
+        typeof opt.parse !== 'function'
+      ) {
+        return;
+      }
+      opt.__tachyonMainNoOpParseWrapped = true;
+      const origOptParse = opt.parse;
+      opt.parse = function (sid) {
+        if (
+          this.map?.__tachyonMainNoOpSaveActive &&
+          !this.forcewrite &&
+          typeof this.isActive === 'function' &&
+          this.isActive(sid) &&
+          (typeof this.isValid !== 'function' || this.isValid(sid)) &&
+          typeof this.cfgvalue === 'function' &&
+          typeof this.formvalue === 'function'
+        ) {
+          const cval = this.cfgvalue(sid);
+          const fval = this.formvalue(sid);
+          const uciKey = this.ucioption || this.option;
+          const uciSid = this.ucisection || sid;
+          const uciPkg =
+            this.uciconfig ||
+            this.section?.uciconfig ||
+            this.map?.config ||
+            UCI_PACKAGE;
+          const storedSec =
+            uciSid && uciPkg ? uci.state?.values?.[uciPkg]?.[uciSid] : null;
+          const hasStoredOpt =
+            storedSec != null &&
+            Object.prototype.hasOwnProperty.call(storedSec, uciKey);
+          const isRmemptyAtDefault =
+            Boolean(this.rmempty || this.optional) &&
+            this.default != null &&
+            areModalFormValuesEqual(fval, this.default);
+          if (
+            (hasStoredOpt && areModalFormValuesEqual(fval, cval)) ||
+            (!hasStoredOpt && isRmemptyAtDefault)
+          ) {
+            return Promise.resolve();
+          }
+        }
+        return origOptParse.apply(this, arguments);
+      };
+    });
+  };
+
+  mapInstance.save = function (cb, silent) {
+    if (Array.isArray(this.children)) {
+      this.children.forEach((secObj) => attachOptionParseGuard(secObj));
+    }
+    this.__tachyonMainNoOpSaveActive = true;
+    const clearActive = () => {
+      this.__tachyonMainNoOpSaveActive = false;
+    };
+    const wrappedCb = (...args) => {
+      clearActive();
+      sanitizeUciDeletes();
+      if (typeof cb === 'function') {
+        return cb.apply(this, args);
+      }
+    };
+    let res;
+    try {
+      res = origMapSave.call(this, wrappedCb, silent);
+    } catch (err) {
+      clearActive();
+      throw err;
+    }
+    return Promise.resolve(res).finally(clearActive);
+  };
+}
+
 function isRecoverableModalLoadError(err) {
   if (
     !err ||
@@ -1476,6 +1565,7 @@ const EntryPoint = {
       _('Configuration for Tachyon service'),
     );
     tachyonMap.tabbed = true;
+    wrapMainMapNoOpSave(tachyonMap);
     if (typeof globalThis !== 'undefined') {
       (globalThis as any).__tachyonMapInstance = tachyonMap;
     }
@@ -3094,19 +3184,26 @@ const EntryPoint = {
         if (typeof main.setShellRestoringTab === 'function') {
           main.setShellRestoringTab(true);
         }
-        return origRenderContents
-          .apply(this, arguments)
-          .then((mapEl) => {
+        return origRenderContents.apply(this, arguments).then(
+          (mapEl) => {
             mountSectionSubTabs(mapEl);
             mountAllStudioDecks(mapEl);
             mountShellOnMap(mapEl);
+            if (
+              typeof main.mountTachyonAppShell !== 'function' &&
+              typeof main.setShellRestoringTab === 'function'
+            ) {
+              main.setShellRestoringTab(false);
+            }
             return mapEl;
-          })
-          .finally(() => {
+          },
+          (err) => {
             if (typeof main.setShellRestoringTab === 'function') {
               main.setShellRestoringTab(false);
             }
-          });
+            throw err;
+          },
+        );
       };
     }
 

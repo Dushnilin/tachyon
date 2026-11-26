@@ -593,18 +593,23 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
 > {
     Box::pin(async move {
         let _commit_guard = commit_lock().lock().await;
-        let mut candidate = candidate;
 
         // Phase 1: PLAN (deduplicate cloned conditions and enforce cascade invariants)
-        candidate.deduplicate_cloned_conditions();
-        enforce_section_server_cascade(&mut candidate);
+        // Phase 2: PREFLIGHT & Phase 5: VALIDATE (offloaded so single-thread Tokio runtime stays responsive)
+        let (mut candidate, plan, core_cfg) = tokio::task::spawn_blocking(move || {
+            let mut candidate = candidate;
+            candidate.deduplicate_cloned_conditions();
+            enforce_section_server_cascade(&mut candidate);
 
-        // Phase 2: PREFLIGHT & Phase 5: VALIDATE
-        let plan = analyze_config_plan(&candidate);
-        if !plan.valid {
-            anyhow::bail!("Transaction validation failed: {}", plan.errors.join("; "));
-        }
-        let core_cfg = config_gen::compile_core_config(&candidate)?;
+            let plan = analyze_config_plan(&candidate);
+            if !plan.valid {
+                anyhow::bail!("Transaction validation failed: {}", plan.errors.join("; "));
+            }
+            let core_cfg = config_gen::compile_core_config(&candidate)?;
+            Ok::<_, anyhow::Error>((candidate, plan, core_cfg))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Transaction compile task failed: {e}"))??;
 
         // Phase 3: SNAPSHOT (capture current state on heap for instant LIFO rollback)
         let mut previous = {
@@ -1255,6 +1260,60 @@ mod tests {
             std::fs::read(&core_path).expect("read core config after abort"),
             before_core_bytes
         );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_commit_transaction_on_current_thread_runtime_yields_to_concurrent_tasks() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon_tx_current_thread_{}_{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).expect("mkdir");
+        let store_path = tmp_dir.join("store.json");
+        let core_path = tmp_dir.join("tachyon-core-config.json");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .max_blocking_threads(4)
+            .thread_stack_size(512 * 1024)
+            .enable_all()
+            .build()
+            .expect("build current_thread runtime");
+
+        rt.block_on(async {
+            let state = AppState::load_or_create(&store_path).expect("load_or_create");
+            let mut candidate = RouterStoreData::default();
+            candidate.settings.core_config_path = core_path.to_string_lossy().into_owned();
+            candidate.settings.tun_inet4 = "172.19.0.1/30".to_string();
+            candidate.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+            candidate.settings.tun_inet6 = "fdfe:dcba:9876::1/126".to_string();
+            candidate.settings.fakeip_inet6_range = "fc00::/18".to_string();
+            candidate.sections[0].label = "Current Thread Tx".to_string();
+
+            let tick_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let tick_clone = std::sync::Arc::clone(&tick_count);
+            let tx_handle =
+                tokio::spawn(async move { commit_transaction(&state, candidate).await });
+            let ticker = tokio::spawn(async move {
+                while tick_clone.load(std::sync::atomic::Ordering::Relaxed) < 3 {
+                    tick_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    tokio::task::yield_now().await;
+                }
+            });
+
+            let (tx_res, tick_res) = tokio::join!(tx_handle, ticker);
+            tx_res
+                .expect("tx join")
+                .expect("commit_transaction succeeds on current_thread runtime");
+            tick_res.expect("ticker join");
+            assert!(
+                tick_count.load(std::sync::atomic::Ordering::Relaxed) >= 3,
+                "concurrent task must make progress while commit_transaction yields"
+            );
+        });
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
