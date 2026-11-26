@@ -12273,4 +12273,513 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+
+/* Light Theme Support (Default Light & custom light themes) */
+:root {
+    color-scheme: light dark;
+    accent-color: var(--accent, #0a84ff);
+}
+
+:root[data-tachyon-theme-scheme="light"] {
+    color-scheme: light;
+    scrollbar-color: var(--text3, #475569) var(--hover, #f1f5f9);
+}
+
+:root[data-tachyon-theme-scheme="dark"] {
+    color-scheme: dark;
+}
+
+[data-tachyon-theme-scheme="light"] body,
+:root[data-tachyon-theme-scheme="light"] {
+    background-color: var(--bg, #f5f7fb) !important;
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-bg-layer {
+    opacity: 0.45;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-bg-layer .tachyon-stream {
+    stroke-opacity: 0.22 !important;
+}
+
+/* Keep page-level save/apply bar hidden in light theme too */
+[data-tachyon-theme-scheme="light"] #view > .cbi-page-actions,
+[data-tachyon-theme-scheme="light"] #cbi-tachyon ~ .cbi-page-actions,
+[data-tachyon-theme-scheme="light"] .cbi-page-actions:not(.modal .cbi-page-actions) {
+    display: none !important;
+}
+
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"],
+[data-tachyon-theme-scheme="light"] .tachyon-view,
+[data-tachyon-theme-scheme="light"] #modal_overlay,
+[data-tachyon-theme-scheme="light"] .cbi-modal,
+[data-tachyon-theme-scheme="light"] .tachyon-wizard {
+    --tachyon-accent-text: color-mix(in oklab, var(--accent, #0a84ff) 80%, #0f172a);
+    --tachyon-accent-text-hover: color-mix(in oklab, var(--accent, #0a84ff) 92%, #000000);
+    --tachyon-accent-soft: color-mix(in oklab, var(--accent, #0a84ff) 12%, transparent);
+    --tachyon-accent-border: color-mix(in oklab, var(--accent, #0a84ff) 34%, transparent);
+    --tachyon-bg-input: var(--hover, #f1f5f9);
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-topbar {
+    background-color: var(--topbar-glass, rgba(255, 255, 255, 0.96)) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar,
+[data-tachyon-theme-scheme="light"] .tachyon_updates-page__component,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__left-bar,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-action-group,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-system-strip > *,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki,
+[data-tachyon-theme-scheme="light"] .tachyon_monitoring-page__panel,
+[data-tachyon-theme-scheme="light"] .tachyon_dashboard-page__widgets-section__item,
+[data-tachyon-theme-scheme="light"] .tachyon_dashboard-page__outbound-section,
+[data-tachyon-theme-scheme="light"] .tachyon-kpi-card,
+[data-tachyon-theme-scheme="light"] .tachyon-kpi-strip,
+[data-tachyon-theme-scheme="light"] .tachyon-kpi-minimal-counters,
+[data-tachyon-theme-scheme="light"] .tachyon-traffic-chart-card,
+[data-tachyon-theme-scheme="light"] .tachyon-routing-sections-block,
+[data-tachyon-theme-scheme="light"] .tachyon-nodes-block,
+[data-tachyon-theme-scheme="light"] .tachyon-router-services-bar,
+[data-tachyon-theme-scheme="light"] .tachyon-router-services-cards-wrap,
+[data-tachyon-theme-scheme="light"] .tachyon-system-tiles-card,
+[data-tachyon-theme-scheme="light"] .tachyon-system-hud-card,
+[data-tachyon-theme-scheme="light"] .tachyon-system-banner-card,
+[data-tachyon-theme-scheme="light"] .tachyon-studio-toolbar,
+[data-tachyon-theme-scheme="light"] .tachyon-studio-panel,
+[data-tachyon-theme-scheme="light"] .tachyon-studio-card,
+[data-tachyon-theme-scheme="light"] .tachyon-settings-list-card,
+[data-tachyon-theme-scheme="light"] .tachyon-workspace-body .cbi-section:not(#cbi-tachyon-dashboard):not(#cbi-tachyon-diagnostic):not(#cbi-tachyon-monitoring):not(#cbi-tachyon-updates):not(#cbi-tachyon-section) {
+    background-color: var(--surface, #ffffff) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__nav {
+    background: var(--bg, #f5f7fb) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.10)) !important;
+}
+
+/* Light-mode native buttons (beat html body #maincontent specificity in base CSS) */
+[data-tachyon-theme-scheme="light"] .btn,
+[data-tachyon-theme-scheme="light"] .cbi-button,
+[data-tachyon-theme-scheme="light"] input.cbi-button,
+[data-tachyon-theme-scheme="light"] input[type="button"].cbi-button,
+[data-tachyon-theme-scheme="light"] input[type="submit"].cbi-button,
+html[data-tachyon-theme-scheme="light"] body #maincontent .btn,
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button,
+html[data-tachyon-theme-scheme="light"] body #maincontent input.cbi-button,
+html[data-tachyon-theme-scheme="light"] body #maincontent button.cbi-button,
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .btn,
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .btn,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .cbi-button,
+[data-tachyon-theme-scheme="light"] .tachyon-view .btn,
+[data-tachyon-theme-scheme="light"] .tachyon-view .cbi-button,
+[data-tachyon-theme-scheme="light"] .cbi-modal .btn,
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button {
+    background: var(--hover, #f1f5f9) !important;
+    background-color: var(--hover, #f1f5f9) !important;
+    background-image: none !important;
+    border: 1px solid var(--border-strong, rgba(15, 23, 42, 0.18)) !important;
+    color: var(--text, #0f172a) !important;
+    box-shadow: none !important;
+}
+
+[data-tachyon-theme-scheme="light"] .btn:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-button:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] input.cbi-button:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #maincontent .btn:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .btn:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .btn:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .cbi-button:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .tachyon-view .btn:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .tachyon-view .cbi-button:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-modal .btn:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button:hover:not(:disabled) {
+    background: var(--elevated, #e2e8f0) !important;
+    background-color: var(--elevated, #e2e8f0) !important;
+    background-image: none !important;
+    border-color: color-mix(in oklab, var(--accent, #0a84ff) 42%, transparent) !important;
+    color: var(--text, #0f172a) !important;
+    box-shadow: none !important;
+}
+
+[data-tachyon-theme-scheme="light"] .btn-primary,
+[data-tachyon-theme-scheme="light"] .cbi-button-apply,
+[data-tachyon-theme-scheme="light"] .cbi-button-save,
+[data-tachyon-theme-scheme="light"] .cbi-button-positive,
+[data-tachyon-theme-scheme="light"] .cbi-button-action,
+[data-tachyon-theme-scheme="light"] input.cbi-button-action,
+[data-tachyon-theme-scheme="light"] .cbi-button-action.important,
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-apply,
+html[data-tachyon-theme-scheme="light"] body #maincontent input.cbi-button-apply,
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-save,
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-positive,
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-action,
+html[data-tachyon-theme-scheme="light"] body #maincontent input.cbi-button-action,
+html[data-tachyon-theme-scheme="light"] body #maincontent button.cbi-button-action,
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-action.important,
+html[data-tachyon-theme-scheme="light"] body #maincontent input.cbi-button-action.important,
+html[data-tachyon-theme-scheme="light"] body #maincontent button.cbi-button-action.important,
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-apply,
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-positive,
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-action,
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-action.important,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .btn-primary,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .cbi-button-apply,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .cbi-button-save,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .cbi-button-positive,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .cbi-button-action,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .cbi-button-action.important,
+[data-tachyon-theme-scheme="light"] .cbi-modal .btn-primary,
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button-apply,
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button-save,
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button-positive,
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button-action {
+    background: color-mix(in oklab, var(--accent, #0a84ff) 12%, var(--surface, #ffffff)) !important;
+    background-color: color-mix(in oklab, var(--accent, #0a84ff) 12%, var(--surface, #ffffff)) !important;
+    background-image: none !important;
+    border-color: color-mix(in oklab, var(--accent, #0a84ff) 40%, transparent) !important;
+    color: var(--accent-hover, #005bb5) !important;
+    box-shadow: none !important;
+}
+
+[data-tachyon-theme-scheme="light"] .btn-primary:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-button-apply:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-button-save:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-button-positive:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-button-action:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-apply:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-positive:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-action:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #maincontent button.cbi-button-action:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #maincontent .cbi-button-action.important:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-apply:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-positive:hover:not(:disabled),
+html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-action:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button-apply:hover:not(:disabled),
+[data-tachyon-theme-scheme="light"] .cbi-modal .cbi-button-save:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent, #0a84ff) 20%, var(--surface, #ffffff)) !important;
+    background-color: color-mix(in oklab, var(--accent, #0a84ff) 20%, var(--surface, #ffffff)) !important;
+    border-color: color-mix(in oklab, var(--accent, #0a84ff) 55%, transparent) !important;
+    color: var(--accent-hover, #005bb5) !important;
+}
+
+/* Light-mode diagnostics, telemetry & hardcoded dark containers */
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info__row,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__card {
+    background: var(--surface, #ffffff) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info__title,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__card-head,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner,
+[data-tachyon-theme-scheme="light"] .tachyon-inbound-clients-modal__table th,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__left-bar__header,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-action-group__header,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki__content {
+    background: var(--hover, #f1f5f9) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-sys-grid {
+    background: var(--border, rgba(15, 23, 42, 0.10)) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__sparkline-wrap,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__kpi,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__leak-chip,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__failover-item,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-row,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__proto-chip,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__counts-badge,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral,
+[data-tachyon-theme-scheme="light"] .tachyon-studio-source-inspector__code {
+    background: var(--hover, #f1f5f9) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+    color: var(--text2, #334155) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki > .tachyon-partial-button,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki > button {
+    background: var(--hover, #f1f5f9) !important;
+    border-color: var(--border-strong, rgba(15, 23, 42, 0.16)) !important;
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki > .tachyon-partial-button:hover,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki > button:hover {
+    background: var(--elevated, #e2e8f0) !important;
+    border-color: color-mix(in oklab, var(--accent, #0a84ff) 42%, transparent) !important;
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert {
+    background: var(--hover, #f8fafc) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert:hover {
+    background: var(--elevated, #e2e8f0) !important;
+    border-color: var(--border-strong, rgba(15, 23, 42, 0.22)) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__icon,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__preview-chip,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item {
+    background: var(--surface, #ffffff) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.14)) !important;
+    color: var(--text2, #334155) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary {
+    background: var(--border, rgba(15, 23, 42, 0.08)) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.14)) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-modal__progress-track {
+    background: rgba(15, 23, 42, 0.12) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-modal__footer {
+    border-top-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+}
+
+/* High-contrast text overrides for light backgrounds */
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__title,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__kpi-val,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__outbound-tag,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__leak-val,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__failover-tag,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-host,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__left-bar__title,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-action-group__title,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki__texts b,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info__row > div,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner__title,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__title,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__preview-val,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item b,
+[data-tachyon-theme-scheme="light"] .tachyon-router-services-bar .tachyon-service-pill--ram,
+[data-tachyon-theme-scheme="light"] .tachyon-router-services-bar__item-key,
+[data-tachyon-theme-scheme="light"] .tachyon-snapshot-comp-name {
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__sparkline-meta,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__kpi-label,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__split-tag.is-direct,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__mem-meta,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__section-caption,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__outbound-stats,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__leak-name,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__failover-node,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__rtt-pill,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-net,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-dur,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__empty,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__title-icon,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__left-bar__title svg,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__left-bar__subtitle,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-action-group__subtitle,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki__icon,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__wiki__meta,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-sys-head-left svg,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-sys-head-code,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info__row > b,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner__subtitle,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__description,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__preview-key,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__toggle-hint,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert:hover .tachyon_diagnostic_alert__toggle-hint,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item > div,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__brand-sub,
+[data-tachyon-theme-scheme="light"] .tachyon-router-services-bar .tachyon-service-pill--uptime,
+[data-tachyon-theme-scheme="light"] .tachyon-snapshot-comp-ver {
+    color: var(--text2, #334155) !important;
+}
+
+/* Higher-contrast semantic accent/status text on light backgrounds */
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-out,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__rate-pill.is-down,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__split-tag.is-proxied,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner--loading .tachyon_diagnostic-summary-banner__title svg,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert--loading .tachyon_diagnostic_alert__icon {
+    color: #0369a1 !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__rate-pill.is-up,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__status-badge.is-ok,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__backup-pill.is-ok,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-pill.is-ok,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__counts-badge--success,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item--success,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner--success .tachyon_diagnostic-summary-banner__title svg,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert--success .tachyon_diagnostic_alert__icon {
+    color: #15803d !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__status-badge.is-warn,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__backup-pill.is-warn,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-pill.is-warn,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__counts-badge--warning,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item--warning,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner--warning .tachyon_diagnostic-summary-banner__title svg,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert--warning .tachyon_diagnostic_alert__icon,
+[data-tachyon-theme-scheme="light"] .tachyon-topbar__service-btn--busy {
+    color: #b45309 !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__flight-pill.is-danger,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__counts-badge--error,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item--error,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item--error b,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item--error > div,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner--error .tachyon_diagnostic-summary-banner__title svg,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert--error .tachyon_diagnostic_alert__icon,
+[data-tachyon-theme-scheme="light"] .tachyon-topbar__service-btn--stop {
+    color: #b91c1c !important;
+}
+
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .alert-message.success,
+[data-tachyon-theme-scheme="light"] .tachyon-view .alert-message.success {
+    color: #14532d !important;
+}
+
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .alert-message.warning,
+[data-tachyon-theme-scheme="light"] .tachyon-view .alert-message.warning {
+    color: #78350f !important;
+}
+
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .alert-message.error,
+[data-tachyon-theme-scheme="light"] .tachyon-view .alert-message.error {
+    color: #7f1d1d !important;
+}
+
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .alert-message.notice,
+[data-tachyon-theme-scheme="light"] .tachyon-view .alert-message.notice {
+    color: #1e3a8a !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__split-bar,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__progress-track,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__outbound-bar,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic-page__right-bar__system-info__row__progress {
+    background: rgba(15, 23, 42, 0.10) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__action-btn,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__mini-btn {
+    background: var(--hover, #f1f5f9) !important;
+    border-color: var(--border-strong, rgba(15, 23, 42, 0.18)) !important;
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__action-btn:hover,
+[data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__mini-btn:hover {
+    background: var(--elevated, #e2e8f0) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__item,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__nav-item {
+    color: var(--text2, #334155) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__item:hover,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__nav-item:hover {
+    background: var(--hover, #f1f5f9) !important;
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__nav-parent {
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__item.is-active,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__item.is-active:hover,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__item.is-active:focus,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__nav-item.is-active,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__nav-item.is-active:hover,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__nav-item.is-active:focus,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__subitem.is-active,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__subitem.is-active:hover,
+[data-tachyon-theme-scheme="light"] .tachyon-sidebar__subitem.is-active:focus {
+    background: color-mix(in oklab, var(--accent, #0a84ff) 12%, transparent) !important;
+    border-color: transparent !important;
+    color: var(--accent-hover, #005bb5) !important;
+    box-shadow: none !important;
+    font-weight: 600 !important;
+}
+
+[data-tachyon-theme-scheme="light"] .toast {
+    background: var(--surface, #ffffff) !important;
+    color: var(--text, #0f172a) !important;
+    border: 1px solid var(--border-strong, rgba(15, 23, 42, 0.16)) !important;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .toast-success {
+    background: var(--surface, #ffffff) !important;
+    border-color: rgba(22, 163, 74, 0.42) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .toast-error {
+    background: var(--surface, #ffffff) !important;
+    border-color: rgba(220, 38, 38, 0.42) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .toast-warning {
+    background: var(--surface, #ffffff) !important;
+    border-color: rgba(217, 119, 6, 0.42) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .toast-info {
+    background: var(--surface, #ffffff) !important;
+    border-color: rgba(10, 132, 255, 0.42) !important;
+}
+
+[data-tachyon-theme-scheme="light"] #modal_overlay .alert-message,
+[data-tachyon-theme-scheme="light"] .cbi-modal .alert-message,
+[data-tachyon-theme-scheme="light"] [id^="cbi-tachyon"] .alert-message,
+[data-tachyon-theme-scheme="light"] .tachyon-view .alert-message {
+    background: var(--hover, #f1f5f9) !important;
+    color: var(--text, #0f172a) !important;
+    border-color: var(--border, rgba(15, 23, 42, 0.12)) !important;
+}
+
+[data-tachyon-theme-scheme="light"] #modal_overlay {
+    background: rgba(15, 23, 42, 0.42) !important;
+}
+
+[data-tachyon-theme-scheme="light"] #modal_overlay > .modal,
+[data-tachyon-theme-scheme="light"] .cbi-modal {
+    background: var(--surface, #ffffff) !important;
+    color: var(--text, #0f172a) !important;
+    border-color: var(--border-strong, rgba(15, 23, 42, 0.16)) !important;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18) !important;
+}
+
+[data-tachyon-theme-scheme="light"] :where(button, a, select, input):focus-visible {
+    outline: 2px solid var(--accent, #0a84ff) !important;
+    outline-offset: 2px !important;
+}
+
+@media (forced-colors: active) {
+    [data-tachyon-theme-scheme="light"] .btn,
+    [data-tachyon-theme-scheme="light"] .cbi-button,
+    [data-tachyon-theme-scheme="light"] .tachyon-sidebar,
+    [data-tachyon-theme-scheme="light"] .tachyon-topbar {
+        border: 1px solid ButtonBorder !important;
+    }
+}
 `;

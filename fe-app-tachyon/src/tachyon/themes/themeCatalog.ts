@@ -54,6 +54,26 @@ export const BUILTIN_THEMES: readonly TachyonThemeDefinition[] = [
     },
   },
   {
+    id: 'default-light',
+    name: 'Default Light',
+    scheme: 'light',
+    builtin: true,
+    colors: {
+      bg: '#f5f7fb',
+      surface: '#ffffff',
+      hover: '#f1f5f9',
+      elevated: '#e2e8f0',
+      accent: '#0a84ff',
+      accentHover: '#005bb5',
+      text: '#0f172a',
+      text2: '#334155',
+      text3: '#475569',
+      success: '#15803d',
+      warn: '#b45309',
+      danger: '#b91c1c',
+    },
+  },
+  {
     id: 'legacy-dark',
     name: 'Legacy Dark',
     scheme: 'dark',
@@ -435,6 +455,22 @@ export function computeThemeCssVars(
     '--bg-grid-stroke': isLight
       ? 'rgba(0, 0, 0, 0.045)'
       : 'rgba(255, 255, 255, 0.028)',
+    ...(isLight
+      ? {
+          '--background-color-high': c.surface,
+          '--background-color-medium': c.bg,
+          '--background-color-low': c.hover,
+          '--border-color-high': 'rgba(15, 23, 42, 0.22)',
+          '--border-color-medium': 'rgba(15, 23, 42, 0.14)',
+          '--border-color-low': 'rgba(15, 23, 42, 0.09)',
+          '--text-color-high': c.text,
+          '--text-color-medium': c.text2,
+          '--text-color-low': c.text3,
+          '--muted': c.text2,
+          '--tachyon-text-primary': c.text,
+          '--tachyon-bg-input': c.hover,
+        }
+      : {}),
   };
 }
 
@@ -492,7 +528,11 @@ export function getSavedThemeId(): string {
   if (typeof localStorage === 'undefined') return DEFAULT_THEME_ID;
   try {
     const raw = String(localStorage.getItem(THEME_ID_STORAGE_KEY) || '').trim();
-    return raw || DEFAULT_THEME_ID;
+    if (raw) return raw;
+    if (localStorage.getItem('tachyon_color_scheme_v1') === 'light') {
+      return 'default-light';
+    }
+    return DEFAULT_THEME_ID;
   } catch {
     return DEFAULT_THEME_ID;
   }
@@ -565,8 +605,40 @@ export function applyThemeToDocument(
   if (typeof document !== 'undefined' && document.documentElement) {
     const root = document.documentElement;
     const vars = computeThemeCssVars(theme);
+    if (
+      theme.scheme !== 'light' &&
+      typeof root.style?.removeProperty === 'function'
+    ) {
+      for (const key of [
+        '--background-color-high',
+        '--background-color-medium',
+        '--background-color-low',
+        '--border-color-high',
+        '--border-color-medium',
+        '--border-color-low',
+        '--text-color-high',
+        '--text-color-medium',
+        '--text-color-low',
+        '--muted',
+        '--tachyon-text-primary',
+        '--tachyon-bg-input',
+      ]) {
+        root.style.removeProperty(key);
+      }
+    }
     for (const [key, val] of Object.entries(vars)) {
       root.style?.setProperty?.(key, val);
+    }
+    if (document.head) {
+      let meta = document.head.querySelector(
+        'meta[name="color-scheme"]',
+      ) as HTMLMetaElement | null;
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.name = 'color-scheme';
+        document.head.insertBefore(meta, document.head.firstChild);
+      }
+      meta.content = theme.scheme === 'light' ? 'light' : 'dark';
     }
     root.setAttribute?.('data-tachyon-theme', theme.id);
     root.setAttribute?.('data-tachyon-theme-scheme', theme.scheme);
