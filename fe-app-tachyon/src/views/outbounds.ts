@@ -4298,18 +4298,40 @@ function createOutboundsContent(section) {
   };
 
   // ── 3. Amnezia / AmneziaWG Multi-Config (vpn:// or .conf files) ───────────
+  const amneziaDraftBySection = new Map<string, string[]>();
+  const amneziaAppendModeBySection = new Map<string, boolean>();
+  const amneziaRendererBySection = new Map<string, () => void>();
+
+  function getAmneziaCurrentDraft(sectionId: string): string[] {
+    if (amneziaDraftBySection.has(sectionId)) {
+      return amneziaDraftBySection.get(sectionId) || [];
+    }
+    const stored = asRawList(
+      uci.get(UCI_PACKAGE, sectionId, 'amnezia_configs'),
+    );
+    if (stored.length > 0) {
+      return stored;
+    }
+    const legacyText = String(
+      uci.get(UCI_PACKAGE, sectionId, 'amnezia_conf_text') || '',
+    ).trim();
+    if (!legacyText) return [];
+    const name = uci.get(UCI_PACKAGE, sectionId, 'name') || sectionId;
+    return main.splitAmneziaTextEntries(legacyText, name).entries;
+  }
+
   o = section.taboption(
     'general',
     form.Button,
     '_load_amnezia_confs',
     _('Upload WireGuard / AmneziaWG .conf Files'),
-    _('Load one or multiple .conf files from your computer into this source.'),
+    _('Load .conf file(s) from your computer into this source.'),
   );
   o.modalonly = true;
   o.inputtitle = _('Load .conf File(s)');
   o.inputstyle = 'action';
   o.depends('source_type', 'amnezia_config');
-  o.onclick = function (ev, sectionId) {
+  o.onclick = function (_ev, sectionId) {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = '.conf,.wg,.txt';
@@ -4325,7 +4347,7 @@ function createOutboundsContent(section) {
       Promise.all(
         files.map(
           (file) =>
-            new Promise((resolve) => {
+            new Promise<{ name: string; config: string } | null>((resolve) => {
               const reader = new FileReader();
               reader.onload = (e) =>
                 resolve({
@@ -4339,24 +4361,28 @@ function createOutboundsContent(section) {
             }),
         ),
       ).then((loaded) => {
-        const valid = loaded.filter((item) => item && item.config);
+        const valid = loaded.filter(
+          (item): item is { name: string; config: string } =>
+            Boolean(item && item.config),
+        );
         if (valid.length) {
-          const cur = asRawList(
-            uci.get(UCI_PACKAGE, sectionId, 'amnezia_configs'),
-          );
-          const next = [
-            ...cur,
-            ...valid.map((item) =>
-              JSON.stringify({ name: item.name, config: item.config }),
-            ),
-          ];
-          section._loadedAmneziaConfigs = {
-            ...(section._loadedAmneziaConfigs || {}),
-            [sectionId]: next,
-          };
-          setModalFieldValue(section, sectionId, 'amnezia_configs', next);
+          const appendMode = Boolean(amneziaAppendModeBySection.get(sectionId));
+          const cur = getAmneziaCurrentDraft(sectionId);
+          const next = main.applyAmneziaFileUpload({
+            currentConfigs: cur,
+            loadedFiles: valid,
+            appendMode,
+          });
+          amneziaDraftBySection.set(sectionId, next);
+          if (next.length) {
+            uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', next);
+          } else {
+            uci.unset(UCI_PACKAGE, sectionId, 'amnezia_configs');
+          }
           uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
           setModalFieldValue(section, sectionId, 'amnezia_conf_text', '');
+          const rerender = amneziaRendererBySection.get(sectionId);
+          if (rerender) rerender();
           ui.addNotification(
             null,
             E('p', _('Loaded %d configuration file(s).').format(valid.length)),
@@ -4415,10 +4441,226 @@ function createOutboundsContent(section) {
     form.DynamicList,
     'amnezia_configs',
     _('Amnezia / AmneziaWG Configurations'),
-    _('Paste vpn:// share links or upload .conf files using the button above.'),
+    _(
+      'Active tunnel configurations in this source. Pasting or uploading replaces the list unless append mode is enabled.',
+    ),
   );
   o.modalonly = true;
+  o.rmempty = true;
   o.depends('source_type', 'amnezia_config');
+  o.cfgvalue = function (sectionId) {
+    const stored = asRawList(
+      uci.get(UCI_PACKAGE, sectionId, 'amnezia_configs'),
+    );
+    if (stored.length > 0) return stored;
+    const legacyText = String(
+      uci.get(UCI_PACKAGE, sectionId, 'amnezia_conf_text') || '',
+    ).trim();
+    if (!legacyText) return [];
+    const name = uci.get(UCI_PACKAGE, sectionId, 'name') || sectionId;
+    return normalizeAmneziaConfigEntry(legacyText, name);
+  };
+  o.renderWidget = function (sectionId, _optionIndex, cfgvalue) {
+    const initial = main.dedupeAmneziaEntries(asRawList(cfgvalue));
+    amneziaDraftBySection.set(sectionId, initial);
+    if (!amneziaAppendModeBySection.has(sectionId)) {
+      amneziaAppendModeBySection.set(sectionId, false);
+    }
+
+    const root = E('div', {
+      class: 'tachyon-awg-config-manager',
+      style: 'display:flex;flex-direction:column;gap:8px;width:100%;',
+    });
+    const listWrap = E('div', {
+      style: 'display:flex;flex-direction:column;gap:6px;',
+    });
+
+    const syncDraftToUci = (nextList: string[]) => {
+      const deduped = main.dedupeAmneziaEntries(nextList);
+      amneziaDraftBySection.set(sectionId, deduped);
+      if (deduped.length > 0) {
+        uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', deduped);
+      } else {
+        uci.unset(UCI_PACKAGE, sectionId, 'amnezia_configs');
+      }
+      return deduped;
+    };
+
+    const renderList = () => {
+      const items = amneziaDraftBySection.get(sectionId) || [];
+      listWrap.innerHTML = '';
+      if (!items.length) {
+        listWrap.appendChild(
+          E(
+            'div',
+            {
+              style:
+                'padding:10px 12px;border:1px dashed var(--border, rgba(255,255,255,0.14));border-radius:6px;font-size:12px;color:var(--text3, #9ca3af);',
+            },
+            _tr(
+              'Нет сохранённых конфигов. Вставьте текст .conf или vpn:// в поле ниже.',
+              'No saved configurations yet. Paste a .conf or vpn:// link below.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      items.forEach((rawItem, idx) => {
+        const meta = main.parseAmneziaEntryMeta(rawItem, idx);
+        const isPrimary = idx === 0;
+        const card = E('div', {
+          class: 'tachyon-awg-config-card',
+          style: `display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:6px;background:var(--surface, rgba(255,255,255,0.03));border:1px solid ${
+            isPrimary
+              ? 'var(--accent, #0a84ff)'
+              : 'var(--border, rgba(255,255,255,0.12))'
+          };`,
+        });
+
+        const infoCol = E('div', {
+          style:
+            'display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;flex:1 1 220px;',
+        });
+        infoCol.appendChild(
+          E(
+            'span',
+            {
+              style: `font-variant-numeric:tabular-nums;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;${
+                isPrimary
+                  ? 'background:rgba(10,132,255,0.16);color:var(--accent, #409cff);'
+                  : 'background:rgba(255,255,255,0.06);color:var(--text3, #9ca3af);'
+              }`,
+            },
+            isPrimary ? `#1 · ${_tr('Активный', 'Active')}` : `#${idx + 1}`,
+          ),
+        );
+        infoCol.appendChild(
+          E(
+            'span',
+            {
+              style:
+                'font-size:12px;font-weight:600;color:var(--text, #f4f4f5);word-break:break-word;',
+            },
+            meta.name,
+          ),
+        );
+        if (meta.endpoint) {
+          infoCol.appendChild(
+            E(
+              'code',
+              {
+                style:
+                  'font-size:11px;font-variant-numeric:tabular-nums;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,0.22);color:var(--text2, #d4d4d8);',
+              },
+              meta.endpoint,
+            ),
+          );
+        }
+        infoCol.appendChild(
+          E(
+            'span',
+            {
+              style:
+                'font-size:11px;padding:1px 6px;border-radius:4px;border:1px solid var(--border, rgba(255,255,255,0.12));color:var(--text3, #9ca3af);',
+            },
+            meta.protocol,
+          ),
+        );
+
+        const actionsCol = E('div', {
+          style: 'display:flex;align-items:center;gap:6px;flex-shrink:0;',
+        });
+        if (!isPrimary) {
+          actionsCol.appendChild(
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button',
+                style: 'padding:3px 8px;min-height:26px;font-size:11px;',
+                click: (ev) => {
+                  ev.preventDefault();
+                  const updated = main.promoteAmneziaEntryToPrimary(
+                    amneziaDraftBySection.get(sectionId) || [],
+                    idx,
+                  );
+                  syncDraftToUci(updated);
+                  renderList();
+                },
+              },
+              _tr('Сделать основным', 'Set active'),
+            ),
+          );
+        }
+        actionsCol.appendChild(
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button cbi-button-remove',
+              style: 'padding:3px 8px;min-height:26px;font-size:11px;',
+              click: (ev) => {
+                ev.preventDefault();
+                const updated = main.removeAmneziaEntryAt(
+                  amneziaDraftBySection.get(sectionId) || [],
+                  idx,
+                );
+                syncDraftToUci(updated);
+                renderList();
+              },
+            },
+            _tr('Удалить', 'Remove'),
+          ),
+        );
+
+        card.appendChild(infoCol);
+        card.appendChild(actionsCol);
+        listWrap.appendChild(card);
+      });
+    };
+
+    amneziaRendererBySection.set(sectionId, renderList);
+    renderList();
+
+    const appendCheckbox = E('input', {
+      type: 'checkbox',
+      style: 'margin:0;',
+      checked: amneziaAppendModeBySection.get(sectionId) ? '' : null,
+      change: (ev) => {
+        const input = ev.currentTarget as HTMLInputElement;
+        amneziaAppendModeBySection.set(sectionId, Boolean(input.checked));
+      },
+    });
+    const appendRow = E(
+      'label',
+      {
+        style:
+          'display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--text2, #d4d4d8);cursor:pointer;user-select:none;',
+      },
+      [
+        appendCheckbox,
+        E(
+          'span',
+          {},
+          _tr(
+            'Добавлять новые конфиги в список (не заменять текущие)',
+            'Append new configs to list instead of replacing',
+          ),
+        ),
+      ],
+    );
+
+    root.appendChild(listWrap);
+    root.appendChild(appendRow);
+    return root;
+  };
+  o.formvalue = function (sectionId) {
+    if (amneziaDraftBySection.has(sectionId)) {
+      return amneziaDraftBySection.get(sectionId) || [];
+    }
+    return asRawList(this.cfgvalue(sectionId));
+  };
   o.validate = function (_sectionId, value) {
     const items = Array.isArray(value)
       ? value
@@ -4487,37 +4729,22 @@ function createOutboundsContent(section) {
   };
   o.write = function (sectionId, value) {
     const name = uci.get(UCI_PACKAGE, sectionId, 'name') || sectionId;
-    const fromWidget: string[] = [];
+    const normalizedItems: string[] = [];
     asRawList(value).forEach((entry) => {
       normalizeAmneziaConfigEntry(entry, name).forEach((item) => {
-        if (!fromWidget.includes(item)) fromWidget.push(item);
+        normalizedItems.push(item);
       });
     });
-    const loaded =
-      (section._loadedAmneziaConfigs &&
-        section._loadedAmneziaConfigs[sectionId]) ||
-      [];
-    const merged = [...fromWidget];
-    loaded.forEach((entry) => {
-      if (!merged.includes(entry)) merged.push(entry);
-    });
-    if (merged.length) {
-      uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', merged);
+    const deduped = main.dedupeAmneziaEntries(normalizedItems);
+    amneziaDraftBySection.set(sectionId, deduped);
+    if (deduped.length) {
+      uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', deduped);
+    } else {
+      uci.unset(UCI_PACKAGE, sectionId, 'amnezia_configs');
     }
   };
   o.remove = function (sectionId) {
-    const loaded =
-      (section._loadedAmneziaConfigs &&
-        section._loadedAmneziaConfigs[sectionId]) ||
-      [];
-    if (loaded.length) {
-      uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', loaded);
-      return;
-    }
-    const confText = String(
-      uci.get(UCI_PACKAGE, sectionId, 'amnezia_conf_text') || '',
-    ).trim();
-    if (confText) return;
+    amneziaDraftBySection.set(sectionId, []);
     uci.unset(UCI_PACKAGE, sectionId, 'amnezia_configs');
   };
 
@@ -4525,15 +4752,22 @@ function createOutboundsContent(section) {
     'general',
     form.TextValue,
     'amnezia_conf_text',
-    _('AmneziaWG / WireGuard .conf Content'),
-    _(
-      'Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text.',
+    _tr(
+      'Новый конфиг WireGuard / AmneziaWG (.conf или vpn://)',
+      'New AmneziaWG / WireGuard .conf or vpn:// Content',
+    ),
+    _tr(
+      'Вставка текста заменяет текущий конфиг источника (если выше не включён режим добавления).',
+      'Pasting configuration text replaces the current source config unless append mode is enabled above.',
     ),
   );
   o.modalonly = true;
   o.rows = 6;
   o.rmempty = true;
   o.depends('source_type', 'amnezia_config');
+  o.cfgvalue = function () {
+    return '';
+  };
   o.validate = function (_sectionId, value) {
     const trimmed = String(value || '')
       .replace(/\r\n?/g, '\n')
@@ -4567,55 +4801,27 @@ function createOutboundsContent(section) {
       uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
       return;
     }
-    const loaded =
-      (section._loadedAmneziaConfigs &&
-        section._loadedAmneziaConfigs[sectionId]) ||
-      [];
-    const fromUci = asRawList(
-      uci.get(UCI_PACKAGE, sectionId, 'amnezia_configs'),
-    );
-    const cur = [...fromUci];
-    loaded.forEach((entry) => {
-      if (!cur.includes(entry)) cur.push(entry);
-    });
+    const cur = amneziaDraftBySection.has(sectionId)
+      ? amneziaDraftBySection.get(sectionId) || []
+      : asRawList(uci.get(UCI_PACKAGE, sectionId, 'amnezia_configs'));
     const name = uci.get(UCI_PACKAGE, sectionId, 'name') || sectionId;
-    const {
-      vpnLinks,
-      confBody,
-      entries: candidates,
-    } = main.splitAmneziaTextEntries(trimmed, name);
-
-    const next = [...cur];
-    candidates.forEach((candidate) => {
-      const alreadyExists = next.some((entry) => {
-        const normEntry = String(entry || '')
-          .replace(/\r\n?/g, '\n')
-          .trim();
-        if (normEntry === candidate || normEntry === confBody) return true;
-        try {
-          const parsed = JSON.parse(entry);
-          return (
-            parsed &&
-            confBody &&
-            String(parsed.config || '')
-              .replace(/\r\n?/g, '\n')
-              .trim() === confBody
-          );
-        } catch (_e) {
-          return false;
-        }
-      });
-      if (!alreadyExists) next.push(candidate);
+    const appendMode = Boolean(amneziaAppendModeBySection.get(sectionId));
+    const { nextConfigs } = main.applyAmneziaConfTextUpdate({
+      currentConfigs: cur,
+      pastedText: trimmed,
+      defaultName: name,
+      appendMode,
+      splitEntries: main.splitAmneziaTextEntries,
     });
-
-    if (next.length) {
-      uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', next);
+    amneziaDraftBySection.set(sectionId, nextConfigs);
+    if (nextConfigs.length) {
+      uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', nextConfigs);
+    } else {
+      uci.unset(UCI_PACKAGE, sectionId, 'amnezia_configs');
     }
-    if (cur.length > 0 || vpnLinks.length > 0 || next.length > 1) {
-      uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
-    } else if (confBody) {
-      uci.set(UCI_PACKAGE, sectionId, 'amnezia_conf_text', confBody);
-    }
+    uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
+    const rerender = amneziaRendererBySection.get(sectionId);
+    if (rerender) rerender();
   };
 
   // ── 4. AmneziaWG / WireGuard (Tunnel Parameters) ──────────────────────────

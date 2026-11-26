@@ -82,4 +82,16 @@ describe('Viewport and Mobile Responsiveness Regressions', async () => {
       /\.cbi-dropdown\[open\]\s*>\s*ul[^}]*overflow-y:\s*auto\s*!important/,
     );
   });
+
+  it('keeps mobile modals in a single scroll container so dropdowns do not reset scroll position', () => {
+    const mobileModalRule = GlobalStyles.match(
+      /#modal_overlay\s*>\s*\.modal,\s*#modal_overlay\s*>\s*\.modal\.cbi-modal,\s*#modal_overlay\s*>\s*\.modal:has\(\[class\*="tachyon"\]\),\s*\.cbi-modal,\s*\.cbi-modal:has\(\[class\*="tachyon"\]\)\s*\{[^}]*\}/,
+    );
+    expect(mobileModalRule).toBeTruthy();
+    const ruleBody = mobileModalRule[0];
+    expect(ruleBody).not.toMatch(/max-height:\s*92dvh/);
+    expect(ruleBody).not.toMatch(/overflow-x:\s*hidden/);
+    expect(ruleBody).toMatch(/overflow-x:\s*clip\s*!important/);
+    expect(ruleBody).toMatch(/overflow-y:\s*visible\s*!important/);
+  });
 });

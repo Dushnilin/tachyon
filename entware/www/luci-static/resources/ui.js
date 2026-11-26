@@ -1282,9 +1282,12 @@ const UIDropdown = UIElement.extend(/** @lends LuCI.ui.Dropdown.prototype */ {
 			ul.style.WebkitOverflowScrolling = 'touch';
 
 			const scrollFrom = scrollParent.scrollTop;
-			const scrollTo = scrollFrom + rect.top - vpHeight * 0.5;
+			const scrollTo = Math.max(0, scrollFrom + rect.top - vpHeight * 0.5);
 
 			const scrollStep = timestamp => {
+				if (!sb.hasAttribute('open'))
+					return;
+
 				if (!start) {
 					start = timestamp;
 					ul.scrollTop = sel ? Math.max(sel.offsetTop - sel.offsetHeight, 0) : 0;
@@ -1380,7 +1383,7 @@ const UIDropdown = UIElement.extend(/** @lends LuCI.ui.Dropdown.prototype */ {
 		sb.style.width = sb.style.height = '';
 
 		ul.classList.remove('dropdown');
-		ul.style.top = ul.style.bottom = ul.style.maxHeight = '';
+		ul.style.top = ul.style.bottom = ul.style.left = ul.style.right = ul.style.maxHeight = '';
 
 		if (fl)
 			fl.classList.remove('cbi-dropdown-open');
@@ -1584,10 +1587,17 @@ const UIDropdown = UIElement.extend(/** @lends LuCI.ui.Dropdown.prototype */ {
 
 		elem.classList.add('focus');
 
-		if (scroll)
+		if (scroll) {
 			elem.parentNode.scrollTop = elem.offsetTop - elem.parentNode.offsetTop;
-
-		elem.focus();
+			elem.focus();
+		}
+		else {
+			try {
+				elem.focus({ preventScroll: true });
+			} catch (_e) {
+				elem.focus();
+			}
+		}
 	},
 
 	/** @private */

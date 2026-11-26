@@ -11573,14 +11573,14 @@ fn passes_source_filters(src: &OutboundSource, tag: &str, country: &str) -> bool
     true
 }
 
-const DISCORD_VOICE_PORT_RANGES: &[&str] = &[
+pub(crate) const DISCORD_VOICE_PORT_RANGES: &[&str] = &[
     "443:443",
     "5000:5020",
     "3478:3478",
     "19294:19344",
     "50000:65535",
 ];
-const DISCORD_MEDIA_PORT_RANGES: &[&str] = &[
+pub(crate) const DISCORD_MEDIA_PORT_RANGES: &[&str] = &[
     "443:443",
     "1080:1080",
     "2053:2053",
@@ -11589,11 +11589,11 @@ const DISCORD_MEDIA_PORT_RANGES: &[&str] = &[
     "2096:2096",
     "8443:8443",
 ];
-const DEFAULT_DISCORD_VOICE_SUBNETS_V4: &[&str] =
+pub(crate) const DEFAULT_DISCORD_VOICE_SUBNETS_V4: &[&str] =
     &["104.16.0.0/12", "162.158.0.0/15", "172.64.0.0/13"];
-const DISCORD_VOICE_SUBNET_V6: &str = "2606:4700::/32";
-const DISCORD_DEDICATED_SUBNETS: &[&str] = &["162.159.128.0/20"];
-const DEFAULT_TELEGRAM_SUBNETS: &[&str] = &[
+pub(crate) const DISCORD_VOICE_SUBNET_V6: &str = "2606:4700::/32";
+pub(crate) const DISCORD_DEDICATED_SUBNETS: &[&str] = &["162.159.128.0/20"];
+pub(crate) const DEFAULT_TELEGRAM_SUBNETS: &[&str] = &[
     "5.28.192.0/18",
     "91.105.192.0/23",
     "91.108.4.0/22",
@@ -11635,7 +11635,7 @@ fn server_tag_matches(tag: &str, filter: &str, known_prefixes: &[String]) -> boo
     server_filter_name_matches(tag, filter, known_prefixes)
 }
 
-fn is_low_ram_device() -> bool {
+pub(crate) fn is_low_ram_device() -> bool {
     #[cfg(target_os = "linux")]
     {
         if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {

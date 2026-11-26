@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-25 23:17+0300\n"
-"PO-Revision-Date: 2026-11-25 23:17+0300\n"
+"POT-Creation-Date: 2026-11-26 11:23+0300\n"
+"PO-Revision-Date: 2026-11-26 11:23+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -427,6 +427,9 @@ msgstr "Активные сессии перепроверены по текущ
 
 msgid "Active theme:"
 msgstr "Активная тема:"
+
+msgid "Active tunnel configurations in this source. Pasting or uploading replaces the list unless append mode is enabled."
+msgstr ""
 
 msgid "Actual exit"
 msgstr "Фактический выход"
@@ -862,9 +865,6 @@ msgstr "AmneziaWG / WireGuard"
 
 msgid "AmneziaWG / WireGuard (Tunnel Parameters)"
 msgstr "AmneziaWG / WireGuard (Параметры туннеля)"
-
-msgid "AmneziaWG / WireGuard .conf Content"
-msgstr "Содержимое .conf файла (AmneziaWG / WireGuard)"
 
 msgid "AmneziaWG 3.0 / 3.1 content padding range, e.g. 38-104"
 msgstr "Диапазон дополнительного паддинга контента AmneziaWG 3.0 / 3.1, например 38-104"
@@ -6434,6 +6434,9 @@ msgstr "Загрузить файл(ы) .conf"
 msgid "Load .conf config"
 msgstr "Загрузить конфигурацию .conf"
 
+msgid "Load .conf file(s) from your computer into this source."
+msgstr ""
+
 msgid "Load .json file"
 msgstr "Загрузить файл .json"
 
@@ -6457,9 +6460,6 @@ msgstr ""
 
 msgid "Load from File (.json)"
 msgstr "Загрузить из файла (.json)"
-
-msgid "Load one or multiple .conf files from your computer into this source."
-msgstr "Загрузите один или несколько файлов .conf с компьютера в это подключение."
 
 msgid "Load several configs"
 msgstr "Загрузить несколько конфигов"
@@ -7628,9 +7628,6 @@ msgstr "Необязательная строка параметров key=value
 msgid "Optional name displayed at the top of all Telegram bot messages to identify this router when multiple routers share the same bot token."
 msgstr "Необязательное имя, отображаемое в верхней части всех сообщений Telegram-бота для идентификации этого роутера, когда один токен бота используется на нескольких роутерах."
 
-msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
-msgstr "Необязательный текст конфигурации WireGuard / AmneziaWG с секциями [Interface] и [Peer]."
-
 msgid "Optional reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...). If omitted, an interactive login URL is printed in the service logs."
 msgstr "Необязательный многоразовый или эфемерный ключ предварительной авторизации для подключения к сети Tailnet (например, tskey-auth-...). Если не указан, ссылка для интерактивного входа будет выведена в журнале сервиса."
 
@@ -7885,9 +7882,6 @@ msgstr "Вставьте ссылку на подписку (https://...) или
 
 msgid "Paste theme JSON / JSONC (supports colors map, // comments and #hex)..."
 msgstr "Вставьте JSON / JSONC темы (поддерживаются поля colors, комментарии // и #hex)..."
-
-msgid "Paste vpn:// share links or upload .conf files using the button above."
-msgstr "Вставьте ссылки vpn:// или загрузите файлы .conf с помощью кнопки выше."
 
 msgid "Path"
 msgstr "Маршрут"
@@ -13072,6 +13066,18 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "AmneziaWG / WireGuard .conf Content"
+msgstr "Содержимое .conf файла (AmneziaWG / WireGuard)"
+
+msgid "Load one or multiple .conf files from your computer into this source."
+msgstr "Загрузите один или несколько файлов .conf с компьютера в это подключение."
+
+msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
+msgstr "Необязательный текст конфигурации WireGuard / AmneziaWG с секциями [Interface] и [Peer]."
+
+msgid "Paste vpn:// share links or upload .conf files using the button above."
+msgstr "Вставьте ссылки vpn:// или загрузите файлы .conf с помощью кнопки выше."
 
 msgid "vHTTP Mode"
 msgstr "Режим vHTTP"

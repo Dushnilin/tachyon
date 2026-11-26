@@ -3114,6 +3114,9 @@ async fn apply_quick_fix_single(
                     .arg("reload")
                     .status()
                     .await;
+                let _ = std::fs::remove_file(crate::net_stack::fw4_flow_offload_include_path());
+                let _ =
+                    std::fs::remove_file(crate::net_stack::fw4_flow_offload_legacy_include_path());
             }
             Ok(
                 "Аппаратный и программный Flow Offloading отключены, firewall перезагружен"

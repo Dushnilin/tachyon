@@ -84,6 +84,7 @@ import {
 } from './activeRoute';
 import { ensureOutboundDisplayFlag } from '../../helpers/country';
 import { getIPv6RuntimeSnapshot } from '../../helpers/ipv6Summary';
+import { resolvePriorityLevelBadge } from './priorityLevelBadge';
 import {
   formatPlatformBadge,
   getPlatformInfo,
@@ -3690,16 +3691,17 @@ function renderPriorityMemberName(member: Tachyon.PriorityMember) {
       ]
     : [];
 
+  const levelBadge = resolvePriorityLevelBadge(member, displayTitle);
   const elements = [
     ...flagElements,
-    ...(member.levelName
+    ...(levelBadge
       ? [
           E(
             'span',
             {
               class: 'tachyon_dashboard-page__urltest-details__priority-level',
             },
-            `[${member.levelName}]`,
+            levelBadge,
           ),
         ]
       : []),

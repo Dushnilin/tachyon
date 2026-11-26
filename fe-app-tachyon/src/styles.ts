@@ -6688,10 +6688,10 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
         width: 100% !important;
         max-width: 100% !important;
         min-width: 0 !important;
-        max-height: 92dvh !important;
-        margin: 4dvh auto !important;
+        margin: 8px auto 24px auto !important;
         padding: 14px !important;
-        overflow-x: hidden !important;
+        overflow-x: clip !important;
+        overflow-y: visible !important;
         box-sizing: border-box !important;
     }
     #modal_overlay > .modal > *,

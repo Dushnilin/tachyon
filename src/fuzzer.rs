@@ -1361,7 +1361,7 @@ pub fn normalize_target_url(raw: &str) -> Option<String> {
 
     let (scheme, rest, had_scheme) = if let Some(idx) = trimmed.find("://") {
         let sch = trimmed[..idx].to_ascii_lowercase();
-        if !matches!(sch.as_str(), "http" | "https" | "udp") {
+        if !matches!(sch.as_str(), "http" | "https" | "udp" | "quic") {
             return None;
         }
         (sch, &trimmed[idx + 3..], true)
@@ -1531,6 +1531,13 @@ fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint>
                     Some("streaming"),
                     true,
                 );
+                push_unique_endpoint(
+                    &mut endpoints,
+                    "quic://www.youtube.com:443",
+                    Some("www.youtube.com (QUIC)"),
+                    Some("udp_quic"),
+                    true,
+                );
             }
             "discord" | "discord_suite" => {
                 push_unique_endpoint(
@@ -1635,6 +1642,20 @@ fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint>
             "quic_http3" => {
                 push_unique_endpoint(
                     &mut endpoints,
+                    "quic://www.youtube.com:443",
+                    Some("www.youtube.com (QUIC)"),
+                    Some("udp_quic"),
+                    true,
+                );
+                push_unique_endpoint(
+                    &mut endpoints,
+                    "quic://cloudflare-quic.com:443",
+                    Some("cloudflare-quic.com (QUIC)"),
+                    Some("udp_quic"),
+                    true,
+                );
+                push_unique_endpoint(
+                    &mut endpoints,
                     "https://www.youtube.com",
                     Some("www.youtube.com"),
                     Some("tls_http"),
@@ -1653,6 +1674,8 @@ fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint>
                     for u in custom_list {
                         let kind = if u.starts_with("udp://") {
                             "udp_stun"
+                        } else if u.starts_with("quic://") {
+                            "udp_quic"
                         } else if is_streaming_url(&u) {
                             "streaming"
                         } else {
@@ -1726,7 +1749,7 @@ fn extract_host_port(url: &str) -> Option<(String, u16)> {
     let (scheme, rest) = url.split_once("://")?;
     let default_port: u16 = match scheme.to_ascii_lowercase().as_str() {
         "http" => 80,
-        "https" => 443,
+        "https" | "quic" => 443,
         "udp" => 19302,
         _ => return None,
     };
@@ -2014,10 +2037,60 @@ async fn prewarm_dns_cache(endpoints: &[ProbeEndpoint]) -> HashMap<(String, u16)
     cache
 }
 
-async fn run_udp_stun_via_socks(
+fn build_quic_probe_datagram() -> Vec<u8> {
+    // RFC 9000 Long Header packet using a GREASE version (0x0a0a0a0a) and random DCID/SCID
+    // padded to 1200 bytes so any compliant QUIC endpoint replies with Version Negotiation.
+    let mut pkt = vec![0u8; 1200];
+    pkt[0] = 0xc0; // Long Header, fixed bit set
+    pkt[1..5].copy_from_slice(&[0x0a, 0x0a, 0x0a, 0x0a]);
+    pkt[5] = 8; // DCID len
+    rand::thread_rng().fill_bytes(&mut pkt[6..14]);
+    pkt[14] = 8; // SCID len
+    rand::thread_rng().fill_bytes(&mut pkt[15..23]);
+    pkt
+}
+
+fn strip_socks5_udp_header(pkt: &[u8]) -> Option<&[u8]> {
+    if pkt.len() < 4 || pkt[2] != 0x00 {
+        return None;
+    }
+    let hdr_len = match pkt[3] {
+        0x01 => 10,
+        0x04 => 22,
+        0x03 => 5 + usize::from(*pkt.get(4)?),
+        _ => return None,
+    };
+    (pkt.len() >= hdr_len).then(|| &pkt[hdr_len..])
+}
+
+fn is_valid_stun_probe_reply(pkt: &[u8]) -> bool {
+    pkt.len() >= 24
+}
+
+fn is_valid_quic_probe_reply(pkt: &[u8]) -> bool {
+    let Some(payload) = strip_socks5_udp_header(pkt) else {
+        return false;
+    };
+    // Any RFC 9000 QUIC packet (Version Negotiation, Initial, Retry) carries >= 7 bytes.
+    payload.len() >= 7 && (payload[0] & 0x80) != 0
+}
+
+fn build_stun_probe_datagram() -> Vec<u8> {
+    let mut txid = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut txid);
+    let mut out = Vec::with_capacity(20);
+    out.extend_from_slice(&[0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42]);
+    out.extend_from_slice(&txid);
+    out
+}
+
+async fn run_udp_datagram_via_socks(
     socks_port: u16,
     ep: &ProbeEndpoint,
     dns_cache: &HashMap<(String, u16), IpAddr>,
+    proto_label: &str,
+    payload: &[u8],
+    validate_reply: fn(&[u8]) -> bool,
 ) -> SingleProbeMetrics {
     let fail = |verdict: &'static str, code: i32, msg: String| SingleProbeMetrics {
         target_name: ep.target_name.clone(),
@@ -2119,8 +2192,8 @@ async fn run_udp_stun_via_socks(
         );
     };
 
-    // Build SOCKS5 UDP packet + RFC 5389 STUN Binding Request
-    let mut pkt = Vec::with_capacity(64);
+    // Build SOCKS5 UDP packet header + payload
+    let mut pkt = Vec::with_capacity(32 + payload.len());
     pkt.extend_from_slice(&[0x00, 0x00, 0x00]); // RSV=0, FRAG=0
     match dst_ip {
         Some(IpAddr::V4(v4)) => {
@@ -2142,23 +2215,19 @@ async fn run_udp_stun_via_socks(
         }
     }
     pkt.extend_from_slice(&dst_port.to_be_bytes());
-
-    let mut txid = [0u8; 12];
-    rand::thread_rng().fill_bytes(&mut txid);
-    pkt.extend_from_slice(&[0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42]);
-    pkt.extend_from_slice(&txid);
+    pkt.extend_from_slice(payload);
 
     if udp.send_to(&pkt, relay_addr).await.is_err() {
         return fail(
             "drop",
             1,
-            "Не удалось отправить UDP STUN запрос".to_string(),
+            format!("Не удалось отправить {proto_label} запрос"),
         );
     }
 
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; 2048];
     match tokio::time::timeout(Duration::from_secs(3), udp.recv_from(&mut buf)).await {
-        Ok(Ok((n, _))) if n >= 24 => {
+        Ok(Ok((n, _))) if validate_reply(&buf[..n]) => {
             let rtt_ms = started.elapsed().as_millis().max(1) as u32;
             SingleProbeMetrics {
                 target_name: ep.target_name.clone(),
@@ -2175,9 +2244,43 @@ async fn run_udp_stun_via_socks(
                 error: String::new(),
             }
         }
-        Ok(Ok(_)) => fail("drop", 1, "Неполный ответ UDP STUN".to_string()),
-        Ok(Err(_)) | Err(_) => fail("timeout", 28, "Таймаут UDP STUN ответа (3с)".to_string()),
+        Ok(Ok(_)) => fail("drop", 1, format!("Неполный ответ {proto_label}")),
+        Ok(Err(_)) | Err(_) => fail("timeout", 28, format!("Таймаут {proto_label} ответа (3с)")),
     }
+}
+
+async fn run_udp_stun_via_socks(
+    socks_port: u16,
+    ep: &ProbeEndpoint,
+    dns_cache: &HashMap<(String, u16), IpAddr>,
+) -> SingleProbeMetrics {
+    let payload = build_stun_probe_datagram();
+    run_udp_datagram_via_socks(
+        socks_port,
+        ep,
+        dns_cache,
+        "UDP STUN",
+        &payload,
+        is_valid_stun_probe_reply,
+    )
+    .await
+}
+
+async fn run_udp_quic_via_socks(
+    socks_port: u16,
+    ep: &ProbeEndpoint,
+    dns_cache: &HashMap<(String, u16), IpAddr>,
+) -> SingleProbeMetrics {
+    let payload = build_quic_probe_datagram();
+    run_udp_datagram_via_socks(
+        socks_port,
+        ep,
+        dns_cache,
+        "UDP QUIC",
+        &payload,
+        is_valid_quic_probe_reply,
+    )
+    .await
 }
 
 fn curl_timeouts_for_endpoint(ep: &ProbeEndpoint, total_endpoints: usize) -> (u64, u64) {
@@ -2460,6 +2563,9 @@ async fn run_curl_via_socks(
 ) -> SingleProbeMetrics {
     if ep.probe_kind == "udp_stun" {
         return run_udp_stun_via_socks(port, ep, dns_cache).await;
+    }
+    if ep.probe_kind == "udp_quic" {
+        return run_udp_quic_via_socks(port, ep, dns_cache).await;
     }
 
     let (cto, mto) = curl_timeouts_for_endpoint(ep, total_endpoints);
@@ -4014,7 +4120,7 @@ nameserver 213.180.193.3
     fn test_youtube_suite_includes_streaming_googlevideo_endpoint() {
         for suite in ["youtube_suite", "youtube"] {
             let eps = resolve_suite_endpoints(suite, "");
-            assert_eq!(eps.len(), 3, "suite {suite} should have 3 endpoints");
+            assert_eq!(eps.len(), 4, "suite {suite} should have 4 endpoints");
             let gv = eps
                 .iter()
                 .find(|ep| ep.target_name == "googlevideo.com")
@@ -4022,7 +4128,54 @@ nameserver 213.180.193.3
             assert_eq!(gv.url, "https://googlevideo.com/videoplayback");
             assert_eq!(gv.probe_kind, "streaming");
             assert!(gv.allow_api_status);
+            let q = eps
+                .iter()
+                .find(|ep| ep.probe_kind == "udp_quic")
+                .expect("youtube suite includes UDP QUIC probe");
+            assert_eq!(q.url, "quic://www.youtube.com:443");
         }
+    }
+
+    #[test]
+    fn test_quic_probe_datagram_and_reply_validation() {
+        let dg = build_quic_probe_datagram();
+        assert_eq!(dg.len(), 1200);
+        assert_ne!(dg[0] & 0x80, 0);
+        assert_eq!(&dg[1..5], &[0x0a, 0x0a, 0x0a, 0x0a]);
+        assert_eq!(dg[5], 8);
+        assert_eq!(dg[14], 8);
+
+        assert_eq!(
+            extract_host_port("quic://www.youtube.com:443"),
+            Some(("www.youtube.com".to_string(), 443))
+        );
+        assert_eq!(
+            extract_host_port("quic://cloudflare-quic.com"),
+            Some(("cloudflare-quic.com".to_string(), 443))
+        );
+
+        let mut reply_pkt = vec![0u8; 10 + 11];
+        reply_pkt[3] = 0x01; // IPv4 ATYP
+        reply_pkt[10] = 0x80; // QUIC Long Header (Version Negotiation)
+        assert!(is_valid_quic_probe_reply(&reply_pkt));
+
+        let mut short_pkt = vec![0u8; 10 + 5];
+        short_pkt[3] = 0x01;
+        short_pkt[10] = 0x80;
+        assert!(!is_valid_quic_probe_reply(&short_pkt));
+    }
+
+    #[test]
+    fn test_quic_http3_target_uses_udp_quic_probe() {
+        let eps = resolve_suite_endpoints("quic_http3", "");
+        assert!(
+            eps.iter()
+                .any(|e| e.url == "quic://www.youtube.com:443" && e.probe_kind == "udp_quic")
+        );
+        assert!(
+            eps.iter()
+                .any(|e| e.url == "quic://cloudflare-quic.com:443" && e.probe_kind == "udp_quic")
+        );
     }
 
     #[test]

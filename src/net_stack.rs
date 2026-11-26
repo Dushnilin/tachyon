@@ -87,6 +87,17 @@ pub fn selective_tproxy_active(store: &RouterStoreData) -> bool {
     })
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SelectiveScopedRule {
+    pub src_v4: Vec<String>,
+    pub src_v6: Vec<String>,
+    pub src_macs: Vec<String>,
+    pub dst_v4: Vec<String>,
+    pub dst_v6: Vec<String>,
+    pub l4_proto: String,
+    pub ports: Vec<String>,
+}
+
 #[derive(Default)]
 pub(crate) struct SelectiveTproxyTargets {
     pub dst_v4: Vec<String>,
@@ -94,9 +105,456 @@ pub(crate) struct SelectiveTproxyTargets {
     pub src_v4: Vec<String>,
     pub src_v6: Vec<String>,
     pub src_macs: Vec<String>,
+    pub scoped_rules: Vec<SelectiveScopedRule>,
+}
+
+fn format_ipv4_interval_or_cidr(start: u32, end: u32) -> String {
+    let (lo, hi) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
+    let ip_s = std::net::Ipv4Addr::from(lo);
+    if lo == hi {
+        return ip_s.to_string();
+    }
+    if lo == 0 && hi == u32::MAX {
+        return "0.0.0.0/0".to_string();
+    }
+    let span = u64::from(hi) - u64::from(lo) + 1;
+    if span.is_power_of_two() && (u64::from(lo) & (span - 1)) == 0 {
+        let prefix = 32 - span.trailing_zeros();
+        return format!("{ip_s}/{prefix}");
+    }
+    format!("{ip_s}-{}", std::net::Ipv4Addr::from(hi))
+}
+
+fn format_ipv6_interval_or_cidr(start: u128, end: u128) -> String {
+    let (lo, hi) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
+    let ip_s = std::net::Ipv6Addr::from(lo);
+    if lo == hi {
+        return ip_s.to_string();
+    }
+    if lo == 0 && hi == u128::MAX {
+        return "::/0".to_string();
+    }
+    if let Some(span) = (hi - lo).checked_add(1)
+        && span.is_power_of_two()
+        && (lo & (span - 1)) == 0
+    {
+        let prefix = 128 - span.trailing_zeros();
+        return format!("{ip_s}/{prefix}");
+    }
+    format!("{ip_s}-{}", std::net::Ipv6Addr::from(hi))
+}
+
+/// Extract IPv4 and optional IPv6 CIDR/interval literals from a compiled `TSRS v2` (`.trs`) file.
+pub(crate) fn extract_trs_cidrs(
+    bytes: &[u8],
+    include_v6: bool,
+    max_intervals: usize,
+) -> (Vec<String>, Vec<String>) {
+    const HEADER_SIZE: usize = 96;
+    const HEADER_FLAG_V6_64BIT: u32 = 0x04;
+    if bytes.len() < HEADER_SIZE || &bytes[0..4] != b"TSRS" || max_intervals == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    if version != 2 {
+        return (Vec::new(), Vec::new());
+    }
+    let flags = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    let v4_off = u32::from_le_bytes([bytes[52], bytes[53], bytes[54], bytes[55]]) as usize;
+    let v4_cnt = u32::from_le_bytes([bytes[56], bytes[57], bytes[58], bytes[59]]) as usize;
+    let v6_off = u32::from_le_bytes([bytes[64], bytes[65], bytes[66], bytes[67]]) as usize;
+    let v6_cnt = u32::from_le_bytes([bytes[68], bytes[69], bytes[70], bytes[71]]) as usize;
+
+    let mut out_v4 = Vec::new();
+    let mut out_v6 = Vec::new();
+    let mut remaining = max_intervals;
+
+    if v4_cnt > 0
+        && v4_off >= HEADER_SIZE
+        && let Some(byte_len) = v4_cnt.checked_mul(8)
+        && v4_off.saturating_add(byte_len) <= bytes.len()
+    {
+        let take = v4_cnt.min(remaining);
+        for i in 0..take {
+            let p = v4_off + i * 8;
+            let start = u32::from_le_bytes([bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3]]);
+            let end = u32::from_le_bytes([bytes[p + 4], bytes[p + 5], bytes[p + 6], bytes[p + 7]]);
+            out_v4.push(format_ipv4_interval_or_cidr(start, end));
+        }
+        remaining = remaining.saturating_sub(take);
+    }
+
+    if include_v6 && remaining > 0 && v6_cnt > 0 && v6_off >= HEADER_SIZE {
+        let v6_64bit = (flags & HEADER_FLAG_V6_64BIT) != 0;
+        let stride = if v6_64bit { 16 } else { 32 };
+        if let Some(byte_len) = v6_cnt.checked_mul(stride)
+            && v6_off.saturating_add(byte_len) <= bytes.len()
+        {
+            let take = v6_cnt.min(remaining);
+            for i in 0..take {
+                let p = v6_off + i * stride;
+                if v6_64bit {
+                    let s_hi = u64::from_le_bytes(bytes[p..p + 8].try_into().unwrap_or([0; 8]));
+                    let e_hi =
+                        u64::from_le_bytes(bytes[p + 8..p + 16].try_into().unwrap_or([0; 8]));
+                    let start = u128::from(s_hi) << 64;
+                    let end = (u128::from(e_hi) << 64) | u128::from(u64::MAX);
+                    out_v6.push(format_ipv6_interval_or_cidr(start, end));
+                } else {
+                    let start = u128::from_be_bytes(bytes[p..p + 16].try_into().unwrap_or([0; 16]));
+                    let end =
+                        u128::from_be_bytes(bytes[p + 16..p + 32].try_into().unwrap_or([0; 16]));
+                    out_v6.push(format_ipv6_interval_or_cidr(start, end));
+                }
+            }
+        }
+    }
+
+    (out_v4, out_v6)
+}
+
+fn normalize_nft_port_tokens(raw_ports: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for item in raw_ports {
+        for tok in item.split([',', ';', ' ']) {
+            let clean = tok.trim();
+            if clean.is_empty() {
+                continue;
+            }
+            if let Some((a, b)) = clean.split_once([':', '-']) {
+                if let (Ok(p1), Ok(p2)) = (a.trim().parse::<u16>(), b.trim().parse::<u16>())
+                    && p1 > 0
+                    && p2 > 0
+                {
+                    let (lo, hi) = if p1 <= p2 { (p1, p2) } else { (p2, p1) };
+                    let norm = if lo == hi {
+                        lo.to_string()
+                    } else {
+                        format!("{lo}-{hi}")
+                    };
+                    if seen.insert(norm.clone()) {
+                        out.push(norm);
+                    }
+                }
+            } else if let Ok(p) = clean.parse::<u16>()
+                && p > 0
+            {
+                let norm = p.to_string();
+                if seen.insert(norm.clone()) {
+                    out.push(norm);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn push_selective_ip_unique(
+    v4: &mut Vec<String>,
+    v6: &mut Vec<String>,
+    mut macs: Option<&mut Vec<String>>,
+    seen_v4: &mut std::collections::HashSet<String>,
+    seen_v6: &mut std::collections::HashSet<String>,
+    seen_macs: &mut std::collections::HashSet<String>,
+    raw: &str,
+) {
+    let t = raw.trim();
+    if t.is_empty() {
+        return;
+    }
+    if crate::store::is_mac_address(t) {
+        if let Some(ref mut m) = macs {
+            let low = t.to_ascii_lowercase();
+            if seen_macs.insert(low.clone()) {
+                m.push(low);
+            }
+        }
+        return;
+    }
+    if let Some((ip_part, _)) = t.split_once('/') {
+        if ip_part.parse::<std::net::Ipv4Addr>().is_ok() {
+            if seen_v4.insert(t.to_string()) {
+                v4.push(t.to_string());
+            }
+        } else if ip_part.parse::<std::net::Ipv6Addr>().is_ok() && seen_v6.insert(t.to_string()) {
+            v6.push(t.to_string());
+        }
+    } else if t.parse::<std::net::Ipv4Addr>().is_ok() {
+        if seen_v4.insert(t.to_string()) {
+            v4.push(t.to_string());
+        }
+    } else if t.parse::<std::net::Ipv6Addr>().is_ok() && seen_v6.insert(t.to_string()) {
+        v6.push(t.to_string());
+    } else if let Some((s, e)) = t.split_once('-') {
+        if s.trim().parse::<std::net::Ipv4Addr>().is_ok()
+            && e.trim().parse::<std::net::Ipv4Addr>().is_ok()
+        {
+            let interval = format!("{}-{}", s.trim(), e.trim());
+            if seen_v4.insert(interval.clone()) {
+                v4.push(interval);
+            }
+        } else if s.trim().parse::<std::net::Ipv6Addr>().is_ok()
+            && e.trim().parse::<std::net::Ipv6Addr>().is_ok()
+        {
+            let interval = format!("{}-{}", s.trim(), e.trim());
+            if seen_v6.insert(interval.clone()) {
+                v6.push(interval);
+            }
+        }
+    }
+}
+
+fn push_nft_cidr_str(
+    v4: &mut Vec<String>,
+    v6: &mut Vec<String>,
+    seen_v4: &mut std::collections::HashSet<String>,
+    seen_v6: &mut std::collections::HashSet<String>,
+    include_v6: bool,
+    cidr: &str,
+) {
+    let t = cidr.trim();
+    if t.is_empty() {
+        return;
+    }
+    let is_v6 = t.contains(':');
+    if is_v6 && !include_v6 {
+        return;
+    }
+    if is_v6 {
+        if seen_v6.insert(t.to_string()) {
+            v6.push(t.to_string());
+        }
+    } else if seen_v4.insert(t.to_string()) {
+        v4.push(t.to_string());
+    }
+}
+
+struct SelectiveCidrSink<'a> {
+    v4: &'a mut Vec<String>,
+    v6: &'a mut Vec<String>,
+    seen_v4: &'a mut std::collections::HashSet<String>,
+    seen_v6: &'a mut std::collections::HashSet<String>,
+    include_v6: bool,
+    budget: &'a mut usize,
+}
+
+impl SelectiveCidrSink<'_> {
+    fn push(&mut self, cidr: &str) {
+        push_nft_cidr_str(
+            self.v4,
+            self.v6,
+            self.seen_v4,
+            self.seen_v6,
+            self.include_v6,
+            cidr,
+        );
+    }
+}
+
+fn load_community_list_cidrs_for_selective(
+    store: &RouterStoreData,
+    list_name: &str,
+    sink: &mut SelectiveCidrSink<'_>,
+) {
+    if *sink.budget == 0 {
+        return;
+    }
+    let clean = list_name.trim().trim_start_matches("trs-");
+    if clean.is_empty() {
+        return;
+    }
+    let clean_lc = clean.to_ascii_lowercase();
+    let canonical = crate::config_gen::resolve_tachyon_list_canonical_name(
+        &clean_lc,
+        crate::config_gen::is_low_ram_device(),
+    );
+    let canon_sub =
+        crate::config_gen::canonical_community_subnet_service(&clean_lc).to_ascii_lowercase();
+
+    let mut search_dirs: Vec<String> = Vec::new();
+    let plat_paths = crate::platform::paths();
+    let plat_rulesets = plat_paths.rulesets_dir.to_string_lossy().replace('\\', "/");
+    let plat_share_rulesets = plat_paths
+        .share_dir
+        .join("rulesets")
+        .to_string_lossy()
+        .replace('\\', "/");
+    for d in [
+        store.settings.rulesets_dir.trim(),
+        plat_rulesets.as_str(),
+        plat_share_rulesets.as_str(),
+        "/tmp/tachyon-core/rulesets",
+        "/etc/tachyon/rulesets",
+        "/usr/share/tachyon/rulesets",
+    ] {
+        if !d.is_empty() && !search_dirs.iter().any(|x| x == d) {
+            search_dirs.push(d.to_string());
+        }
+    }
+
+    let trs_candidates = [
+        format!("{canonical}.trs"),
+        format!("trs-{clean_lc}.trs"),
+        format!("{clean_lc}.trs"),
+        format!("trs-{canonical}.trs"),
+    ];
+    for dir in &search_dirs {
+        for fname in &trs_candidates {
+            let p = Path::new(dir).join(fname);
+            if let Ok(bytes) = std::fs::read(&p) {
+                let (v4s, v6s) = extract_trs_cidrs(&bytes, sink.include_v6, *sink.budget);
+                let added = v4s.len() + v6s.len();
+                for s in v4s {
+                    sink.push(&s);
+                }
+                for s in v6s {
+                    sink.push(&s);
+                }
+                if added > 0 {
+                    *sink.budget = sink.budget.saturating_sub(added);
+                    return;
+                }
+            }
+        }
+    }
+
+    let lst_candidates = [
+        format!("community-subnets-{canon_sub}.lst"),
+        format!("community-subnets-{canonical}.lst"),
+        format!("community-subnets-{clean_lc}.lst"),
+    ];
+    for dir in &search_dirs {
+        for fname in &lst_candidates {
+            let p = Path::new(dir).join(fname);
+            if let Ok(raw) = std::fs::read_to_string(&p)
+                && !raw.trim().is_empty()
+            {
+                let cidrs = crate::config_gen::parse_valid_cidr_list(&raw);
+                if !cidrs.is_empty() {
+                    let take = cidrs.len().min(*sink.budget);
+                    for c in cidrs.into_iter().take(take) {
+                        sink.push(&c);
+                    }
+                    *sink.budget = sink.budget.saturating_sub(take);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn collect_community_subnet_tokens_for_selective(
+    store: &RouterStoreData,
+    community_lists: &[String],
+    rule_set_with_subnets: &[String],
+    community_subnets: bool,
+    sink: &mut SelectiveCidrSink<'_>,
+    scoped_rules: &mut Vec<SelectiveScopedRule>,
+) {
+    let mut lists_with_subnets: Vec<String> = Vec::new();
+    let mut push_list = |name: &str| {
+        let t = name.trim();
+        if !t.is_empty() && !lists_with_subnets.iter().any(|x| x.eq_ignore_ascii_case(t)) {
+            lists_with_subnets.push(t.to_string());
+        }
+    };
+    if community_subnets {
+        for l in community_lists {
+            push_list(l);
+        }
+    }
+    for l in rule_set_with_subnets {
+        push_list(l);
+    }
+    if lists_with_subnets.is_empty() {
+        return;
+    }
+
+    let include_v6 = sink.include_v6;
+    let mut has_discord = false;
+    for raw_name in &lists_with_subnets {
+        let low = raw_name.to_ascii_lowercase();
+        let canonical = crate::config_gen::resolve_tachyon_list_canonical_name(
+            low.trim_start_matches("trs-"),
+            crate::config_gen::is_low_ram_device(),
+        );
+        if canonical == "telegram" {
+            for sub in crate::config_gen::DEFAULT_TELEGRAM_SUBNETS {
+                sink.push(sub);
+            }
+        } else if canonical == "discord" {
+            has_discord = true;
+            for sub in crate::config_gen::DISCORD_DEDICATED_SUBNETS {
+                sink.push(sub);
+            }
+        } else {
+            load_community_list_cidrs_for_selective(store, &canonical, sink);
+        }
+    }
+
+    if has_discord {
+        let voice_v4: Vec<String> = crate::config_gen::DEFAULT_DISCORD_VOICE_SUBNETS_V4
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        let voice_v6 = if include_v6 {
+            vec![crate::config_gen::DISCORD_VOICE_SUBNET_V6.to_string()]
+        } else {
+            Vec::new()
+        };
+        let voice_ports: Vec<String> = crate::config_gen::DISCORD_VOICE_PORT_RANGES
+            .iter()
+            .map(|p| (*p).to_string())
+            .collect();
+        let media_ports: Vec<String> = crate::config_gen::DISCORD_MEDIA_PORT_RANGES
+            .iter()
+            .map(|p| (*p).to_string())
+            .collect();
+        let udp_rule = SelectiveScopedRule {
+            src_v4: Vec::new(),
+            src_v6: Vec::new(),
+            src_macs: Vec::new(),
+            dst_v4: voice_v4.clone(),
+            dst_v6: voice_v6.clone(),
+            l4_proto: "udp".to_string(),
+            ports: normalize_nft_port_tokens(&voice_ports),
+        };
+        if !scoped_rules.contains(&udp_rule) {
+            scoped_rules.push(udp_rule);
+        }
+        let tcp_rule = SelectiveScopedRule {
+            src_v4: Vec::new(),
+            src_v6: Vec::new(),
+            src_macs: Vec::new(),
+            dst_v4: voice_v4,
+            dst_v6: voice_v6,
+            l4_proto: "tcp".to_string(),
+            ports: normalize_nft_port_tokens(&media_ports),
+        };
+        if !scoped_rules.contains(&tcp_rule) {
+            scoped_rules.push(tcp_rule);
+        }
+    }
 }
 
 pub(crate) fn collect_selective_tproxy_targets(store: &RouterStoreData) -> SelectiveTproxyTargets {
+    collect_selective_tproxy_targets_with_ipv6(store, true)
+}
+
+pub(crate) fn collect_selective_tproxy_targets_with_ipv6(
+    store: &RouterStoreData,
+    include_v6: bool,
+) -> SelectiveTproxyTargets {
+    const SELECTIVE_CIDR_BUDGET: usize = 4096;
     let mut out = SelectiveTproxyTargets::default();
     let cond_map: HashMap<&str, &crate::store::TrafficCondition> = store
         .conditions
@@ -104,39 +562,13 @@ pub(crate) fn collect_selective_tproxy_targets(store: &RouterStoreData) -> Selec
         .map(|c| (c.id.as_str(), c))
         .collect();
 
-    let push_ip =
-        |v4: &mut Vec<String>, v6: &mut Vec<String>, macs: Option<&mut Vec<String>>, raw: &str| {
-            let t = raw.trim();
-            if t.is_empty() {
-                return;
-            }
-            if crate::store::is_mac_address(t) {
-                if let Some(m) = macs {
-                    let low = t.to_ascii_lowercase();
-                    if !m.contains(&low) {
-                        m.push(low);
-                    }
-                }
-                return;
-            }
-            if let Some((ip_part, _)) = t.split_once('/') {
-                if ip_part.parse::<std::net::Ipv4Addr>().is_ok() {
-                    if !v4.contains(&t.to_string()) {
-                        v4.push(t.to_string());
-                    }
-                } else if ip_part.parse::<std::net::Ipv6Addr>().is_ok()
-                    && !v6.contains(&t.to_string())
-                {
-                    v6.push(t.to_string());
-                }
-            } else if t.parse::<std::net::Ipv4Addr>().is_ok() {
-                if !v4.contains(&t.to_string()) {
-                    v4.push(t.to_string());
-                }
-            } else if t.parse::<std::net::Ipv6Addr>().is_ok() && !v6.contains(&t.to_string()) {
-                v6.push(t.to_string());
-            }
-        };
+    let mut seen_dst_v4 = std::collections::HashSet::new();
+    let mut seen_dst_v6 = std::collections::HashSet::new();
+    let mut seen_src_v4 = std::collections::HashSet::new();
+    let mut seen_src_v6 = std::collections::HashSet::new();
+    let mut seen_src_macs = std::collections::HashSet::new();
+    let mut dummy_macs = std::collections::HashSet::new();
+    let mut budget = SELECTIVE_CIDR_BUDGET;
 
     let mut stack_conds: Vec<&str> = Vec::new();
     let mut seen_conds: std::collections::HashSet<&str> = std::collections::HashSet::new();
@@ -154,21 +586,53 @@ pub(crate) fn collect_selective_tproxy_targets(store: &RouterStoreData) -> Selec
             continue;
         }
         for tok in &sec.user_subnets {
-            push_ip(&mut out.dst_v4, &mut out.dst_v6, None, tok);
+            push_selective_ip_unique(
+                &mut out.dst_v4,
+                &mut out.dst_v6,
+                None,
+                &mut seen_dst_v4,
+                &mut seen_dst_v6,
+                &mut dummy_macs,
+                tok,
+            );
+        }
+        {
+            let mut sink = SelectiveCidrSink {
+                v4: &mut out.dst_v4,
+                v6: &mut out.dst_v6,
+                seen_v4: &mut seen_dst_v4,
+                seen_v6: &mut seen_dst_v6,
+                include_v6,
+                budget: &mut budget,
+            };
+            collect_community_subnet_tokens_for_selective(
+                store,
+                &sec.community_lists,
+                &sec.rule_set_with_subnets,
+                sec.community_subnets,
+                &mut sink,
+                &mut out.scoped_rules,
+            );
         }
         for tok in &sec.fully_routed_ips {
-            push_ip(
+            push_selective_ip_unique(
                 &mut out.src_v4,
                 &mut out.src_v6,
                 Some(&mut out.src_macs),
+                &mut seen_src_v4,
+                &mut seen_src_v6,
+                &mut seen_src_macs,
                 tok,
             );
         }
         for tok in &sec.source_ip_cidr {
-            push_ip(
+            push_selective_ip_unique(
                 &mut out.src_v4,
                 &mut out.src_v6,
                 Some(&mut out.src_macs),
+                &mut seen_src_v4,
+                &mut seen_src_v6,
+                &mut seen_src_macs,
                 tok,
             );
         }
@@ -187,16 +651,155 @@ pub(crate) fn collect_selective_tproxy_targets(store: &RouterStoreData) -> Selec
         if !cond.enabled {
             continue;
         }
-        for tok in &cond.user_subnets {
-            push_ip(&mut out.dst_v4, &mut out.dst_v6, None, tok);
-        }
-        for tok in &cond.client_ips {
-            push_ip(
-                &mut out.src_v4,
-                &mut out.src_v6,
-                Some(&mut out.src_macs),
-                tok,
-            );
+        let cond_ports = normalize_nft_port_tokens(&cond.ports);
+        let cond_l4 = match cond.l4_proto.trim().to_ascii_lowercase().as_str() {
+            "tcp" => "tcp".to_string(),
+            "udp" => "udp".to_string(),
+            _ => String::new(),
+        };
+        let is_port_or_proto_scoped = !cond_ports.is_empty() || !cond_l4.is_empty();
+
+        if is_port_or_proto_scoped {
+            let mut rule = SelectiveScopedRule {
+                l4_proto: cond_l4,
+                ports: cond_ports,
+                ..Default::default()
+            };
+            let mut r_seen_dst_v4 = std::collections::HashSet::new();
+            let mut r_seen_dst_v6 = std::collections::HashSet::new();
+            let mut r_seen_src_v4 = std::collections::HashSet::new();
+            let mut r_seen_src_v6 = std::collections::HashSet::new();
+            let mut r_seen_macs = std::collections::HashSet::new();
+            let mut r_dummy_macs = std::collections::HashSet::new();
+
+            for tok in &cond.user_subnets {
+                push_selective_ip_unique(
+                    &mut rule.dst_v4,
+                    &mut rule.dst_v6,
+                    None,
+                    &mut r_seen_dst_v4,
+                    &mut r_seen_dst_v6,
+                    &mut r_dummy_macs,
+                    tok,
+                );
+            }
+            {
+                let mut sink = SelectiveCidrSink {
+                    v4: &mut rule.dst_v4,
+                    v6: &mut rule.dst_v6,
+                    seen_v4: &mut r_seen_dst_v4,
+                    seen_v6: &mut r_seen_dst_v6,
+                    include_v6,
+                    budget: &mut budget,
+                };
+                collect_community_subnet_tokens_for_selective(
+                    store,
+                    &cond.community_lists,
+                    &cond.rule_set_with_subnets,
+                    cond.community_subnets,
+                    &mut sink,
+                    &mut out.scoped_rules,
+                );
+            }
+            for tok in &cond.client_ips {
+                push_selective_ip_unique(
+                    &mut rule.src_v4,
+                    &mut rule.src_v6,
+                    Some(&mut rule.src_macs),
+                    &mut r_seen_src_v4,
+                    &mut r_seen_src_v6,
+                    &mut r_seen_macs,
+                    tok,
+                );
+            }
+            for tok in &cond.fully_routed_ips {
+                push_selective_ip_unique(
+                    &mut rule.src_v4,
+                    &mut rule.src_v6,
+                    Some(&mut rule.src_macs),
+                    &mut r_seen_src_v4,
+                    &mut r_seen_src_v6,
+                    &mut r_seen_macs,
+                    tok,
+                );
+            }
+            for tok in &cond.source_macs {
+                push_selective_ip_unique(
+                    &mut rule.src_v4,
+                    &mut rule.src_v6,
+                    Some(&mut rule.src_macs),
+                    &mut r_seen_src_v4,
+                    &mut r_seen_src_v6,
+                    &mut r_seen_macs,
+                    tok,
+                );
+            }
+            if !out.scoped_rules.contains(&rule) {
+                out.scoped_rules.push(rule);
+            }
+        } else {
+            for tok in &cond.user_subnets {
+                push_selective_ip_unique(
+                    &mut out.dst_v4,
+                    &mut out.dst_v6,
+                    None,
+                    &mut seen_dst_v4,
+                    &mut seen_dst_v6,
+                    &mut dummy_macs,
+                    tok,
+                );
+            }
+            {
+                let mut sink = SelectiveCidrSink {
+                    v4: &mut out.dst_v4,
+                    v6: &mut out.dst_v6,
+                    seen_v4: &mut seen_dst_v4,
+                    seen_v6: &mut seen_dst_v6,
+                    include_v6,
+                    budget: &mut budget,
+                };
+                collect_community_subnet_tokens_for_selective(
+                    store,
+                    &cond.community_lists,
+                    &cond.rule_set_with_subnets,
+                    cond.community_subnets,
+                    &mut sink,
+                    &mut out.scoped_rules,
+                );
+            }
+            for tok in &cond.client_ips {
+                push_selective_ip_unique(
+                    &mut out.src_v4,
+                    &mut out.src_v6,
+                    Some(&mut out.src_macs),
+                    &mut seen_src_v4,
+                    &mut seen_src_v6,
+                    &mut seen_src_macs,
+                    tok,
+                );
+            }
+            for tok in &cond.fully_routed_ips {
+                push_selective_ip_unique(
+                    &mut out.src_v4,
+                    &mut out.src_v6,
+                    Some(&mut out.src_macs),
+                    &mut seen_src_v4,
+                    &mut seen_src_v6,
+                    &mut seen_src_macs,
+                    tok,
+                );
+            }
+            for tok in &cond.source_macs {
+                push_selective_ip_unique(
+                    &mut out.src_v4,
+                    &mut out.src_v6,
+                    Some(&mut out.src_macs),
+                    &mut seen_src_v4,
+                    &mut seen_src_v6,
+                    &mut seen_src_macs,
+                    tok,
+                );
+            }
         }
         for child in &cond.children {
             stack_conds.push(child.as_str());
@@ -204,6 +807,93 @@ pub(crate) fn collect_selective_tproxy_targets(store: &RouterStoreData) -> Selec
     }
 
     out
+}
+
+fn format_scoped_l4_expr(l4_proto: &str, ports: &[String]) -> String {
+    if ports.is_empty() {
+        return match l4_proto {
+            "tcp" => "meta l4proto tcp".to_string(),
+            "udp" => "meta l4proto udp".to_string(),
+            _ => "meta l4proto { tcp, udp }".to_string(),
+        };
+    }
+    let port_lit = ports.join(", ");
+    match l4_proto {
+        "tcp" => format!("tcp dport {{ {port_lit} }}"),
+        "udp" => format!("udp dport {{ {port_lit} }}"),
+        _ => format!("meta l4proto {{ tcp, udp }} th dport {{ {port_lit} }}"),
+    }
+}
+
+fn append_selective_scoped_nft_rules(
+    out: &mut String,
+    rule: &SelectiveScopedRule,
+    ipv6_active: bool,
+) {
+    let l4_expr = format_scoped_l4_expr(&rule.l4_proto, &rule.ports);
+    let has_any_src =
+        !rule.src_v4.is_empty() || !rule.src_v6.is_empty() || !rule.src_macs.is_empty();
+    let has_any_dst = !rule.dst_v4.is_empty() || !rule.dst_v6.is_empty();
+
+    let v4_dst_clause = if !rule.dst_v4.is_empty() {
+        Some(format!("ip daddr {{ {} }} ", rule.dst_v4.join(", ")))
+    } else if has_any_dst {
+        None
+    } else {
+        Some(String::new())
+    };
+    if let Some(ref d4) = v4_dst_clause {
+        if !rule.src_v4.is_empty() {
+            let _ = writeln!(
+                out,
+                "        ip saddr {{ {} }} {d4}{l4_expr} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                rule.src_v4.join(", ")
+            );
+        }
+        for mac in &rule.src_macs {
+            let _ = writeln!(
+                out,
+                "        meta nfproto ipv4 ether saddr {mac} {d4}{l4_expr} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+            );
+        }
+        if !has_any_src {
+            let _ = writeln!(
+                out,
+                "        {d4}{l4_expr} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+            );
+        }
+    }
+
+    if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
+        let v6_dst_clause = if !rule.dst_v6.is_empty() {
+            Some(format!("ip6 daddr {{ {} }} ", rule.dst_v6.join(", ")))
+        } else if has_any_dst {
+            None
+        } else {
+            Some(String::new())
+        };
+        if let Some(ref d6) = v6_dst_clause {
+            if !rule.src_v6.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "        ip6 saddr {{ {} }} {d6}{l4_expr} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                    rule.src_v6.join(", ")
+                );
+            }
+            for mac in &rule.src_macs {
+                let _ = writeln!(
+                    out,
+                    "        meta nfproto ipv6 ether saddr {mac} {d6}{l4_expr} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+                );
+            }
+            if !has_any_src {
+                let _ = writeln!(
+                    out,
+                    "        {d6}{l4_expr} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+                );
+            }
+        }
+    }
 }
 
 fn append_source_iface_guard(out: &mut String, store: &RouterStoreData) {
@@ -1893,6 +2583,40 @@ fn compile_nftables_ruleset_full_with_opts(
         );
     }
 
+    let selective_targets = selective_tproxy_active(store)
+        .then(|| collect_selective_tproxy_targets_with_ipv6(store, ipv6_active));
+    const INLINE_DST_LIMIT: usize = 8;
+    if let Some(ref targets) = selective_targets {
+        if targets.dst_v4.len() > INLINE_DST_LIMIT {
+            let elems = targets.dst_v4.join(", ");
+            let _ = writeln!(
+                out,
+                "    set selective_dst_v4 {{
+        type ipv4_addr
+        flags interval
+        auto-merge
+        elements = {{
+            {elems}
+        }}
+    }}"
+            );
+        }
+        if ipv6_active && targets.dst_v6.len() > INLINE_DST_LIMIT {
+            let elems = targets.dst_v6.join(", ");
+            let _ = writeln!(
+                out,
+                "    set selective_dst_v6 {{
+        type ipv6_addr
+        flags interval
+        auto-merge
+        elements = {{
+            {elems}
+        }}
+    }}"
+            );
+        }
+    }
+
     let is_tailscale_source = store
         .settings
         .source_network_interfaces
@@ -2218,8 +2942,7 @@ fn compile_nftables_ruleset_full_with_opts(
         let _ = writeln!(out, "        meta nfproto ipv6 return");
     }
 
-    if selective_tproxy_active(store) {
-        let targets = collect_selective_tproxy_targets(store);
+    if let Some(ref targets) = selective_targets {
         if store.settings.fakeip_enabled {
             let _ = writeln!(
                 out,
@@ -2227,11 +2950,18 @@ fn compile_nftables_ruleset_full_with_opts(
             );
         }
         if !targets.dst_v4.is_empty() {
-            let _ = writeln!(
-                out,
-                "        ip daddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
-                targets.dst_v4.join(", ")
-            );
+            if targets.dst_v4.len() > INLINE_DST_LIMIT {
+                let _ = writeln!(
+                    out,
+                    "        ip daddr @selective_dst_v4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+                );
+            } else {
+                let _ = writeln!(
+                    out,
+                    "        ip daddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                    targets.dst_v4.join(", ")
+                );
+            }
         }
         if !targets.src_v4.is_empty() {
             let _ = writeln!(
@@ -2248,11 +2978,18 @@ fn compile_nftables_ruleset_full_with_opts(
         }
         if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
             if !targets.dst_v6.is_empty() {
-                let _ = writeln!(
-                    out,
-                    "        ip6 daddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
-                    targets.dst_v6.join(", ")
-                );
+                if targets.dst_v6.len() > INLINE_DST_LIMIT {
+                    let _ = writeln!(
+                        out,
+                        "        ip6 daddr @selective_dst_v6 meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+                    );
+                } else {
+                    let _ = writeln!(
+                        out,
+                        "        ip6 daddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                        targets.dst_v6.join(", ")
+                    );
+                }
             }
             if !targets.src_v6.is_empty() {
                 let _ = writeln!(
@@ -2267,6 +3004,9 @@ fn compile_nftables_ruleset_full_with_opts(
                     "        meta nfproto ipv6 ether saddr {mac} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
                 );
             }
+        }
+        for scoped in &targets.scoped_rules {
+            append_selective_scoped_nft_rules(&mut out, scoped, ipv6_active);
         }
     } else {
         if store.settings.fakeip_enabled {
@@ -8331,5 +9071,118 @@ dhcp.cfg01411c.tachyon_prev_server='1.1.1.1 8.8.8.8'
         let started = std::time::Instant::now();
         assert!(!wait_local_dns_ready_at(&closed_addr, Duration::from_secs(5)).await);
         assert!(started.elapsed() < Duration::from_millis(2500));
+    }
+
+    #[test]
+    fn test_selective_tproxy_community_lists_telegram_discord_and_trs_cidrs() {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("tachyon_sel_trs_{uniq}"));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+
+        // Build minimal synthetic TSRS v2 file with 1 IPv4 interval (198.51.100.0/24).
+        let mut trs = vec![0u8; 104];
+        trs[0..4].copy_from_slice(b"TSRS");
+        trs[4..8].copy_from_slice(&2u32.to_le_bytes());
+        trs[52..56].copy_from_slice(&96u32.to_le_bytes()); // v4_intervals_offset
+        trs[56..60].copy_from_slice(&1u32.to_le_bytes()); // v4_count
+        let s_v4 = u32::from(std::net::Ipv4Addr::new(198, 51, 100, 0));
+        let e_v4 = u32::from(std::net::Ipv4Addr::new(198, 51, 100, 255));
+        trs[96..100].copy_from_slice(&s_v4.to_le_bytes());
+        trs[100..104].copy_from_slice(&e_v4.to_le_bytes());
+        std::fs::write(dir.join("refilter.trs"), &trs).expect("write trs");
+
+        let (v4s, _) = extract_trs_cidrs(&trs, false, 16);
+        assert_eq!(v4s, vec!["198.51.100.0/24".to_string()]);
+
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.routing_strategy = "split".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.selective_tproxy = true;
+        store.settings.rulesets_dir = dir.to_string_lossy().into_owned();
+        store.sections = vec![crate::store::RoutingSection {
+            id: "Messengers".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            community_lists: vec![
+                "telegram".to_string(),
+                "discord".to_string(),
+                "refilter".to_string(),
+            ],
+            community_subnets: true,
+            ..Default::default()
+        }];
+
+        let nft = compile_nftables_ruleset(&store);
+        assert!(nft.contains("set selective_dst_v4"));
+        assert!(nft.contains("149.154.160.0/20"));
+        assert!(nft.contains("162.159.128.0/20"));
+        assert!(nft.contains("198.51.100.0/24"));
+        assert!(nft.contains("ip daddr @selective_dst_v4 meta l4proto { tcp, udp } tproxy"));
+        assert!(nft.contains("ip daddr { 104.16.0.0/12, 162.158.0.0/15, 172.64.0.0/13 } udp dport { 443, 5000-5020, 3478, 19294-19344, 50000-65535 } tproxy"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_selective_tproxy_ports_only_and_client_scoped_udp_rules() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.routing_strategy = "split".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.selective_tproxy = true;
+        store.conditions = vec![
+            crate::store::TrafficCondition {
+                id: "cond_game".to_string(),
+                enabled: true,
+                client_ips: vec!["192.168.1.5".to_string()],
+                l4_proto: "udp".to_string(),
+                ports: vec!["3074".to_string(), "27015:27030".to_string()],
+                ..Default::default()
+            },
+            crate::store::TrafficCondition {
+                id: "cond_voice".to_string(),
+                enabled: true,
+                l4_proto: "udp".to_string(),
+                ports: vec!["19294-19344".to_string(), "50000-50100".to_string()],
+                ..Default::default()
+            },
+        ];
+        store.sections = vec![
+            crate::store::RoutingSection {
+                id: "Gaming".to_string(),
+                enabled: true,
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                condition_refs: vec!["cond_game".to_string()],
+                ..Default::default()
+            },
+            crate::store::RoutingSection {
+                id: "Voice".to_string(),
+                enabled: true,
+                action: "desync".to_string(),
+                connection_type: "desync".to_string(),
+                condition_refs: vec!["cond_voice".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let nft = compile_nftables_ruleset(&store);
+        let pre_start = nft.find("chain prerouting {").expect("prerouting");
+        let out_start = nft.find("chain mangle_output {").expect("mangle_output");
+        let pre = &nft[pre_start..out_start];
+
+        assert!(
+            !pre.contains("ip saddr { 192.168.1.5 } meta l4proto { tcp, udp }"),
+            "client IP in a port/proto-scoped condition must not intercept all TCP/UDP client traffic"
+        );
+        assert!(pre.contains(
+            "ip saddr { 192.168.1.5 } udp dport { 3074, 27015-27030 } tproxy ip to 127.0.0.1:1602"
+        ));
+        assert!(pre.contains("udp dport { 19294-19344, 50000-50100 } tproxy ip to 127.0.0.1:1602"));
     }
 }

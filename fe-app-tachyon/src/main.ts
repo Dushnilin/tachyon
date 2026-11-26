@@ -47,6 +47,14 @@ export {
   supportsVpnUrl,
   validateVpnUrl,
 } from './validators/validateVpnUrl';
+export {
+  applyAmneziaConfTextUpdate,
+  applyAmneziaFileUpload,
+  dedupeAmneziaEntries,
+  parseAmneziaEntryMeta,
+  promoteAmneziaEntryToPrimary,
+  removeAmneziaEntryAt,
+} from './helpers/amneziaConfigList';
 export { parseValueList } from './helpers/parseValueList';
 export { getProxyUrlName } from './helpers/getProxyUrlName';
 export { formatOutboundType } from './helpers/formatOutboundType';
