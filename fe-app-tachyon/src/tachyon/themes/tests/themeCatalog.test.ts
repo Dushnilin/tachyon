@@ -50,9 +50,10 @@ describe('themeCatalog', () => {
     delete (globalThis as any).document;
   });
 
-  it('defines the exact 12 built-in themes with complete normalized hex palettes and no banned third-party strings', () => {
+  it('defines the exact 13 built-in themes with complete normalized hex palettes and no banned third-party strings', () => {
     expect(BUILTIN_THEMES.map((t) => t.name)).toEqual([
       'Default Dark',
+      'Default Light',
       'Legacy Dark',
       'Catppuccin',
       'Dracula',
@@ -156,5 +157,31 @@ describe('themeCatalog', () => {
     expect(storage.get(BG_ANIMATION_STORAGE_KEY)).toBe('true');
     expect(attrs['data-tachyon-bg-animation']).toBe('true');
     expect(isBgAnimationEnabled()).toBe(true);
+  });
+
+  it('applies Default Light compatibility variables and cleans them up when switching back to dark', () => {
+    const removedProps: string[] = [];
+    (globalThis as any).document.documentElement.style.removeProperty = (
+      k: string,
+    ) => {
+      removedProps.push(k);
+      styleProps.delete(k);
+    };
+
+    storage.set('tachyon_color_scheme_v1', 'light');
+    expect(getActiveTheme().id).toBe('default-light');
+
+    setActiveTheme('default-light');
+    expect(attrs['data-tachyon-theme-scheme']).toBe('light');
+    expect(attrs['data-darkmode']).toBe('false');
+    expect(styleProps.get('--surface')).toBe('#ffffff');
+    expect(styleProps.get('--background-color-high')).toBe('#ffffff');
+    expect(styleProps.get('--text-color-high')).toBe('#0f172a');
+
+    setActiveTheme('default-dark');
+    expect(attrs['data-tachyon-theme-scheme']).toBe('dark');
+    expect(attrs['data-darkmode']).toBe('true');
+    expect(removedProps).toContain('--background-color-high');
+    expect(styleProps.has('--background-color-high')).toBe(false);
   });
 });
