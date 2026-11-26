@@ -12,7 +12,11 @@ import { runTachyonCoreCheck } from './checks/runTachyonCoreCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
 import { runNftCheck } from './checks/runNftCheck';
 import { runFakeIPCheck } from './checks/runFakeIPCheck';
-import { DIAGNOSTICS_CHECKS, DIAGNOSTICS_CHECKS_MAP } from './checks/constants';
+import {
+  DIAGNOSTICS_CHECKS,
+  DIAGNOSTICS_CHECKS_MAP,
+  getFirewallCheckTitle,
+} from './checks/constants';
 import {
   DiagnosticsProviderOptions,
   getDiagnosticsChecks,
@@ -78,6 +82,7 @@ import { formatCoreVersion } from '../../helpers/coreVersion';
 import {
   formatPlatformBadge,
   getPlatformInfo,
+  isIptablesFirewall,
 } from '../../helpers/platformInfo';
 import {
   clearPersistedDiagnosticRun,
@@ -122,13 +127,14 @@ function sleep(ms: number) {
 function getDiagnosticsProviderOptions(
   systemInfo: Pick<
     StoreType['diagnosticsSystemInfo'],
-    'server_inbounds_enabled_count'
+    'server_inbounds_enabled_count' | 'platform_info'
   > = store.get().diagnosticsSystemInfo,
 ): DiagnosticsProviderOptions {
   const activeEngine = store.get().activeEngine || 'tachyon-core';
   return {
     activeEngine,
     includeInbounds: systemInfo.server_inbounds_enabled_count > 0,
+    isIptables: isIptablesFirewall(systemInfo.platform_info),
   };
 }
 
@@ -1741,6 +1747,21 @@ function renderDiagnosticSystemInfoWidget() {
   );
   const isEntware = Boolean(platformInfo?.is_entware);
 
+  const subtitleEl = document.getElementById(
+    'tachyon_diagnostic-page-subtitle',
+  );
+  if (subtitleEl) {
+    subtitleEl.textContent = isIptablesFirewall(platformInfo)
+      ? tr(
+          'DNS · TPROXY · iptables · FakeIP · Маршруты',
+          'DNS · TPROXY · iptables · FakeIP · Outbounds',
+        )
+      : tr(
+          'DNS · TPROXY · Nftables · FakeIP · Маршруты',
+          'DNS · TPROXY · Nftables · FakeIP · Outbounds',
+        );
+  }
+
   const items: Array<IRenderSystemInfoRow> = [
     {
       key: 'Tachyon',
@@ -2065,6 +2086,10 @@ function persistDiagnosticRunProgress({
 
 function setDiagnosticCheckLoading(code: DIAGNOSTICS_CHECKS) {
   const meta = DIAGNOSTICS_CHECKS_MAP[code];
+  const title =
+    code === DIAGNOSTICS_CHECKS.NFT
+      ? getFirewallCheckTitle(isIptablesFirewall())
+      : meta.title;
   const diagnosticsChecks = store.get().diagnosticsChecks;
   const other = diagnosticsChecks.filter((item) => item.code !== code);
 
@@ -2074,7 +2099,7 @@ function setDiagnosticCheckLoading(code: DIAGNOSTICS_CHECKS) {
       {
         order: meta.order,
         code: meta.code,
-        title: meta.title,
+        title,
         description: _('Checking, please wait'),
         state: 'loading',
         items: [],

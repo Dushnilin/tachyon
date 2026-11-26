@@ -687,6 +687,7 @@ fn assemble_doctor_report_with_platform(
 ) -> DoctorReport {
     let is_entware = pctx.platform.is_entware();
     let is_iptables = pctx.firewall_kind == crate::platform::FirewallKind::Iptables;
+    let dns_probe_addr = local_dns_probe_addr_for(pctx.platform, &d.settings);
     let mut findings = Vec::new();
     let en = is_en_lang(&d.settings.lang);
     let core_bin_path = d.settings.core_bin_path.clone();
@@ -998,7 +999,11 @@ fn assemble_doctor_report_with_platform(
             id: "dns_unhealthy".to_string(),
             severity: "critical".to_string(),
             subsystem: "dns".to_string(),
-            title: "Локальный DNS-резолвер 127.0.0.42:53 не отвечает корректно".to_string(),
+            title: if en {
+                format!("Local DNS resolver {dns_probe_addr} is not responding properly")
+            } else {
+                format!("Локальный DNS-резолвер {dns_probe_addr} не отвечает корректно")
+            },
             detail: format!(
                 "UDP A-проба к FakeIP/DNS ядра завершается таймаутом или SERVFAIL (отказов подряд: {}).",
                 live.dns_fail_streak
@@ -1975,11 +1980,24 @@ fn assemble_doctor_report_with_platform(
         ),
         (
             "nftables",
-            "nftables",
-            &["nft_missing", "flow_offloading"][..],
+            if is_iptables { "iptables" } else { "nftables" },
+            if is_iptables {
+                &[
+                    "nft_missing",
+                    "entware_iptables_missing",
+                    "entware_ipset_missing",
+                    "entware_tun_missing",
+                ][..]
+            } else {
+                &["nft_missing", "flow_offloading"][..]
+            },
             "nftables",
             if live.nft_table_active {
-                "TProxy :1602".into()
+                if is_iptables && proxy_mode != "tproxy" {
+                    format!("iptables ({proxy_mode})")
+                } else {
+                    "TProxy :1602".into()
+                }
             } else {
                 proxy_mode.clone()
             },
@@ -2199,12 +2217,12 @@ fn assemble_doctor_report_with_platform(
         dns_status,
         if en {
             format!(
-                "127.0.0.42:53 · {} ms · FakeIP {fip_used}/{fip_cap} (evictions {fip_evictions})",
+                "{dns_probe_addr} · {} ms · FakeIP {fip_used}/{fip_cap} (evictions {fip_evictions})",
                 live.dns_probe_ms
             )
         } else {
             format!(
-                "127.0.0.42:53 · {} мс · FakeIP {fip_used}/{fip_cap} (вытеснений {fip_evictions})",
+                "{dns_probe_addr} · {} мс · FakeIP {fip_used}/{fip_cap} (вытеснений {fip_evictions})",
                 live.dns_probe_ms
             )
         },
@@ -2436,27 +2454,51 @@ fn assemble_doctor_report_with_platform(
             "Снять Blackbox"
         },
     ));
-    subsystems.push(make_sub(
-        if en {
-            "13. dnsmasq -> FakeIP Cascade"
-        } else {
-            "13. Каскад dnsmasq -> FakeIP"
-        },
-        if dnsmasq_cascade_ok { "ok" } else { "warn" },
-        if dnsmasq_cascade_ok {
-            "noresolv=1 · 127.0.0.42#53"
-        } else if en {
-            "dnsmasq/127.0.0.42#53 cascade issue"
-        } else {
-            "Проблема каскада dnsmasq/127.0.0.42#53"
-        },
-        "fix_dnsmasq",
-        if en {
-            "Restart dnsmasq"
-        } else {
-            "Перезапустить dnsmasq"
-        },
-    ));
+    if is_entware {
+        let entware_dns_override = d.settings.entware_dns_mode.eq_ignore_ascii_case("override");
+        let entware_dns_ok = live.nft_table_active || entware_dns_override;
+        subsystems.push(make_sub(
+            if en {
+                "13. Entware DNS Interception"
+            } else {
+                "13. Перехват DNS (Entware)"
+            },
+            if entware_dns_ok { "ok" } else { "warn" },
+            if entware_dns_override {
+                format!("override · {dns_probe_addr}")
+            } else {
+                format!("iptables TACHYON_DNS_NAT → {dns_probe_addr}")
+            },
+            "reconcile_firewall",
+            if en {
+                "Restore rules"
+            } else {
+                "Восстановить правила"
+            },
+        ));
+    } else {
+        subsystems.push(make_sub(
+            if en {
+                "13. dnsmasq -> FakeIP Cascade"
+            } else {
+                "13. Каскад dnsmasq -> FakeIP"
+            },
+            if dnsmasq_cascade_ok { "ok" } else { "warn" },
+            if dnsmasq_cascade_ok {
+                "noresolv=1 · 127.0.0.42#53"
+            } else if en {
+                "dnsmasq/127.0.0.42#53 cascade issue"
+            } else {
+                "Проблема каскада dnsmasq/127.0.0.42#53"
+            },
+            "fix_dnsmasq",
+            if en {
+                "Restart dnsmasq"
+            } else {
+                "Перезапустить dnsmasq"
+            },
+        ));
+    }
     subsystems.push(make_sub(
         if en {
             "14. System /etc/resolv.conf"
@@ -2476,57 +2518,85 @@ fn assemble_doctor_report_with_platform(
             "Починить симлинк"
         },
     ));
-    subsystems.push(make_sub(
-        if en {
-            "15. Firewall Conflicts (Flow Offloading)"
-        } else {
-            "15. Конфликты Firewall (Flow Offloading)"
-        },
-        if flow_offload_sqm_conflict || flow_offload_guard_missing {
-            "warn"
-        } else {
-            "ok"
-        },
-        if flow_offload_sqm_conflict {
+    if is_entware {
+        subsystems.push(make_sub(
             if en {
-                "Flow Offloading active with SQM"
+                "15. Firewall Rules Check"
             } else {
-                "Обнаружен Flow Offloading при включённом SQM"
-            }
-        } else if flow_offload_guard_missing {
+                "15. Проверка правил Firewall"
+            },
+            if fw_rules_missing { "warn" } else { "ok" },
+            if fw_rules_missing {
+                if en {
+                    "iptables TACHYON_* chains are inactive"
+                } else {
+                    "Цепочки iptables TACHYON_* не активны"
+                }
+            } else if en {
+                "No iptables/netfilter conflicts detected"
+            } else {
+                "Конфликтов с iptables/netfilter не обнаружено"
+            },
+            "reconcile_firewall",
             if en {
-                "Flow Offloading guard missing in fw4 include"
+                "Restore rules"
             } else {
-                "Отсутствует правило исключения трафика Tachyon для Flow Offloading"
-            }
-        } else if offload_any {
+                "Восстановить правила"
+            },
+        ));
+    } else {
+        subsystems.push(make_sub(
             if en {
-                "Flow Offloading active in compatible mode (Tachyon flows excluded from fw4)"
+                "15. Firewall Conflicts (Flow Offloading)"
             } else {
-                "Flow Offloading активен в совместимом режиме: трафик Tachyon исключён из flowtable fw4"
-            }
-        } else if en {
-            "No conflicts with netfilter/TProxy detected"
-        } else {
-            "Конфликтов с netfilter/TProxy не обнаружено"
-        },
-        if flow_offload_guard_missing {
-            "sync_flow_offload_guard"
-        } else {
-            "disable_flow_offloading"
-        },
-        if flow_offload_guard_missing {
-            if en {
-                "Install Flow Offloading guard"
+                "15. Конфликты Firewall (Flow Offloading)"
+            },
+            if flow_offload_sqm_conflict || flow_offload_guard_missing {
+                "warn"
             } else {
-                "Установить защиту Flow Offloading"
-            }
-        } else if en {
-            "Disable Flow Offloading"
-        } else {
-            "Отключить Flow Offloading"
-        },
-    ));
+                "ok"
+            },
+            if flow_offload_sqm_conflict {
+                if en {
+                    "Flow Offloading active with SQM"
+                } else {
+                    "Обнаружен Flow Offloading при включённом SQM"
+                }
+            } else if flow_offload_guard_missing {
+                if en {
+                    "Flow Offloading guard missing in fw4 include"
+                } else {
+                    "Отсутствует правило исключения трафика Tachyon для Flow Offloading"
+                }
+            } else if offload_any {
+                if en {
+                    "Flow Offloading active in compatible mode (Tachyon flows excluded from fw4)"
+                } else {
+                    "Flow Offloading активен в совместимом режиме: трафик Tachyon исключён из flowtable fw4"
+                }
+            } else if en {
+                "No conflicts with netfilter/TProxy detected"
+            } else {
+                "Конфликтов с netfilter/TProxy не обнаружено"
+            },
+            if flow_offload_guard_missing {
+                "sync_flow_offload_guard"
+            } else {
+                "disable_flow_offloading"
+            },
+            if flow_offload_guard_missing {
+                if en {
+                    "Install Flow Offloading guard"
+                } else {
+                    "Установить защиту Flow Offloading"
+                }
+            } else if en {
+                "Disable Flow Offloading"
+            } else {
+                "Отключить Flow Offloading"
+            },
+        ));
+    }
     subsystems.push(make_sub(
         "16. odhcpd IPv6 DNS",
         if odhcpd_ok { "ok" } else { "warn" },
@@ -3495,10 +3565,30 @@ pub async fn run_ai_doctor_with_core(
         .map(|s| format!("{} ({})", s.label, s.connection_type))
         .collect();
 
+    let is_iptables = crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables;
+    let fw_diag = if is_iptables {
+        format!(
+            "iptables `TACHYON_*`: {}",
+            if live.nft_table_active {
+                "активны"
+            } else {
+                "не активны"
+            }
+        )
+    } else {
+        format!(
+            "nftables `inet TachyonTable`: {}",
+            if live.nft_table_active {
+                "активна"
+            } else {
+                "не активна"
+            }
+        )
+    };
     let analysis_text = format!(
         "### Диагностическое заключение AI Doctor v3.0\n\n\
          - **Статус ядра `tachyon-core`**: {} (PID: {}, Uptime: {} с, RSS: {:.2} МБ)\n\
-         - **Режим перехвата**: `{}` (nftables `inet TachyonTable`: {})\n\
+         - **Режим перехвата**: `{}` ({})\n\
          - **Активные секции ({})**: {}\n\
          - **Активных сессий**: {} (Трафик: ↑ {} байт / ↓ {} байт)\n\
          - **Запрос**: _{}_\n\n\
@@ -3515,11 +3605,7 @@ pub async fn run_ai_doctor_with_core(
         live.core_uptime_secs,
         mem_mb,
         d.settings.proxy_mode,
-        if live.nft_table_active {
-            "активна"
-        } else {
-            "не активна"
-        },
+        fw_diag,
         active_secs.len(),
         if active_secs.is_empty() {
             "нет".to_string()
@@ -6810,26 +6896,32 @@ pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager
 
     let en = is_en_lang(&d.settings.lang);
     let tg_en = is_en_lang(&d.telegram.language);
+    let is_iptables = crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables;
     if ipv6_leaked {
         crate::tg_bot::notify_if_enabled(
             &d,
             "dns_leak",
-            if tg_en {
+            if is_iptables {
+                if tg_en {
+                    "IPv6 direct routing leak risk detected while iptables chains are inactive"
+                } else {
+                    "Обнаружен риск прямой маршрутизации IPv6 при неактивных цепочках iptables"
+                }
+            } else if tg_en {
                 "IPv6 direct routing leak risk detected while nftables table is inactive"
             } else {
                 "Обнаружен риск прямой маршрутизации IPv6 при неактивной таблице nftables"
             },
         );
     } else if live.core_running && !dns_port_open {
-        crate::tg_bot::notify_if_enabled(
-            &d,
-            "dns_leak",
-            if tg_en {
-                "Core local DNS resolver 127.0.0.42:53 is unreachable — DNS leak risk"
-            } else {
-                "Локальный DNS-резолвер ядра 127.0.0.42:53 не отвечает — возможна утечка DNS"
-            },
-        );
+        let alert_msg = if tg_en {
+            format!("Core local DNS resolver {dns_probe_addr} is unreachable — DNS leak risk")
+        } else {
+            format!(
+                "Локальный DNS-резолвер ядра {dns_probe_addr} не отвечает — возможна утечка DNS"
+            )
+        };
+        crate::tg_bot::notify_if_enabled(&d, "dns_leak", &alert_msg);
     }
 
     let verdict = if !live.core_running {
@@ -6839,7 +6931,15 @@ pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager
             "Ядро остановлено — используется системный DNS роутера".to_string()
         }
     } else if ipv6_leaked {
-        if en {
+        if is_iptables {
+            if en {
+                "IPv6 direct routing leak risk detected while iptables chains are disabled"
+                    .to_string()
+            } else {
+                "Обнаружен риск прямой маршрутизации IPv6 при отключённых цепочках iptables"
+                    .to_string()
+            }
+        } else if en {
             "IPv6 direct routing leak risk detected while nftables table is disabled".to_string()
         } else {
             "Обнаружен риск прямой маршрутизации IPv6 при отключённой таблице nftables".to_string()
@@ -7152,10 +7252,11 @@ pub(crate) fn build_dns_query_packet(domain: &str, qtype: u16) -> Option<Vec<u8>
     Some(pkt)
 }
 
-pub(crate) fn local_dns_probe_addr(
+pub(crate) fn local_dns_probe_addr_for(
+    platform: crate::platform::PlatformKind,
     settings: &crate::store::GlobalSettings,
 ) -> std::net::SocketAddr {
-    if crate::platform::detect_platform().is_entware() {
+    if platform.is_entware() {
         let port = if settings
             .entware_dns_mode
             .trim()
@@ -7171,6 +7272,12 @@ pub(crate) fn local_dns_probe_addr(
     } else {
         std::net::SocketAddr::from(([127, 0, 0, 42], 53))
     }
+}
+
+pub(crate) fn local_dns_probe_addr(
+    settings: &crate::store::GlobalSettings,
+) -> std::net::SocketAddr {
+    local_dns_probe_addr_for(crate::platform::detect_platform(), settings)
 }
 
 async fn send_dns_probe(addr: std::net::SocketAddr, qtype_low: u8) -> Option<Vec<u8>> {
@@ -8869,6 +8976,119 @@ IP address       HW type     Flags       HW address            Mask     Device
         }
         assert!(is_known_quick_fix("reconcile_firewall"));
         assert_eq!(quick_fix_risk_tier("reconcile_firewall"), "disruptive");
+
+        let fw_node = report_ok
+            .pipeline_nodes
+            .iter()
+            .find(|n| n.get("id").and_then(Value::as_str) == Some("nftables"))
+            .expect("firewall pipeline node");
+        assert_eq!(
+            fw_node.get("label").and_then(Value::as_str),
+            Some("iptables")
+        );
+
+        let subs_json = serde_json::to_string(&report_ok.subsystems).unwrap();
+        let sub_dns = report_ok
+            .subsystems
+            .iter()
+            .find(|s| {
+                s.get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|n| n.starts_with("3."))
+            })
+            .expect("subsystem 3");
+        let sub_dns_detail = sub_dns.get("detail").and_then(Value::as_str).unwrap_or("");
+        assert!(
+            sub_dns_detail.contains("127.0.0.1:1053"),
+            "expected 127.0.0.1:1053 in {sub_dns_detail}"
+        );
+        assert!(
+            !sub_dns_detail.contains("127.0.0.42:53"),
+            "unexpected 127.0.0.42:53 in {sub_dns_detail}"
+        );
+
+        let sub_13 = report_ok
+            .subsystems
+            .iter()
+            .find(|s| {
+                s.get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|n| n.starts_with("13."))
+            })
+            .expect("subsystem 13");
+        let sub_13_str = serde_json::to_string(sub_13).unwrap();
+        assert!(
+            sub_13_str.contains("TACHYON_DNS_NAT"),
+            "expected TACHYON_DNS_NAT in {sub_13_str}"
+        );
+        assert!(
+            sub_13_str.contains("127.0.0.1:1053"),
+            "expected 127.0.0.1:1053 in {sub_13_str}"
+        );
+        assert!(
+            !sub_13_str.to_lowercase().contains("dnsmasq"),
+            "unexpected dnsmasq in {sub_13_str}"
+        );
+        assert_eq!(
+            sub_13.get("fix_id").and_then(Value::as_str),
+            Some("reconcile_firewall")
+        );
+
+        let sub_15 = report_ok
+            .subsystems
+            .iter()
+            .find(|s| {
+                s.get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|n| n.starts_with("15."))
+            })
+            .expect("subsystem 15");
+        let sub_15_str = serde_json::to_string(sub_15).unwrap();
+        assert!(
+            !sub_15_str.contains("Flow Offloading"),
+            "unexpected Flow Offloading in {sub_15_str}"
+        );
+        assert_eq!(
+            sub_15.get("fix_id").and_then(Value::as_str),
+            Some("reconcile_firewall")
+        );
+        assert!(
+            !subs_json.contains("127.0.0.42:53"),
+            "unexpected 127.0.0.42:53 in {subs_json}"
+        );
+
+        let live_dns_bad = crate::store::LiveTelemetry {
+            core_running: true,
+            nft_table_active: true,
+            wan_healthy: true,
+            dns_healthy: false,
+            dns_fail_streak: 2,
+            ..Default::default()
+        };
+        let report_dns_bad = assemble_doctor_report_with_platform(
+            &state,
+            &store,
+            &live_dns_bad,
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+            "",
+            false,
+            &pctx_healthy,
+        );
+        let dns_finding = report_dns_bad
+            .findings
+            .iter()
+            .find(|f| f.id == "dns_unhealthy")
+            .expect("dns_unhealthy finding");
+        assert!(
+            dns_finding.title.contains("127.0.0.1:1053"),
+            "unexpected dns_unhealthy title: {}",
+            dns_finding.title
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

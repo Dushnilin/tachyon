@@ -9,6 +9,10 @@ export enum DIAGNOSTICS_CHECKS {
   INBOUNDS = 'INBOUNDS',
 }
 
+export function getFirewallCheckTitle(isIptables: boolean): string {
+  return getCheckTitle(isIptables ? 'iptables' : 'Nftables');
+}
+
 export const DIAGNOSTICS_CHECKS_MAP: Record<
   DIAGNOSTICS_CHECKS,
   { order: number; title: string; code: DIAGNOSTICS_CHECKS }

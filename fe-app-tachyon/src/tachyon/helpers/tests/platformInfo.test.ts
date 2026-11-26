@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatPlatformBadge,
   isEntwarePlatform,
+  isIptablesFirewall,
   isOpenWrtOnlyFixCode,
   isOpenWrtOnlyNotice,
   validateEntwareDnsPort,
@@ -69,6 +70,8 @@ describe('Entware / Keenetic platform UI guards, badges, DNS settings, and secti
   it('hides OpenWrt-only quick-fixes and notices on Entware while keeping them on OpenWrt', () => {
     expect(isEntwarePlatform(keeneticInfo)).toBe(true);
     expect(isEntwarePlatform(openwrtInfo)).toBe(false);
+    expect(isIptablesFirewall(keeneticInfo)).toBe(true);
+    expect(isIptablesFirewall(openwrtInfo)).toBe(false);
 
     expect(isOpenWrtOnlyFixCode('disable_flow_offloading', keeneticInfo)).toBe(
       true,
@@ -76,6 +79,7 @@ describe('Entware / Keenetic platform UI guards, badges, DNS settings, and secti
     expect(isOpenWrtOnlyFixCode('sync_flow_offload_guard', keeneticInfo)).toBe(
       true,
     );
+    expect(isOpenWrtOnlyFixCode('fix_dnsmasq', keeneticInfo)).toBe(true);
     expect(isOpenWrtOnlyFixCode('restart_network', keeneticInfo)).toBe(false);
     expect(isOpenWrtOnlyFixCode('disable_flow_offloading', openwrtInfo)).toBe(
       false,

@@ -1,4 +1,8 @@
-import { DIAGNOSTICS_CHECKS, DIAGNOSTICS_CHECKS_MAP } from './checks/constants';
+import {
+  DIAGNOSTICS_CHECKS,
+  DIAGNOSTICS_CHECKS_MAP,
+  getFirewallCheckTitle,
+} from './checks/constants';
 import { IDiagnosticsChecksStoreItem, StoreType } from '../../services';
 
 export type ActiveEngine = 'tachyon-core';
@@ -13,17 +17,23 @@ export function getEngineCheckCode(
 export interface DiagnosticsProviderOptions {
   activeEngine?: string;
   includeInbounds?: boolean;
+  isIptables?: boolean;
 }
 
 function createDiagnosticCheck(
   code: DIAGNOSTICS_CHECKS,
   description: string,
+  options: DiagnosticsProviderOptions = {},
 ): IDiagnosticsChecksStoreItem {
   const meta = DIAGNOSTICS_CHECKS_MAP[code];
+  const title =
+    code === DIAGNOSTICS_CHECKS.NFT
+      ? getFirewallCheckTitle(Boolean(options.isIptables))
+      : meta.title;
 
   return {
     code,
-    title: meta.title,
+    title,
     order: meta.order,
     description,
     items: [],
@@ -48,7 +58,9 @@ export function getDiagnosticsChecks(
     DIAGNOSTICS_CHECKS.FAKEIP,
   );
 
-  return checks.map((code) => createDiagnosticCheck(code, description));
+  return checks.map((code) =>
+    createDiagnosticCheck(code, description, options),
+  );
 }
 
 export function getLoadingDiagnosticsChecks(

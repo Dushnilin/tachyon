@@ -1,11 +1,14 @@
-import { DIAGNOSTICS_CHECKS_MAP } from './constants';
+import { DIAGNOSTICS_CHECKS_MAP, getFirewallCheckTitle } from './constants';
 import { RemoteFakeIPMethods, TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
 import { tr } from '../../../helpers/i18n';
+import { isIptablesFirewall } from '../../../helpers/platformInfo';
 
 export async function runNftCheck() {
-  const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.NFT;
+  const initialIsIptables = isIptablesFirewall();
+  const { order, code } = DIAGNOSTICS_CHECKS_MAP.NFT;
+  let title = getFirewallCheckTitle(initialIsIptables);
 
   updateCheckStore({
     order,
@@ -31,7 +34,7 @@ export async function runNftCheck() {
       items: [],
     });
 
-    throw new Error('Nftables checks failed');
+    throw new Error(`${title} failed`);
   }
 
   const data = nftablesChecks.data;
@@ -44,8 +47,13 @@ export async function runNftCheck() {
       state: 'error',
       items: [],
     });
-    throw new Error('Nftables checks returned invalid data');
+    throw new Error(`${title} returned invalid data`);
   }
+
+  const isIptables =
+    initialIsIptables ||
+    Boolean(data.table_name?.toLowerCase().includes('iptables'));
+  title = getFirewallCheckTitle(isIptables);
 
   if ((data as { not_applicable?: number }).not_applicable) {
     updateCheckStore({
@@ -90,12 +98,18 @@ export async function runNftCheck() {
     items: [
       {
         state: data.table_exist ? 'success' : 'error',
-        key: _('Table exist'),
+        key: isIptables
+          ? tr('Цепочки iptables', 'iptables chains')
+          : _('Table exist'),
         value:
           data.table_name ||
           (data.table_exist
-            ? 'inet TachyonTable'
-            : tr('Отсутствует', 'Missing')),
+            ? isIptables
+              ? 'iptables (TACHYON_*)'
+              : 'inet TachyonTable'
+            : isIptables
+              ? tr('Отсутствуют', 'Missing')
+              : tr('Отсутствует', 'Missing')),
       },
       {
         state: data.rules_mangle_exist ? 'success' : 'error',
@@ -170,6 +184,6 @@ export async function runNftCheck() {
   });
 
   if (!atLeastOneGood) {
-    throw new Error('Nftables checks failed');
+    throw new Error(`${title} failed`);
   }
 }

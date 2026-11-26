@@ -34,4 +34,20 @@ describe('diagnostic store checks', () => {
       DIAGNOSTICS_CHECKS.INBOUNDS,
     );
   });
+
+  it('uses iptables check title when firewall is iptables and Nftables by default', () => {
+    const nftChecks = getDiagnosticsChecks('Pending', { isIptables: false });
+    const iptablesChecks = getDiagnosticsChecks('Pending', {
+      isIptables: true,
+    });
+
+    const nftItem = nftChecks.find((c) => c.code === DIAGNOSTICS_CHECKS.NFT);
+    const iptablesItem = iptablesChecks.find(
+      (c) => c.code === DIAGNOSTICS_CHECKS.NFT,
+    );
+
+    expect(nftItem?.title).toContain('Nftables');
+    expect(iptablesItem?.title).toContain('iptables');
+    expect(iptablesItem?.title).not.toContain('Nftables');
+  });
 });

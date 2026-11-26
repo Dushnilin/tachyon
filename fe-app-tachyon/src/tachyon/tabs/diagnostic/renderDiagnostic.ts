@@ -35,7 +35,10 @@ export function render() {
                 ),
                 E(
                   'span',
-                  { class: 'tachyon_diagnostic-page__left-bar__subtitle' },
+                  {
+                    id: 'tachyon_diagnostic-page-subtitle',
+                    class: 'tachyon_diagnostic-page__left-bar__subtitle',
+                  },
                   tr(
                     'DNS · TPROXY · Nftables · FakeIP · Маршруты',
                     'DNS · TPROXY · Nftables · FakeIP · Outbounds',

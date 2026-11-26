@@ -65,7 +65,7 @@ describe('themeCatalog', () => {
       'Tokyo Night',
       'Solarized Dark',
       'Vesper',
-      'Material Light',
+      'Everforest Light',
       'Apple Light',
       'Gruvbox Light',
     ]);
@@ -188,7 +188,7 @@ describe('themeCatalog', () => {
     expect(styleProps.has('--background-color-high')).toBe(false);
 
     for (const [id, bg, surface] of [
-      ['material-light', '#f1f3f6', '#ffffff'],
+      ['everforest-light', '#edf2ec', '#f8fbf7'],
       ['apple-light', '#f5f5f7', '#ffffff'],
       ['gruvbox-light', '#f2e5bc', '#fbf1c7'],
     ]) {

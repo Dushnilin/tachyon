@@ -17,7 +17,10 @@ import {
 import { showToast } from '../../../../helpers/showToast';
 import { TachyonShellMethods } from '../../../methods';
 import { logger } from '../../../services';
-import { isOpenWrtOnlyFixCode } from '../../../helpers/platformInfo';
+import {
+  isIptablesFirewall,
+  isOpenWrtOnlyFixCode,
+} from '../../../helpers/platformInfo';
 import { Tachyon } from '../../../types';
 
 export interface AiDoctorHistoryEntry {
@@ -66,6 +69,7 @@ export const FIX_LABELS: Record<string, string> = {
   heal_network_stack: _('Auto-heal network stack'),
   rebuild_rules: _('Rebuild firewall rules'),
   reconcile_nftables: _('Reconcile nftables rules'),
+  reconcile_firewall: _('Reconcile firewall rules'),
   reset_firewall: _('Restart firewall'),
   flush_nftables: _('Flush nftables rules'),
   fix_dnsmasq: _('Restart dnsmasq'),
@@ -199,9 +203,10 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
           : ('OK' as const),
     },
     {
-      name: 'nftables',
+      name: isIptablesFirewall() ? 'iptables' : 'nftables',
       status:
         (repLower.includes('nftables') ||
+          repLower.includes('iptables') ||
           repLower.includes('правила файрвола') ||
           repLower.includes('firewall rules')) &&
         (repLower.includes('нарушены') ||

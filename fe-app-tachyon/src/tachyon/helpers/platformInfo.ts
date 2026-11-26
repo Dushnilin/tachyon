@@ -11,6 +11,7 @@ export interface PlatformBadgeInfo {
 export const OPENWRT_ONLY_FIX_CODES = new Set([
   'disable_flow_offloading',
   'sync_flow_offload_guard',
+  'fix_dnsmasq',
 ]);
 
 export function getPlatformInfo(
@@ -29,6 +30,13 @@ export function isEntwarePlatform(
   explicit?: Tachyon.PlatformInfo | null,
 ): boolean {
   return Boolean(getPlatformInfo(explicit)?.is_entware);
+}
+
+export function isIptablesFirewall(
+  explicit?: Tachyon.PlatformInfo | null,
+): boolean {
+  const info = getPlatformInfo(explicit);
+  return info?.firewall === 'iptables' || Boolean(info?.is_entware);
 }
 
 export function isOpenWrtOnlyFixCode(
