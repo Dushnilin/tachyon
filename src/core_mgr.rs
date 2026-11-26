@@ -2654,6 +2654,15 @@ impl CoreManager {
             if sec.enabled && !sec.active_selected_tag.trim().is_empty() {
                 sel_map.insert(format!("sel-{}", sec.id), sec.active_selected_tag.clone());
                 sel_map.insert(sec.id.clone(), sec.active_selected_tag.clone());
+                for bal_ref in &sec.balancer_refs {
+                    let b = bal_ref.trim();
+                    if !b.is_empty() {
+                        sel_map.insert(
+                            format!("bal-{}-{}", sec.id, b),
+                            sec.active_selected_tag.clone(),
+                        );
+                    }
+                }
             }
         }
         if sel_map.is_empty() {
@@ -2686,13 +2695,20 @@ impl CoreManager {
                         .any(|cand| cand == chosen);
                     if !in_pool {
                         let wanted_canon = config_gen::strip_dynamic_server_telemetry(&chosen);
-                        let telemetry_match = (!wanted_canon.is_empty()).then(|| {
-                            all_arr.iter().filter_map(Value::as_str).find(|cand| {
-                                config_gen::strip_dynamic_server_telemetry(cand)
-                                    .eq_ignore_ascii_case(&wanted_canon)
+                        let telemetry_match = (!wanted_canon.is_empty())
+                            .then(|| {
+                                all_arr.iter().filter_map(Value::as_str).find(|cand| {
+                                    config_gen::strip_dynamic_server_telemetry(cand)
+                                        .eq_ignore_ascii_case(&wanted_canon)
+                                })
                             })
-                        });
-                        if let Some(Some(matched)) = telemetry_match {
+                            .flatten()
+                            .or_else(|| {
+                                all_arr.iter().filter_map(Value::as_str).find(|cand| {
+                                    config_gen::server_filter_name_matches(cand, &chosen, &[])
+                                })
+                            });
+                        if let Some(matched) = telemetry_match {
                             chosen = matched.to_string();
                             pruned_dirty = true;
                         } else {
@@ -5059,22 +5075,37 @@ impl CoreManager {
             Self::clash_selector_candidates(section_id, &balancer_refs, proxies_resp.as_ref());
 
         let payload = json!({ "name": node_tag }).to_string();
-        let mut saved_key = None;
+        let proxies_map = proxies_resp
+            .as_ref()
+            .and_then(|v| v.get("proxies"))
+            .and_then(Value::as_object);
+        let mut updated_any = false;
         for selector_name in &selector_names {
+            if let Some(map) = proxies_map
+                && let Some(all_arr) = map
+                    .get(selector_name)
+                    .and_then(|entry| entry.get("all"))
+                    .and_then(Value::as_array)
+                && !all_arr
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|cand| cand == node_tag)
+            {
+                continue;
+            }
             let encoded = crate::store::url_encode_component(selector_name);
             if self
                 .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&payload))
                 .await
                 .is_ok()
             {
-                saved_key = Some(selector_name.clone());
-                break;
+                Self::save_selector_choice(selector_name, node_tag);
+                updated_any = true;
             }
         }
-        Self::save_selector_choice(
-            saved_key.as_deref().unwrap_or(&format!("sel-{section_id}")),
-            node_tag,
-        );
+        if !updated_any {
+            Self::save_selector_choice(&format!("sel-{section_id}"), node_tag);
+        }
         Ok(())
     }
 }
@@ -9245,6 +9276,21 @@ mod core_mgr_tests {
                 "Main".to_string(),
                 "Main-out".to_string(),
             ]
+        );
+
+        let proxies_with_sel_bal = json!({
+            "proxies": {
+                "sel-Main": { "type": "Selector", "all": ["bal-Main-sel", "NodeA", "NodeB"] },
+                "bal-Main-sel": { "type": "Selector", "all": ["NodeA", "NodeB"] }
+            }
+        });
+        assert_eq!(
+            CoreManager::clash_selector_candidates(
+                "Main",
+                &["sel".to_string()],
+                Some(&proxies_with_sel_bal)
+            ),
+            vec!["sel-Main".to_string(), "bal-Main-sel".to_string()]
         );
     }
 }

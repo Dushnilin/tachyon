@@ -32,6 +32,8 @@ static PURE_UCI_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 static JSON_SECTIONS_STORE: OnceLock<RwLock<Map<String, Value>>> = OnceLock::new();
 static LAST_UCI_MTIME_NS: PortableAtomicU64 = PortableAtomicU64::new(0);
 static DAEMON_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PENDING_CORE_RELOAD: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 static JOB_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
 
 pub fn mark_daemon_mode() {
@@ -1596,7 +1598,7 @@ pub async fn handle_ubus_post(
             }
             Value::Array(out)
         }
-        single => handle_single_ubus_rpc(&single, state, core).await,
+        single => Box::pin(handle_single_ubus_rpc(&single, state, core)).await,
     }
 }
 
@@ -12810,6 +12812,7 @@ pub async fn handle_uci_http_action(
                 })
             };
             drop(guard);
+            PENDING_CORE_RELOAD.store(false, std::sync::atomic::Ordering::Release);
             if !core.is_manually_stopped() {
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(25),
@@ -13189,6 +13192,28 @@ async fn sync_uci_to_rust_store_inner(
                 .is_some_and(|(cur, next)| cur == &next);
             drop(current_val);
             if unchanged {
+                if trigger_reload
+                    && PENDING_CORE_RELOAD.swap(false, std::sync::atomic::Ordering::AcqRel)
+                    && !core.is_manually_stopped()
+                {
+                    let has_empty_sub = candidate.outbound_sources.iter().any(|s| {
+                        s.enabled
+                            && s.source_type == "subscription"
+                            && !s.subscription_urls.is_empty()
+                            && s.cached_nodes.is_empty()
+                    });
+                    let core_clone = Arc::clone(core);
+                    tokio::spawn(async move {
+                        if !core_clone.is_manually_stopped()
+                            && let Err(e) = core_clone.apply_or_reload().await
+                        {
+                            eprintln!("[tachyon] apply_or_reload after uci sync failed: {e:#}");
+                        }
+                        if has_empty_sub && !core_clone.is_manually_stopped() {
+                            let _ = core_clone.refresh_all_subscriptions().await;
+                        }
+                    });
+                }
                 return Ok(());
             }
             let tg_changed = candidate.telegram != old_telegram;
@@ -13217,18 +13242,23 @@ async fn sync_uci_to_rust_store_inner(
                 crate::tg_bot::set_runtime_override(None);
                 crate::tg_bot::notify_bot_wakeup();
             }
-            if trigger_reload && !core.is_manually_stopped() {
-                let core_clone = Arc::clone(core);
-                tokio::spawn(async move {
-                    if !core_clone.is_manually_stopped()
-                        && let Err(e) = core_clone.apply_or_reload().await
-                    {
-                        eprintln!("[tachyon] apply_or_reload after uci sync failed: {e:#}");
-                    }
-                    if has_empty_sub && !core_clone.is_manually_stopped() {
-                        let _ = core_clone.refresh_all_subscriptions().await;
-                    }
-                });
+            if trigger_reload {
+                PENDING_CORE_RELOAD.store(false, std::sync::atomic::Ordering::Release);
+                if !core.is_manually_stopped() {
+                    let core_clone = Arc::clone(core);
+                    tokio::spawn(async move {
+                        if !core_clone.is_manually_stopped()
+                            && let Err(e) = core_clone.apply_or_reload().await
+                        {
+                            eprintln!("[tachyon] apply_or_reload after uci sync failed: {e:#}");
+                        }
+                        if has_empty_sub && !core_clone.is_manually_stopped() {
+                            let _ = core_clone.refresh_all_subscriptions().await;
+                        }
+                    });
+                }
+            } else {
+                PENDING_CORE_RELOAD.store(true, std::sync::atomic::Ordering::Release);
             }
         }
         Ok(())
@@ -17505,6 +17535,7 @@ tls=TLSv1.3
 
     #[tokio::test]
     async fn virtual_sub_cache_and_sources_json_work_without_flash_writes() {
+        let _test_uci_guard = test_uci_snapshot_lock().lock().await;
         let dir =
             std::env::temp_dir().join(format!("tachyon_virtual_sub_cache_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -17739,7 +17770,8 @@ tls=TLSv1.3
 
     #[tokio::test]
     async fn ubus_batch_uci_set_coalesces_sync_and_skips_noop_transactions() {
-        let _test_uci_guard = test_uci_snapshot_lock().lock().await;
+        Box::pin(async move {
+            let _test_uci_guard = test_uci_snapshot_lock().lock().await;
         let dir =
             std::env::temp_dir().join(format!("tachyon_ubus_batch_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -17755,6 +17787,7 @@ tls=TLSv1.3
         sync_uci_to_rust_store_inner(&state, &core, false, false)
             .await
             .expect("initial uci baseline sync");
+        PENDING_CORE_RELOAD.store(false, std::sync::atomic::Ordering::Release);
         state.live.write().await.events.clear();
 
         // 1. No-op uci.set batch setting values equal to existing store must commit 0 transactions.
@@ -17789,6 +17822,10 @@ tls=TLSv1.3
         .unwrap();
         let noop_resp = handle_ubus_post(&noop_batch, &state, &core).await;
         assert!(noop_resp.as_array().is_some_and(|a| a.len() == 2));
+        assert!(
+            !PENDING_CORE_RELOAD.load(std::sync::atomic::Ordering::Acquire),
+            "no-op uci.set batch must not mark a pending core reload"
+        );
         let noop_tx_count = {
             let live = state.live.read().await;
             live.events
@@ -17860,7 +17897,36 @@ tls=TLSv1.3
             assert_eq!(d.settings.update_interval, "12h");
             assert!(d.guest_mode.enabled);
         }
+        assert!(
+            PENDING_CORE_RELOAD.load(std::sync::atomic::Ordering::Acquire),
+            "real uci.set batch with trigger_reload=false must mark a pending core reload"
+        );
+
+        // 3. Follow-up apply (trigger_reload=true) on unchanged store consumes PENDING_CORE_RELOAD
+        // without committing an extra transaction.
+        Box::pin(async {
+            let _ = Box::pin(core.stop()).await;
+            Box::pin(sync_uci_to_rust_store_inner(&state, &core, true, false))
+                .await
+                .expect("follow-up apply sync");
+        })
+        .await;
+        assert!(
+            !PENDING_CORE_RELOAD.load(std::sync::atomic::Ordering::Acquire),
+            "trigger_reload=true must consume PENDING_CORE_RELOAD even when store is unchanged"
+        );
+        let after_apply_tx_count = {
+            let live = state.live.read().await;
+            live.events
+                .iter()
+                .filter(|e| e.subsystem == "transaction")
+                .count()
+        };
+        assert_eq!(after_apply_tx_count, 1);
+        let _ = std::fs::remove_file(core.manual_stop_marker_path());
 
         let _ = std::fs::remove_dir_all(&dir);
+        })
+        .await;
     }
 }

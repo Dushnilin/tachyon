@@ -16143,6 +16143,16 @@ function createSectionContent(section) {
     _('Priority Failover (2nd activates only after 1st fails)'),
   );
   o.value('default', _('Manual Selector on Dashboard'));
+  o.cfgvalue = function (sectionId) {
+    const raw = String(
+      uci.get(UCI_PACKAGE, sectionId, 'section_selection_mode') || 'auto',
+    )
+      .trim()
+      .toLowerCase();
+    if (raw === 'manual') return 'default';
+    if (raw === 'failover' || raw === 'priority') return 'priority_failover';
+    return raw || 'auto';
+  };
   ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
     (act) => o.depends('action', act),
   );

@@ -1439,6 +1439,39 @@ function summarizeOutboundSource(sectionId) {
     const detail = srv ? `: ${srv}` : uri ? ' (URI)' : '';
     return `WDTT${detail}${prefixTag}`;
   }
+  if (stype === 'masque') {
+    const srv =
+      uci.get(UCI_PACKAGE, sectionId, 'server') ||
+      uci.get(UCI_PACKAGE, sectionId, 'masque_server') ||
+      '';
+    const port =
+      uci.get(UCI_PACKAGE, sectionId, 'server_port') ||
+      uci.get(UCI_PACKAGE, sectionId, 'masque_server_port') ||
+      uci.get(UCI_PACKAGE, sectionId, 'masque_port') ||
+      '';
+    const sni = String(
+      uci.get(UCI_PACKAGE, sectionId, 'masque_sni') ||
+        uci.get(UCI_PACKAGE, sectionId, 'tls_sni') ||
+        uci.get(UCI_PACKAGE, sectionId, 'sni') ||
+        '',
+    ).trim();
+    const vhttp = String(
+      uci.get(UCI_PACKAGE, sectionId, 'masque_vhttp_mode') ||
+        uci.get(UCI_PACKAGE, sectionId, 'masque_vhttp') ||
+        'auto',
+    ).trim();
+    const ip4 = String(
+      uci.get(UCI_PACKAGE, sectionId, 'masque_local_address') || '',
+    ).trim();
+    const ip6 = String(
+      uci.get(UCI_PACKAGE, sectionId, 'masque_ipv6') || '',
+    ).trim();
+    const addr = srv ? `${srv}${port ? ':' + port : ''}` : _('Not set');
+    const parts = [addr, `tls: ${sni || '—'}`, `vhttp: ${vhttp || 'auto'}`];
+    if (ip4) parts.push(`ip: ${ip4}`);
+    if (ip6) parts.push(`ipv6: ${ip6}`);
+    return `MASQUE (${parts.join(' · ')})${prefixTag}`;
+  }
   const srv =
     uci.get(UCI_PACKAGE, sectionId, 'server') ||
     uci.get(UCI_PACKAGE, sectionId, `${stype}_server`) ||
@@ -6451,6 +6484,7 @@ function createOutboundsContent(section) {
             cfg.sni || (cfg.tls && cfg.tls.server_name) || '',
           ).trim();
           if (sniVal) {
+            setModalFieldValue(section, sectionId, 'masque_sni', sniVal);
             setModalFieldValue(section, sectionId, 'sni', sniVal);
           }
           setModalFieldValue(
@@ -6574,6 +6608,16 @@ function createOutboundsContent(section) {
   o = section.taboption('general', form.Value, 'masque_mtu', _('MASQUE MTU'));
   o.modalonly = true;
   o.placeholder = '1280';
+  o.depends('source_type', 'masque');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'masque_sni',
+    _('MASQUE TLS SNI'),
+  );
+  o.modalonly = true;
+  o.placeholder = 'www.apple.com';
   o.depends('source_type', 'masque');
 
   // OpenConnect extras

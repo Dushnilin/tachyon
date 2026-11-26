@@ -6945,7 +6945,9 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                     {
                         obj.insert("vhttp".into(), json!(vhttp));
                     }
-                    let explicit_sni = if !src.tls_sni.trim().is_empty() {
+                    let explicit_sni = if !src.masque_sni.trim().is_empty() {
+                        src.masque_sni.trim()
+                    } else if !src.tls_sni.trim().is_empty() {
                         src.tls_sni.trim()
                     } else {
                         src.sni.trim()
@@ -19358,6 +19360,9 @@ fn resolve_section_outbound(
     };
 
     let mut built_tags_by_id: HashMap<&str, String> = HashMap::new();
+    let mut balancer_member_tags: Vec<String> = Vec::new();
+    let active_sel = sec.active_selected_tag.trim();
+    let active_sel_opt = (!active_sel.is_empty()).then_some(active_sel);
     for pass_priority in [false, true] {
         for &bal in &active_balancers {
             if is_bal_priority(bal) != pass_priority {
@@ -19452,11 +19457,17 @@ fn resolve_section_outbound(
                         }
                     }
                 }
+                for m in &final_candidates {
+                    if !balancer_member_tags.iter().any(|existing| existing == m) {
+                        balancer_member_tags.push(m.clone());
+                    }
+                }
                 outbounds.push(build_balancer_outbound(
                     &bal_tag,
                     &bal_clone,
                     final_candidates,
                     &priority_tiers,
+                    active_sel_opt,
                 ));
             }
         }
@@ -19471,32 +19482,51 @@ fn resolve_section_outbound(
         }
         built_bal_tags.push(bal_tag);
     }
+    let sel_mode = sec.section_selection_mode.trim().to_ascii_lowercase();
+    let is_manual_mode = matches!(sel_mode.as_str(), "manual" | "default");
+    let is_priority_failover = !is_manual_mode
+        && matches!(
+            sel_mode.as_str(),
+            "priority_failover" | "priority" | "failover"
+        );
+    if built_bal_tags.is_empty() && candidate_tags.len() > 1 && is_priority_failover {
+        let auto_bal_tag = format!("bal-{}-auto-failover", sec.id);
+        if !seen_outbound_tags.contains_key(&auto_bal_tag) {
+            seen_outbound_tags.insert(auto_bal_tag.clone(), true);
+            let health_url = if sec.section_health_url.trim().is_empty() {
+                "https://www.gstatic.com/generate_204"
+            } else {
+                sec.section_health_url.trim()
+            };
+            outbounds.push(json!({
+                "type": "urltest",
+                "tag": auto_bal_tag,
+                "outbounds": candidate_tags,
+                "mode": "priority",
+                "url": health_url,
+                "interval": "60s",
+                "tolerance": 150,
+                "interrupt_exist_connections": false,
+                "idle_timeout": "30m"
+            }));
+        }
+        priority_bal_tag = Some(auto_bal_tag.clone());
+        built_bal_tags.push(auto_bal_tag);
+    }
     if !built_bal_tags.is_empty() {
         let sel_tag = format!("sel-{}", sec.id);
         if !seen_outbound_tags.contains_key(&sel_tag) {
             seen_outbound_tags.insert(sel_tag.clone(), true);
-            let sel_mode = sec.section_selection_mode.trim().to_ascii_lowercase();
-            let is_priority_failover = matches!(
-                sel_mode.as_str(),
-                "priority_failover" | "priority" | "failover"
-            );
             let mut sel_outbounds = built_bal_tags.clone();
-            for t in &candidate_tags {
+            for t in candidate_tags.iter().chain(balancer_member_tags.iter()) {
                 if !sel_outbounds.iter().any(|existing| existing == t) {
                     sel_outbounds.push(t.clone());
                 }
             }
-            let active_sel = sec.active_selected_tag.trim();
             let default_bal = if !active_sel.is_empty()
-                && let Some(matched) = sel_outbounds.iter().find(|t| t.as_str() == active_sel)
+                && let Some(matched) = find_matching_outbound_tag(&sel_outbounds, active_sel)
             {
-                matched.clone()
-            } else if !active_sel.is_empty()
-                && let Some(matched) = sel_outbounds
-                    .iter()
-                    .find(|t| server_filter_name_matches(t, active_sel, &[]))
-            {
-                matched.clone()
+                matched
             } else if is_priority_failover && let Some(prio_tag) = priority_bal_tag {
                 prio_tag
             } else {
@@ -19520,17 +19550,10 @@ fn resolve_section_outbound(
     let sel_tag = format!("sel-{}", sec.id);
     if !seen_outbound_tags.contains_key(&sel_tag) {
         seen_outbound_tags.insert(sel_tag.clone(), true);
-        let default_tag = if !sec.active_selected_tag.trim().is_empty() {
-            candidate_tags
-                .iter()
-                .find(|t| **t == sec.active_selected_tag)
-                .or_else(|| {
-                    candidate_tags
-                        .iter()
-                        .find(|t| server_filter_name_matches(t, &sec.active_selected_tag, &[]))
-                })
-                .cloned()
-                .unwrap_or_else(|| candidate_tags[0].clone())
+        let default_tag = if !active_sel.is_empty()
+            && let Some(matched) = find_matching_outbound_tag(&candidate_tags, active_sel)
+        {
+            matched
         } else {
             candidate_tags[0].clone()
         };
@@ -19579,11 +19602,37 @@ fn normalize_sticky_hash(raw: &str) -> Vec<&'static str> {
     }
 }
 
+fn find_matching_outbound_tag(candidates: &[String], wanted: &str) -> Option<String> {
+    let w = wanted.trim();
+    if w.is_empty() {
+        return None;
+    }
+    if let Some(exact) = candidates.iter().find(|t| t.as_str() == w) {
+        return Some(exact.clone());
+    }
+    if let Some(matched) = candidates
+        .iter()
+        .find(|t| server_filter_name_matches(t, w, &[]))
+    {
+        return Some(matched.clone());
+    }
+    let canon = strip_dynamic_server_telemetry(w);
+    if !canon.is_empty()
+        && let Some(matched) = candidates
+            .iter()
+            .find(|t| strip_dynamic_server_telemetry(t).eq_ignore_ascii_case(&canon))
+    {
+        return Some(matched.clone());
+    }
+    None
+}
+
 fn build_balancer_outbound(
     bal_tag: &str,
     bal: &BalancerConfig,
     mut tags: Vec<String>,
     priority_tiers: &[Vec<String>],
+    default_tag: Option<&str>,
 ) -> Value {
     let fb = bal.fallback_section.trim();
     let mut tiers = priority_tiers.to_vec();
@@ -19594,12 +19643,18 @@ fn build_balancer_outbound(
         }
     }
     if bal.balancer_type.eq_ignore_ascii_case("selector") {
-        return json!({
-            "type": "selector",
-            "tag": bal_tag,
-            "outbounds": tags,
-            "interrupt_exist_connections": bal.interrupt_exist_connections
-        });
+        let mut obj = Map::new();
+        obj.insert("type".into(), json!("selector"));
+        obj.insert("tag".into(), json!(bal_tag));
+        if let Some(def) = default_tag.and_then(|d| find_matching_outbound_tag(&tags, d)) {
+            obj.insert("default".into(), json!(def));
+        }
+        obj.insert("outbounds".into(), json!(tags));
+        obj.insert(
+            "interrupt_exist_connections".into(),
+            json!(bal.interrupt_exist_connections),
+        );
+        return Value::Object(obj);
     }
     let raw_mode = if bal.balancer_type.trim().eq_ignore_ascii_case("priority") {
         "priority".to_string()
@@ -32082,5 +32137,133 @@ proxies:
         assert!(default_ob.get("fooling").is_none());
         assert!(default_ob.get("split_pos").is_none());
         assert!(default_ob.get("fake_sni").is_none());
+    }
+
+    #[test]
+    fn test_masque_sni_precedence_issue_519() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(OutboundSource {
+            id: "src_mq_1".to_string(),
+            enabled: true,
+            name: "WarpMasque".to_string(),
+            source_type: "masque".to_string(),
+            server: "162.159.198.1".to_string(),
+            server_port: 8443,
+            masque_profile: "cloudflare".to_string(),
+            masque_private_key: "PRIV_KEY".to_string(),
+            masque_public_key: "PUB_KEY".to_string(),
+            masque_local_address: "172.16.0.2/32".to_string(),
+            masque_vhttp: true,
+            masque_vhttp_mode: "auto".to_string(),
+            masque_sni: "www.apple.com".to_string(),
+            sni: "fallback.example".to_string(),
+            ..Default::default()
+        });
+        store.outbound_sources.push(OutboundSource {
+            id: "src_mq_2".to_string(),
+            enabled: true,
+            name: "WarpMasqueFallback".to_string(),
+            source_type: "masque".to_string(),
+            server: "162.159.198.2".to_string(),
+            server_port: 8443,
+            masque_profile: "cloudflare".to_string(),
+            masque_private_key: "PRIV_KEY_2".to_string(),
+            sni: "fallback.example".to_string(),
+            ..Default::default()
+        });
+        let cfg = compile_core_config(&store).expect("compile masque config");
+        let obs = cfg["outbounds"].as_array().expect("outbounds");
+        let mq1 = obs
+            .iter()
+            .find(|o| o["type"] == "masque" && o["server"] == "162.159.198.1")
+            .expect("mq1");
+        assert_eq!(mq1["tls"]["enabled"], true);
+        assert_eq!(mq1["tls"]["server_name"], "www.apple.com");
+
+        let mq2 = obs
+            .iter()
+            .find(|o| o["type"] == "masque" && o["server"] == "162.159.198.2")
+            .expect("mq2");
+        assert_eq!(mq2["tls"]["enabled"], true);
+        assert_eq!(mq2["tls"]["server_name"], "fallback.example");
+    }
+
+    #[test]
+    fn test_section_selection_mode_manual_and_failover_issue_517() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(OutboundSource {
+            id: "src_links".to_string(),
+            enabled: true,
+            name: "Links".to_string(),
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@1.1.1.1:443?encryption=none#NodeA"
+                    .to_string(),
+                "vless://22222222-2222-4222-8222-222222222222@2.2.2.2:443?encryption=none#NodeB"
+                    .to_string(),
+            ],
+            ..Default::default()
+        });
+        store.balancers.push(BalancerConfig {
+            id: "bal_sel".to_string(),
+            enabled: true,
+            name: "ManualSel".to_string(),
+            balancer_type: "selector".to_string(),
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec_manual".to_string(),
+            enabled: true,
+            label: "Manual".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            section_selection_mode: "manual".to_string(),
+            active_selected_tag: "NodeB".to_string(),
+            outbound_source_refs: vec!["src_links".to_string()],
+            balancer_refs: vec!["bal_sel".to_string()],
+            user_domains: vec!["manual.example".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec_failover".to_string(),
+            enabled: true,
+            label: "Failover".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            section_selection_mode: "failover".to_string(),
+            section_health_url: "https://cp.cloudflare.com/generate_204".to_string(),
+            outbound_source_refs: vec!["src_links".to_string()],
+            user_domains: vec!["failover.example".to_string()],
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config(&store).expect("compile selection modes");
+        let obs = cfg["outbounds"].as_array().expect("outbounds");
+
+        let sel_manual = obs
+            .iter()
+            .find(|o| o["tag"] == "sel-sec_manual")
+            .expect("sel-sec_manual");
+        assert_eq!(sel_manual["default"], "NodeB");
+        let bal_manual = obs
+            .iter()
+            .find(|o| o["tag"] == "bal-sec_manual-bal_sel")
+            .expect("bal-sec_manual-bal_sel");
+        assert_eq!(bal_manual["type"], "selector");
+        assert_eq!(bal_manual["default"], "NodeB");
+
+        let auto_fo = obs
+            .iter()
+            .find(|o| o["tag"] == "bal-sec_failover-auto-failover")
+            .expect("auto failover balancer");
+        assert_eq!(auto_fo["type"], "urltest");
+        assert_eq!(auto_fo["mode"], "priority");
+        assert_eq!(auto_fo["url"], "https://cp.cloudflare.com/generate_204");
+
+        let sel_fo = obs
+            .iter()
+            .find(|o| o["tag"] == "sel-sec_failover")
+            .expect("sel-sec_failover");
+        assert_eq!(sel_fo["default"], "bal-sec_failover-auto-failover");
     }
 }

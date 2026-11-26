@@ -2612,6 +2612,8 @@ pub struct OutboundSource {
     pub masque_uri: String,
     #[serde(default)]
     pub masque_mtu: u16,
+    #[serde(default)]
+    pub masque_sni: String,
 
     /// OpenConnect
     #[serde(default)]
@@ -6502,6 +6504,7 @@ impl RouterStoreData {
                             .opt("masque_mtu")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(0),
+                        masque_sni: b.opt("masque_sni").unwrap_or("").to_string(),
                         openconnect_authgroup: b
                             .opt("openconnect_authgroup")
                             .unwrap_or("")
@@ -13982,6 +13985,7 @@ config outbound_source 'awg31_src'
             "\toption masque_profile 'cloudflare'\n",
             "\toption masque_private_key 'PRIV_KEY_VAL'\n",
             "\toption masque_vhttp_mode 'auto'\n",
+            "\toption masque_sni 'www.apple.com'\n",
         );
 
         let tmp_dir =
@@ -14019,6 +14023,7 @@ config outbound_source 'awg31_src'
         assert_eq!(mq.masque_profile, "cloudflare");
         assert_eq!(mq.masque_private_key, "PRIV_KEY_VAL");
         assert_eq!(mq.masque_vhttp_mode, "auto");
+        assert_eq!(mq.masque_sni, "www.apple.com");
         assert!(mq.masque_vhttp);
 
         let uci_json = sync_store_to_json_sections(&data, None);
@@ -14028,6 +14033,7 @@ config outbound_source 'awg31_src'
         );
         assert_eq!(uci_json["src_mq"]["masque_private_key"], "PRIV_KEY_VAL");
         assert_eq!(uci_json["src_mq"]["masque_vhttp_mode"], "auto");
+        assert_eq!(uci_json["src_mq"]["masque_sni"], "www.apple.com");
 
         let mut reimported = RouterStoreData::default();
         reimported.import_from_json_sections(uci_json.as_object().expect("uci_json object"));
@@ -14043,6 +14049,7 @@ config outbound_source 'awg31_src'
             .find(|s| s.id == "src_mq")
             .expect("reimported mq");
         assert_eq!(mq2.masque_private_key, "PRIV_KEY_VAL");
+        assert_eq!(mq2.masque_sni, "www.apple.com");
     }
 
     #[test]
