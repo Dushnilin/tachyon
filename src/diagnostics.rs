@@ -636,6 +636,85 @@ async fn build_doctor_report(
     )
 }
 
+/// WireGuard endpoints can be inbound listeners. Core health currently exposes their
+/// peer handshake under `outbounds`; suppress an outbound-stale warning only when the
+/// active config proves the endpoint is inbound-only. If config cannot be read, keep
+/// the warning (fail open) rather than silently suppressing a real outbound failure.
+fn json_value_references_tag(value: Option<&Value>, tag: &str) -> bool {
+    match value {
+        Some(Value::String(value)) => value == tag,
+        Some(Value::Array(values)) => values.iter().any(|value| value.as_str() == Some(tag)),
+        _ => false,
+    }
+}
+
+fn inbound_only_wireguard_endpoint_tags(config: &Value) -> Vec<String> {
+    let Some(endpoints) = config.get("endpoints").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let outbounds = config
+        .get("outbounds")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let route = config.get("route");
+    let rules = route
+        .and_then(|route| route.get("rules"))
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let final_outbound = route.and_then(|route| route.get("final"));
+
+    endpoints
+        .iter()
+        .filter_map(|endpoint| {
+            if endpoint.get("type").and_then(Value::as_str) != Some("wireguard") {
+                return None;
+            }
+            let tag = endpoint.get("tag").and_then(Value::as_str)?;
+            if tag.is_empty() {
+                return None;
+            }
+
+            let direct_outbound = outbounds.iter().any(|outbound| {
+                outbound.get("tag").and_then(Value::as_str) == Some(tag)
+            });
+            let selector_member = outbounds.iter().any(|outbound| {
+                outbound
+                    .get("outbounds")
+                    .and_then(Value::as_array)
+                    .is_some_and(|members| {
+                        members.iter().any(|member| member.as_str() == Some(tag))
+                    })
+            });
+            let route_outbound = rules
+                .iter()
+                .any(|rule| json_value_references_tag(rule.get("outbound"), tag));
+            let final_outbound = json_value_references_tag(final_outbound, tag);
+            let route_inbound = rules
+                .iter()
+                .any(|rule| json_value_references_tag(rule.get("inbound"), tag));
+
+            (route_inbound
+                && !direct_outbound
+                && !selector_member
+                && !route_outbound
+                && !final_outbound)
+                .then(|| tag.to_string())
+        })
+        .collect()
+}
+
+fn read_inbound_only_wireguard_endpoint_tags(config_path: &str) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(config_path) else {
+        return Vec::new();
+    };
+    let Ok(config) = serde_json::from_str::<Value>(&raw) else {
+        return Vec::new();
+    };
+    inbound_only_wireguard_endpoint_tags(&config)
+}
+
 #[inline(never)]
 #[cfg_attr(not(test), allow(dead_code))]
 #[allow(clippy::too_many_arguments)]
@@ -685,6 +764,8 @@ fn assemble_doctor_report_with_platform(
     fw4_guard_ok: bool,
     pctx: &PlatformDoctorContext,
 ) -> DoctorReport {
+    let inbound_only_wireguard_tags =
+        read_inbound_only_wireguard_endpoint_tags(&d.settings.core_config_path);
     let is_entware = pctx.platform.is_entware();
     let is_iptables = pctx.firewall_kind == crate::platform::FirewallKind::Iptables;
     let dns_probe_addr = local_dns_probe_addr_for(pctx.platform, &d.settings);
@@ -1299,6 +1380,9 @@ fn assemble_doctor_report_with_platform(
     {
         for o in out_arr {
             let tag = o.get("tag").and_then(Value::as_str).unwrap_or("");
+            if inbound_only_wireguard_tags.iter().any(|inbound_tag| inbound_tag == tag) {
+                continue;
+            }
             let err_detail = o
                 .get("last_err_detail")
                 .and_then(Value::as_str)
@@ -8173,6 +8257,82 @@ pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
 mod tests {
     use super::*;
     use crate::store::{RoutingSection, TrafficCondition};
+
+    #[test]
+    fn inbound_only_wireguard_endpoint_is_not_classified_as_outbound() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{
+                "type": "wireguard",
+                "tag": tag,
+                "address": ["10.253.0.1/32"],
+                "listen_port": 51821,
+                "peers": [{
+                    "allowed_ips": ["10.253.0.2/32"],
+                    "persistent_keepalive_interval": 25
+                }]
+            }],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [
+                    {"inbound": [tag], "action": "hijack-dns"},
+                    {"inbound": [tag], "action": "route", "outbound": "direct"}
+                ],
+                "final": "direct"
+            }
+        });
+
+        assert_eq!(
+            inbound_only_wireguard_endpoint_tags(&config),
+            vec![tag.to_string()]
+        );
+    }
+
+    #[test]
+    fn wireguard_endpoint_in_selector_group_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{
+                "type": "selector",
+                "tag": "sel-vpn",
+                "outbounds": [tag, "direct"]
+            }],
+            "route": {
+                "rules": [{"inbound": [tag], "outbound": "sel-vpn"}],
+                "final": "sel-vpn"
+            }
+        });
+
+        assert!(inbound_only_wireguard_endpoint_tags(&config).is_empty());
+    }
+
+    #[test]
+    fn wireguard_endpoint_used_as_direct_route_outbound_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [{"inbound": [tag], "outbound": tag}],
+                "final": "direct"
+            }
+        });
+
+        assert!(inbound_only_wireguard_endpoint_tags(&config).is_empty());
+    }
+
+    #[test]
+    fn wireguard_endpoint_without_inbound_reference_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {"rules": [], "final": "direct"}
+        });
+
+        assert!(inbound_only_wireguard_endpoint_tags(&config).is_empty());
+    }
 
     #[test]
     fn route_trace_json_matches_main_telegram_and_reflects_nft_state() {
