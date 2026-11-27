@@ -15238,7 +15238,12 @@ mod service_probe_integration_tests {
         let proxy = fixture.socks_url();
         let output = fixture.curl("/ok", Some(&proxy), true);
         let (code, success, reason) = Fixture::outcome(&output);
-        assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         assert_eq!(code, 200);
         assert!(success, "{reason}");
         assert!(
