@@ -2886,38 +2886,43 @@ function renderCommonDetailsModal(
                                 if (btn) {
                                   btn.disabled = true;
                                 }
-                                const targetSelector = isPriority
-                                  ? outbound?.code || section.code
-                                  : section.code;
-                                await handleChooseOutbound(
-                                  section.sectionName,
-                                  targetSelector,
-                                  member.code,
-                                );
-                                const updatedSection = store
-                                  .get()
-                                  .sectionsWidget.data.find(
-                                    (s) =>
-                                      s.sectionName === section.sectionName,
+                                try {
+                                  const targetSelector =
+                                    section.code || outbound?.code || '';
+                                  await handleChooseOutbound(
+                                    section.sectionName,
+                                    targetSelector,
+                                    member.code,
                                   );
-                                const updatedOutbound =
-                                  updatedSection?.outbounds.find(
-                                    (o) => o.code === outbound?.code,
-                                  );
-                                if (updatedSection && updatedOutbound) {
-                                  if (isPriority) {
-                                    handleShowPriorityInfo(
-                                      updatedSection,
-                                      updatedOutbound,
+                                  const updatedSection = store
+                                    .get()
+                                    .sectionsWidget.data.find(
+                                      (s) =>
+                                        s.sectionName === section.sectionName,
                                     );
+                                  const updatedOutbound =
+                                    updatedSection?.outbounds.find(
+                                      (o) => o.code === outbound?.code,
+                                    );
+                                  if (updatedSection && updatedOutbound) {
+                                    if (isPriority) {
+                                      handleShowPriorityInfo(
+                                        updatedSection,
+                                        updatedOutbound,
+                                      );
+                                    } else {
+                                      handleShowUrlTestInfo(
+                                        updatedSection,
+                                        updatedOutbound,
+                                      );
+                                    }
                                   } else {
-                                    handleShowUrlTestInfo(
-                                      updatedSection,
-                                      updatedOutbound,
-                                    );
+                                    ui.hideModal();
                                   }
-                                } else {
-                                  ui.hideModal();
+                                } finally {
+                                  if (btn && btn.isConnected) {
+                                    btn.disabled = false;
+                                  }
                                 }
                               },
                             },

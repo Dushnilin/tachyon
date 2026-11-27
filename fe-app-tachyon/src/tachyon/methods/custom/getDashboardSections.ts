@@ -2645,7 +2645,6 @@ function buildUrlTestInfo({
   outboundMetadata,
   showDetectedCountries,
   selectorNow,
-  selectorCodes = [],
   configuredPrefixes = [],
 }: {
   code: string;
@@ -2659,7 +2658,6 @@ function buildUrlTestInfo({
   outboundMetadata?: Tachyon.GetOutboundMetadata;
   showDetectedCountries: boolean;
   selectorNow?: string;
-  selectorCodes?: string[];
   configuredPrefixes?: string[];
 }): Tachyon.UrlTestInfo {
   const runtimeAllCodes = entry?.value.all || [];
@@ -2667,11 +2665,18 @@ function buildUrlTestInfo({
     ...(groupCache?.outbounds || []),
     ...runtimeAllCodes,
   ]);
+  const matchesSelectorChild = (targetCode: string) =>
+    childCodes.some((childCode) => {
+      if (childCode === targetCode) return true;
+      const childEntry = findProxyEntryForMember(
+        proxyByCode,
+        childCode,
+        runtimeAllCodes,
+      );
+      return childEntry?.code === targetCode;
+    });
   const isChildSelectedInSelector = Boolean(
-    selectorNow &&
-      selectorNow !== code &&
-      childCodes.includes(selectorNow) &&
-      !selectorCodes.includes(selectorNow),
+    selectorNow && selectorNow !== code && matchesSelectorChild(selectorNow),
   );
   const selectedCode = isChildSelectedInSelector
     ? selectorNow!
@@ -2817,7 +2822,6 @@ function buildPriorityInfo({
   outboundMetadata,
   showDetectedCountries,
   selectorNow,
-  selectorCodes = [],
   configuredPrefixes = [],
 }: {
   config: PriorityConfig;
@@ -2829,7 +2833,6 @@ function buildPriorityInfo({
   outboundMetadata?: Tachyon.GetOutboundMetadata;
   showDetectedCountries: boolean;
   selectorNow?: string;
-  selectorCodes?: string[];
   configuredPrefixes?: string[];
 }): Tachyon.PriorityInfo {
   const cacheLevels = Array.isArray(groupCache?.levels)
@@ -2889,11 +2892,21 @@ function buildPriorityInfo({
         );
   const allChildCodes =
     levelChildCodes.length > 0 ? levelChildCodes : fallbackCodes;
+  const matchesSelectorChild = (targetCode: string) =>
+    allChildCodes.some((childCode) => {
+      if (!childCode) return false;
+      if (childCode === targetCode) return true;
+      const childEntry = findProxyEntryForMember(
+        proxyByCode,
+        childCode,
+        runtimeAllCodes,
+      );
+      return childEntry?.code === targetCode;
+    });
   const isChildSelectedInSelector = Boolean(
     selectorNow &&
       selectorNow !== config.code &&
-      allChildCodes.includes(selectorNow) &&
-      !selectorCodes.includes(selectorNow),
+      matchesSelectorChild(selectorNow),
   );
   const selectedCode = isChildSelectedInSelector
     ? selectorNow!
@@ -3267,7 +3280,6 @@ function buildProxyGroupOutbounds(
             showDetectedCountries:
               urlTestConfig?.showDetectedCountries || showDetectedCountries,
             selectorNow,
-            selectorCodes,
             configuredPrefixes,
           })
         : undefined;
@@ -3283,7 +3295,6 @@ function buildProxyGroupOutbounds(
           outboundMetadata,
           showDetectedCountries: priorityConfig.showDetectedCountries,
           selectorNow,
-          selectorCodes,
           configuredPrefixes,
         })
       : undefined;
@@ -3291,11 +3302,15 @@ function buildProxyGroupOutbounds(
     const isUrlTestChildSelected = Boolean(
       urlTestInfo?.isManualSelection &&
         urlTestInfo?.selectedCode &&
+        selectorNow &&
+        !selectorCodes.includes(selectorNow) &&
         urlTestInfo.outbounds.some((m) => m.code === selectorNow),
     );
     const isPriorityChildSelected = Boolean(
       priorityInfo?.isManualSelection &&
         priorityInfo?.selectedCode &&
+        selectorNow &&
+        !selectorCodes.includes(selectorNow) &&
         priorityInfo.outbounds.some((m) => m.code === selectorNow),
     );
 

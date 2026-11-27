@@ -5991,6 +5991,35 @@ async fn handle_pure_rust_clash_api(
                         }
                     }
                 }
+                if map
+                    .get(&effective_group)
+                    .and_then(|v| v.get("type"))
+                    .and_then(Value::as_str)
+                    != Some("Selector")
+                {
+                    let has_member = |entry: &Value, target: &str| {
+                        entry
+                            .get("all")
+                            .and_then(Value::as_array)
+                            .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(target)))
+                    };
+                    if let Some((cand, _)) = map
+                        .iter()
+                        .find(|(_, v)| {
+                            v.get("type").and_then(Value::as_str) == Some("Selector")
+                                && has_member(v, &effective_group)
+                                && has_member(v, proxy)
+                        })
+                        .or_else(|| {
+                            map.iter().find(|(_, v)| {
+                                v.get("type").and_then(Value::as_str) == Some("Selector")
+                                    && has_member(v, proxy)
+                            })
+                        })
+                    {
+                        effective_group = cand.clone();
+                    }
+                }
             }
             let encoded = url_encode_component(&effective_group);
             let body = serde_json::to_string(&json!({ "name": proxy })).unwrap_or_default();

@@ -361,6 +361,11 @@ describe('getDashboardSections', () => {
       data: {
         proxies: {
           ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-urltest-out',
+            all: ['main-1-out', 'main-2-out', 'main-3-out', 'main-urltest-out'],
+          }),
           'main-urltest-out': proxy('URLTest', {
             name: 'main-urltest-out',
             now: 'main-3-out',
@@ -3299,5 +3304,137 @@ describe('getDashboardSections', () => {
     expect(section.outbounds[0].selected).toBe(true);
     expect(section.latencyTestCode).toBe('iface-src_awg');
     expect(section.latencyTestCodes).toEqual(['iface-src_awg']);
+  });
+
+  it('marks URLTest group as manually selected even when the selected child node is listed in Selector.all', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-3-out',
+            all: ['main-urltest-out', 'main-1-out', 'main-3-out'],
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            now: 'main-1-out',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+            all: ['main-1-out', 'main-3-out'],
+          }),
+          'main-1-out': clashProxies['main-1-out'],
+          'main-3-out': clashProxies['main-3-out'],
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'First server',
+            'main-3-out': 'Third server',
+          },
+          countries: {},
+        },
+        urltestGroups: {
+          'main-urltest-out': {
+            displayName: 'Fastest',
+            outbounds: ['main-1-out', 'main-3-out'],
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const urltest = section.outbounds.find(
+      (item) => item.code === 'main-urltest-out',
+    );
+    const child3 = section.outbounds.find((item) => item.code === 'main-3-out');
+
+    expect(result.success).toBe(true);
+    expect(child3?.selected).toBe(true);
+    expect(urltest?.selected).toBe(false);
+    expect(urltest?.urlTestInfo?.isManualSelection).toBe(true);
+    expect(urltest?.urlTestInfo?.selectedCode).toBe('main-3-out');
+    expect(urltest?.urlTestInfo?.selectedName).toBe('Third server');
+    expect(
+      urltest?.urlTestInfo?.outbounds.find((m) => m.code === 'main-3-out')
+        ?.selected,
+    ).toBe(true);
+    expect(
+      urltest?.urlTestInfo?.outbounds.find((m) => m.code === 'main-1-out')
+        ?.selected,
+    ).toBe(false);
+  });
+
+  it('marks Priority group as manually selected even when the selected child node is listed in Selector.all', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({ urltests: [], urltest_settings: undefined }),
+      priorityGroup('pg_main'),
+      priorityLevel('pl_de', {
+        name: 'Germany',
+        order: '0',
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-2-out',
+            all: ['main-1-out', 'main-2-out', 'main-priority-pg_main-out'],
+          }),
+          'main-priority-pg_main-out': proxy('Selector', {
+            name: 'main-priority-pg_main-out',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'First cached',
+            'main-2-out': 'Second cached',
+          },
+          countries: {},
+        },
+        priorityGroups: {
+          'main-priority-pg_main-out': {
+            displayName: 'Codex Priority',
+            health_url: 'https://priority.example/204',
+            outbounds: ['main-1-out', 'main-2-out'],
+            levels: [
+              {
+                id: 'pl_de',
+                name: 'Germany',
+                order: 0,
+                outbounds: ['main-1-out', 'main-2-out'],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const priority = section.outbounds.find(
+      (item) => item.code === 'main-priority-pg_main-out',
+    );
+    const child2 = section.outbounds.find((item) => item.code === 'main-2-out');
+
+    expect(result.success).toBe(true);
+    expect(child2?.selected).toBe(true);
+    expect(priority?.selected).toBe(false);
+    expect(priority?.priorityInfo?.isManualSelection).toBe(true);
+    expect(priority?.priorityInfo?.selectedCode).toBe('main-2-out');
+    expect(priority?.priorityInfo?.selectedName).toBe('Second cached');
   });
 });
