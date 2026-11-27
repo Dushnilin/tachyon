@@ -605,6 +605,7 @@ function filteredOutboundMetadataFromCache(cache, sectionId = '') {
   const sources = plainObject(metadata.sources);
   const sourceIds = plainObject(metadata.source_ids);
   const sourceNames = plainObject(metadata.source_names);
+  const internalHidden = plainObject(metadata.internal_hidden);
   const candidateTags = Array.isArray(cache.urltestCandidateTags)
     ? cache.urltestCandidateTags
     : [];
@@ -683,7 +684,7 @@ function filteredOutboundMetadataFromCache(cache, sectionId = '') {
   if (candidateTags.length > 0) {
     candidateTags.forEach((tag) => {
       tag = `${tag || ''}`;
-      if (!tag) {
+      if (!tag || internalHidden[tag]) {
         return;
       }
       if (names[tag] != null) {
@@ -722,52 +723,52 @@ function filteredOutboundMetadataFromCache(cache, sectionId = '') {
   }
 
   Object.entries(names).forEach(([tag, name]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.names[tag] = name;
     }
   });
   Object.entries(countries).forEach(([tag, country]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.countries[tag] = country;
     }
   });
   Object.entries(protocols).forEach(([tag, protocol]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.protocols[tag] = protocol;
     }
   });
   Object.entries(transports).forEach(([tag, transport]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.transports[tag] = transport;
     }
   });
   Object.entries(securities).forEach(([tag, security]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.securities[tag] = security;
     }
   });
   Object.entries(ports).forEach(([tag, port]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.ports[tag] = port;
     }
   });
   Object.entries(prefixes).forEach(([tag, prefix]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.prefixes[tag] = prefix;
     }
   });
   Object.entries(sources).forEach(([tag, source]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.sources[tag] = source;
     }
   });
   Object.entries(sourceIds).forEach(([tag, sourceId]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.source_ids[tag] = sourceId;
     }
   });
   Object.entries(sourceNames).forEach(([tag, sourceName]) => {
-    if (!groups[tag]) {
+    if (!groups[tag] && !internalHidden[tag]) {
       result.source_names[tag] = sourceName;
     }
   });
@@ -4316,19 +4317,19 @@ function addLiveServerFilterPreviewOption(optionTarget, config = {}) {
         const preview = evaluateLiveServerFilterPreview(meta, spec);
 
         if (preview.totalCount === 0) {
-          statusBadge.style.background = '#6c757d';
+          statusBadge.style.background = 'var(--text3, #6c757d)';
           statusBadge.textContent = _('0 servers cached');
           summaryText.textContent = _(
             'Save & update subscriptions once to populate the server cache.',
           );
         } else if (preview.matchedCount === 0) {
-          statusBadge.style.background = '#dc3545';
+          statusBadge.style.background = 'var(--danger, #dc3545)';
           statusBadge.textContent = `${_('Matched')}: 0 / ${preview.totalCount}`;
           summaryText.textContent = _(
             'Warning: current filter excludes all servers!',
           );
         } else {
-          statusBadge.style.background = '#28a745';
+          statusBadge.style.background = 'var(--success, #28a745)';
           statusBadge.textContent = `${_('Matched')}: ${preview.matchedCount} / ${preview.totalCount}`;
           summaryText.textContent = `${_('Excluded')}: ${preview.excludedCount}`;
         }
@@ -8965,9 +8966,11 @@ function attachAnnotatedTextarea(
       this.diagBar.innerHTML = '';
 
       if (analysis.valid) {
-        this.diagBar.style.background = 'rgba(39, 174, 96, 0.1)';
-        this.diagBar.style.border = '1px solid rgba(39, 174, 96, 0.3)';
-        this.diagBar.style.color = 'var(--success-color-high, #27ae60)';
+        this.diagBar.style.background =
+          'var(--success-soft, rgba(39, 174, 96, 0.1))';
+        this.diagBar.style.border =
+          '1px solid var(--success-border, rgba(39, 174, 96, 0.3))';
+        this.diagBar.style.color = 'var(--success, #27ae60)';
         this.diagBar.appendChild(
           E(
             'span',
@@ -8976,9 +8979,11 @@ function attachAnnotatedTextarea(
           ),
         );
       } else {
-        this.diagBar.style.background = 'rgba(212, 68, 68, 0.1)';
-        this.diagBar.style.border = '1px solid rgba(212, 68, 68, 0.35)';
-        this.diagBar.style.color = 'var(--error-color-medium, #d44)';
+        this.diagBar.style.background =
+          'var(--danger-soft, rgba(212, 68, 68, 0.1))';
+        this.diagBar.style.border =
+          '1px solid var(--danger-border, rgba(212, 68, 68, 0.35))';
+        this.diagBar.style.color = 'var(--danger, #d44)';
         const parts = [];
         if (analysis.duplicateCount > 0) {
           parts.push(`${_('Duplicates')}: ${analysis.duplicateCount}`);
@@ -11797,7 +11802,7 @@ function createSectionContent(section) {
       class: 'cbi-input-textarea',
       rows: 8,
       style:
-        'width:100%;font-family:monospace;font-size:0.85rem;margin-top:8px;resize:vertical;',
+        'width:100%;font-family:var(--mono);font-size:0.85rem;margin-top:8px;resize:vertical;',
       placeholder:
         '127.0.0.1 localhost\n192.168.1.100 server.local\n10.0.0.5 example.com alias.com',
     });
@@ -12212,7 +12217,7 @@ function createSectionContent(section) {
     const ta =
       node.tagName === 'TEXTAREA' ? node : node.querySelector('textarea');
     if (ta) {
-      ta.style.fontFamily = 'monospace';
+      ta.style.fontFamily = 'var(--mono)';
       ta.style.fontSize = '0.85rem';
       ta.style.lineHeight = '1.4';
       ta.style.resize = 'vertical';
@@ -20152,7 +20157,7 @@ function createTracerSearchWidget(sectionRef) {
                                 target: '_blank',
                                 rel: 'noopener',
                                 style:
-                                  'font-family: monospace; font-size: 85%; word-break: break-all;',
+                                  'font-family: var(--mono); font-size: 85%; word-break: break-all;',
                               },
                               short,
                             ),

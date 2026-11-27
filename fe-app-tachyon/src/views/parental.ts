@@ -1055,7 +1055,7 @@ function createParentalContent(section) {
     const badges = domains
       .map(
         (d) =>
-          '<span class="badge" style="background:rgba(237,100,166,0.15);color:var(--pink-color, #d53f8c);padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;border:1px solid rgba(237,100,166,0.3);display:inline-flex;align-items:center;margin-bottom:2px;max-width:100%;word-break:break-all;">' +
+          '<span class="badge" style="background:rgba(237,100,166,0.15);color:var(--pink-color, #d53f8c);padding:2px 6px;border-radius:4px;font-size:11px;font-family:var(--mono);margin-right:4px;border:1px solid rgba(237,100,166,0.3);display:inline-flex;align-items:center;margin-bottom:2px;max-width:100%;word-break:break-all;">' +
           d +
           '</span>',
       )

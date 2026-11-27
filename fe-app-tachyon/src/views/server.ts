@@ -3708,7 +3708,7 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
         class: 'cbi-input-textarea fkp-server-info-modal__link',
         readonly: 'readonly',
         rows: 6,
-        style: 'font-family:monospace;font-size:11px;',
+        style: 'font-family:var(--mono);font-size:11px;',
         click: (ev) => ev.currentTarget.select(),
       },
       getCurrentAwgPayload(),

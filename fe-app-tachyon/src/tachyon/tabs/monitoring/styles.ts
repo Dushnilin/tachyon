@@ -1008,27 +1008,27 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__route--proxy {
-    background: rgba(10, 132, 255, 0.14) !important;
-    border-color: rgba(10, 132, 255, 0.32) !important;
-    color: var(--tachyon-monitoring-route-proxy-fg) !important;
+    background: var(--accent-soft) !important;
+    border-color: var(--accent-ring) !important;
+    color: var(--accent-text) !important;
 }
 
 .tachyon_monitoring-page__route--dpi {
-    background: rgba(245, 158, 11, 0.14) !important;
-    border-color: rgba(245, 158, 11, 0.32) !important;
-    color: var(--tachyon-monitoring-route-dpi-fg) !important;
+    background: var(--warn-soft) !important;
+    border-color: var(--warn-border) !important;
+    color: var(--warn) !important;
 }
 
 .tachyon_monitoring-page__route--direct {
-    background: rgba(34, 197, 94, 0.14) !important;
-    border-color: rgba(34, 197, 94, 0.32) !important;
-    color: var(--tachyon-monitoring-route-direct-fg) !important;
+    background: var(--success-soft) !important;
+    border-color: var(--success-border) !important;
+    color: var(--success) !important;
 }
 
 .tachyon_monitoring-page__route--block {
-    background: rgba(244, 63, 94, 0.14) !important;
-    border-color: rgba(244, 63, 94, 0.32) !important;
-    color: var(--tachyon-monitoring-route-block-fg) !important;
+    background: var(--danger-soft) !important;
+    border-color: var(--danger-border) !important;
+    color: var(--danger) !important;
 }
 
 .tachyon_monitoring-page__network {
@@ -1359,13 +1359,13 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__dns-cell-mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--mono);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
 }
 
 .tachyon_monitoring-page__dns-code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--mono);
     font-size: 12px;
     padding: 1px 4px;
     border-radius: 4px;
@@ -1402,7 +1402,7 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__dns-client-row.is-selected {
-    background: rgba(59, 130, 246, 0.1);
+    background: var(--accent-soft);
 }
 
 .tachyon_monitoring-page__dns-hits-cell {
@@ -1434,7 +1434,7 @@ body.dark .tachyon_monitoring-page {
     display: block;
     height: 100%;
     border-radius: 999px;
-    background: #3b82f6;
+    background: var(--accent);
 }
 
 .tachyon_monitoring-page__dns-chip-btn {

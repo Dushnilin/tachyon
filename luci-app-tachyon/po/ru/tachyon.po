@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 17:10+0300\n"
-"PO-Revision-Date: 2026-11-27 17:10+0300\n"
+"POT-Creation-Date: 2026-11-27 21:42+0300\n"
+"PO-Revision-Date: 2026-11-27 21:42+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -4700,6 +4700,9 @@ msgstr "Сбросить правила nftables"
 msgid "Follow browser"
 msgstr "Как в браузере"
 
+msgid "Font size"
+msgstr "Размер текста"
+
 msgid "Force immediate download and refresh of all remote lists and rule sets"
 msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
 
@@ -5719,6 +5722,9 @@ msgstr "Подсеть конкретного интерфейса (iface=CIDR)"
 
 msgid "Interface Theme"
 msgstr "Тема интерфейса"
+
+msgid "Interface font"
+msgstr "Шрифт интерфейса"
 
 msgid "Interface language"
 msgstr "Язык интерфейса"
@@ -6904,6 +6910,9 @@ msgstr "Мониторинг"
 
 msgid "Monitors Tachyon Core reconnect frequency. Alerts if too many reconnects per hour."
 msgstr "Отслеживает частоту переподключений Tachyon Core. Предупреждает при слишком частых переподключениях за час."
+
+msgid "Monospace font"
+msgstr "Моноширинный шрифт"
 
 msgid "More details"
 msgstr "Подробнее"

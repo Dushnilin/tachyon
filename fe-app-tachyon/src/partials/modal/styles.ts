@@ -20,11 +20,11 @@ export const styles = `
     border-radius: 10px;
     padding: 12px 14px;
     margin: 4px 0 12px 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--mono);
     font-size: 12px;
     line-height: 1.5;
-    background: var(--background-color-low, rgba(15, 23, 42, 0.05));
-    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.2));
+    background: var(--bg, var(--background-color-low));
+    border: 1px solid var(--border);
     box-sizing: border-box;
     width: 100%;
 }

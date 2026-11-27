@@ -4,6 +4,12 @@ import {
   BUILTIN_THEMES,
   BG_ANIMATION_STORAGE_KEY,
   CUSTOM_THEMES_STORAGE_KEY,
+  FONT_MONO_PRESETS,
+  FONT_MONO_STORAGE_KEY,
+  FONT_SANS_PRESETS,
+  FONT_SANS_STORAGE_KEY,
+  FONT_SIZE_PRESETS,
+  FONT_SIZE_STORAGE_KEY,
   THEME_DARK_ID_STORAGE_KEY,
   THEME_ID_STORAGE_KEY,
   THEME_LIGHT_ID_STORAGE_KEY,
@@ -11,12 +17,15 @@ import {
   THEME_SCHEDULE_END_STORAGE_KEY,
   THEME_SCHEDULE_START_STORAGE_KEY,
   applyThemeToDocument,
+  applyTypographyToDocument,
   computeThemeCssVars,
+  computeTypographyCssVars,
   deleteCustomTheme,
   exportThemeJson,
   getActiveTheme,
   getAllThemes,
   getThemeAutoConfig,
+  getTypographyConfig,
   isBgAnimationEnabled,
   isScheduleNightNow,
   parseThemeImportText,
@@ -25,6 +34,7 @@ import {
   setActiveTheme,
   setBgAnimationEnabled,
   setThemeAutoConfig,
+  setTypographyConfig,
 } from '../themeCatalog';
 
 describe('themeCatalog', () => {
@@ -59,7 +69,7 @@ describe('themeCatalog', () => {
     delete (globalThis as any).document;
   });
 
-  it('defines the exact 16 built-in themes with complete normalized hex palettes and no banned third-party strings', () => {
+  it('defines the exact 18 built-in themes with complete normalized hex palettes and no banned third-party strings', () => {
     expect(BUILTIN_THEMES.map((t) => t.name)).toEqual([
       'Default Dark',
       'Default Light',
@@ -74,7 +84,9 @@ describe('themeCatalog', () => {
       'Tokyo Night',
       'Solarized Dark',
       'Vesper',
+      'Material Dark',
       'Everforest Light',
+      'Material Light',
       'Apple Light',
       'Gruvbox Light',
     ]);
@@ -88,10 +100,35 @@ describe('themeCatalog', () => {
       }
       const vars = computeThemeCssVars(t);
       expect(vars['--bg']).toBe(t.colors.bg);
-      expect(vars['--surface-glass']).toMatch(/^rgba\(\d+, \d+, \d+, 0\.84\)$/);
-      expect(vars['--topbar-glass']).toMatch(/^rgba\(\d+, \d+, \d+, 0\.96\)$/);
-      expect(vars['--accent-soft']).toMatch(/^rgba\(\d+, \d+, \d+, 0\.16\)$/);
-      expect(vars['--accent-ring']).toMatch(/^rgba\(\d+, \d+, \d+, 0\.34\)$/);
+      expect(vars['--surface-glass']).toMatch(
+        t.scheme === 'light'
+          ? /^rgba\(\d+, \d+, \d+, 0\.92\)$/
+          : /^rgba\(\d+, \d+, \d+, 0\.86\)$/,
+      );
+      expect(vars['--topbar-glass']).toMatch(
+        t.scheme === 'light'
+          ? /^rgba\(\d+, \d+, \d+, 0\.96\)$/
+          : /^rgba\(\d+, \d+, \d+, 0\.94\)$/,
+      );
+      expect(vars['--accent-soft']).toMatch(
+        t.scheme === 'light'
+          ? /^rgba\(\d+, \d+, \d+, 0\.12\)$/
+          : /^rgba\(\d+, \d+, \d+, 0\.16\)$/,
+      );
+      expect(vars['--accent-ring']).toMatch(
+        t.scheme === 'light'
+          ? /^rgba\(\d+, \d+, \d+, 0\.38\)$/
+          : /^rgba\(\d+, \d+, \d+, 0\.36\)$/,
+      );
+      expect(vars['--accent-fg']).toMatch(/^#(0b0b0c|ffffff)$/);
+      expect(vars['--success-soft']).toMatch(
+        /^rgba\(\d+, \d+, \d+, 0\.1[13]\)$/,
+      );
+      expect(vars['--warn-soft']).toMatch(/^rgba\(\d+, \d+, \d+, 0\.1[13]\)$/);
+      expect(vars['--danger-soft']).toMatch(
+        /^rgba\(\d+, \d+, \d+, 0\.1[03]\)$/,
+      );
+      expect(vars['--tachyon-accent-text']).toBe(t.colors.accentHover);
     }
   });
 
@@ -171,15 +208,7 @@ describe('themeCatalog', () => {
     expect(isBgAnimationEnabled()).toBe(true);
   });
 
-  it('applies Default Light compatibility variables and cleans them up when switching back to dark', () => {
-    const removedProps: string[] = [];
-    (globalThis as any).document.documentElement.style.removeProperty = (
-      k: string,
-    ) => {
-      removedProps.push(k);
-      styleProps.delete(k);
-    };
-
+  it('applies unified compatibility variables for both light and dark themes', () => {
     storage.set('tachyon_color_scheme_v1', 'light');
     expect(getActiveTheme().id).toBe('default-light');
 
@@ -193,11 +222,18 @@ describe('themeCatalog', () => {
     setActiveTheme('default-dark');
     expect(attrs['data-tachyon-theme-scheme']).toBe('dark');
     expect(attrs['data-darkmode']).toBe('true');
-    expect(removedProps).toContain('--background-color-high');
-    expect(styleProps.has('--background-color-high')).toBe(false);
+    expect(styleProps.get('--background-color-high')).toBe('#141416');
+    expect(styleProps.get('--text-color-high')).toBe('#f5f5f7');
+
+    setActiveTheme('material-dark');
+    expect(attrs['data-tachyon-theme']).toBe('material-dark');
+    expect(attrs['data-tachyon-theme-scheme']).toBe('dark');
+    expect(styleProps.get('--bg')).toBe('#121316');
+    expect(styleProps.get('--surface')).toBe('#1b1d22');
 
     for (const [id, bg, surface] of [
       ['everforest-light', '#edf2ec', '#f8fbf7'],
+      ['material-light', '#f1f3f6', '#ffffff'],
       ['apple-light', '#f5f5f7', '#ffffff'],
       ['gruvbox-light', '#f2e5bc', '#fbf1c7'],
     ]) {
@@ -288,5 +324,55 @@ describe('themeCatalog', () => {
     } finally {
       delete (globalThis as any).window;
     }
+  });
+
+  it('persists and applies offline typography font presets and sizes', () => {
+    expect(getTypographyConfig()).toEqual({
+      sans: 'system',
+      mono: 'system',
+      size: 'normal',
+    });
+
+    const updated = setTypographyConfig({
+      sans: 'geometric',
+      mono: 'jetbrains',
+      size: 'large',
+    });
+    expect(updated).toEqual({
+      sans: 'geometric',
+      mono: 'jetbrains',
+      size: 'large',
+    });
+    expect(storage.get(FONT_SANS_STORAGE_KEY)).toBe('geometric');
+    expect(storage.get(FONT_MONO_STORAGE_KEY)).toBe('jetbrains');
+    expect(storage.get(FONT_SIZE_STORAGE_KEY)).toBe('large');
+
+    const expectedSans = FONT_SANS_PRESETS.find(
+      (p) => p.id === 'geometric',
+    )?.value;
+    const expectedMono = FONT_MONO_PRESETS.find(
+      (p) => p.id === 'jetbrains',
+    )?.value;
+    const expectedSize = FONT_SIZE_PRESETS.find((p) => p.id === 'large')?.value;
+    expect(styleProps.get('--sans')).toBe(expectedSans);
+    expect(styleProps.get('--mono')).toBe(expectedMono);
+    expect(styleProps.get('--tachyon-font-mono')).toBe(expectedMono);
+    expect(styleProps.get('--font-mono')).toBe(expectedMono);
+    expect(styleProps.get('--tachyon-font-size')).toBe(expectedSize);
+    expect(attrs['data-tachyon-font-sans']).toBe('geometric');
+    expect(attrs['data-tachyon-font-mono']).toBe('jetbrains');
+    expect(attrs['data-tachyon-font-size']).toBe('large');
+
+    const computed = computeTypographyCssVars({
+      sans: 'mono',
+      mono: 'plex',
+      size: 'compact',
+    });
+    expect(computed['--sans']).toBe('var(--mono)');
+    expect(computed['--tachyon-font-size']).toBe('13px');
+
+    storage.set(FONT_SANS_STORAGE_KEY, 'unknown-font');
+    const applied = applyTypographyToDocument();
+    expect(applied.sans).toBe('system');
   });
 });

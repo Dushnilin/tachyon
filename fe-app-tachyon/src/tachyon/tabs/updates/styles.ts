@@ -122,10 +122,10 @@ export const styles = `
 }
 
 .tachyon_updates-page__component__header-version {
-    color: var(--text-color-medium, #888);
+    color: var(--text2, var(--text-color-medium));
     font-size: 12px;
     font-weight: 500;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--mono);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     overflow: hidden;
@@ -133,8 +133,8 @@ export const styles = `
     max-width: 260px;
     padding: 2px 7px;
     border-radius: 6px;
-    background: rgba(128, 128, 128, 0.1);
-    border: 1px solid rgba(128, 128, 128, 0.16);
+    background: var(--hover);
+    border: 1px solid var(--border);
     line-height: 1.35;
 }
 
@@ -190,8 +190,8 @@ export const styles = `
 }
 
 .tachyon_updates-page__component__info-row--latest {
-    background: rgba(16, 185, 129, 0.08);
-    border-color: rgba(16, 185, 129, 0.22);
+    background: var(--success-soft);
+    border-color: var(--success-border);
 }
 
 .tachyon_updates-page__component__info-label {
@@ -228,10 +228,10 @@ export const styles = `
 }
 
 .tachyon_updates-page__component__sha-info {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--mono);
     font-size: 11px;
-    color: var(--text-color-medium, #888);
-    background: var(--background-color-low, rgba(0,0,0,0.06));
+    color: var(--text2, var(--text-color-medium));
+    background: var(--hover);
     border-radius: 4px;
     padding: 1px 6px;
     letter-spacing: 0.02em;
@@ -312,13 +312,13 @@ export const styles = `
 
 .tachyon-update-modal__version-badge {
     font-size: 12px;
-    font-family: monospace;
+    font-family: var(--mono);
     font-variant-numeric: tabular-nums;
     padding: 2px 6px;
     border-radius: 5px;
-    background: var(--background-color-low, rgba(0, 0, 0, 0.05));
-    color: var(--text-color-high, inherit);
-    border: 1px solid var(--border-color-low, #dee2e6);
+    background: var(--hover);
+    color: var(--text, inherit);
+    border: 1px solid var(--border);
 }
 
 .tachyon-update-modal__timer-badge {
@@ -326,16 +326,17 @@ export const styles = `
     align-items: center;
     gap: 4px;
     font-size: 13px;
-    font-family: monospace;
+    font-family: var(--mono);
     font-variant-numeric: tabular-nums;
-    color: var(--text-color-medium, #6c757d);
+    color: var(--text2);
 }
 
 .tachyon-update-modal__phase-badge {
     font-size: 12px;
-    font-family: monospace;
-    color: var(--color-blue-base, #3498db);
-    background: var(--color-blue-bg, #ebf5fb);
+    font-family: var(--mono);
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-ring);
     padding: 2px 8px;
     border-radius: 5px;
     white-space: nowrap;
@@ -407,12 +408,12 @@ export const styles = `
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
-    font-family: monospace;
+    font-family: var(--mono);
     font-size: 11px;
     line-height: 1.5;
-    color: var(--text-color-high, #212529);
-    background: var(--background-color-low, #f8f9fa);
-    border: 1px solid var(--border-color-low, #dee2e6);
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 4px;
     padding: 8px;
     flex: 1 1 auto;

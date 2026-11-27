@@ -874,7 +874,7 @@ export async function renderStabilityModal(): Promise<void> {
       const checkIcon = renderCircleCheckBigIcon24();
       checkIcon.setAttribute('width', '22');
       checkIcon.setAttribute('height', '22');
-      checkIcon.style.color = '#30d158';
+      checkIcon.style.color = 'var(--success, #30d158)';
       return E(
         'div',
         {

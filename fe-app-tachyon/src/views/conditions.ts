@@ -1172,9 +1172,11 @@ function attachAnnotatedTextarea(
       this.diagBar.innerHTML = '';
 
       if (analysis.valid) {
-        this.diagBar.style.background = 'rgba(39, 174, 96, 0.1)';
-        this.diagBar.style.border = '1px solid rgba(39, 174, 96, 0.3)';
-        this.diagBar.style.color = 'var(--success-color-high, #27ae60)';
+        this.diagBar.style.background =
+          'var(--success-soft, rgba(39, 174, 96, 0.1))';
+        this.diagBar.style.border =
+          '1px solid var(--success-border, rgba(39, 174, 96, 0.3))';
+        this.diagBar.style.color = 'var(--success, #27ae60)';
         this.diagBar.appendChild(
           E(
             'span',
@@ -1183,9 +1185,11 @@ function attachAnnotatedTextarea(
           ),
         );
       } else {
-        this.diagBar.style.background = 'rgba(212, 68, 68, 0.1)';
-        this.diagBar.style.border = '1px solid rgba(212, 68, 68, 0.35)';
-        this.diagBar.style.color = 'var(--error-color-medium, #d44)';
+        this.diagBar.style.background =
+          'var(--danger-soft, rgba(212, 68, 68, 0.1))';
+        this.diagBar.style.border =
+          '1px solid var(--danger-border, rgba(212, 68, 68, 0.35))';
+        this.diagBar.style.color = 'var(--danger, #d44)';
         const parts = [];
         if (analysis.duplicateCount > 0) {
           parts.push(`${_('Duplicates')}: ${analysis.duplicateCount}`);
