@@ -52,7 +52,7 @@ def _arm_attributes(cpu_arch, vfp_args, no_defaults=False):
     if vfp_args is not None:
         attributes += _uleb(28) + _uleb(vfp_args)
     if no_defaults:
-        attributes += _uleb(64)
+        attributes += _uleb(64) + _uleb(0)
     file_scope = b"\x01" + (5 + len(attributes)).to_bytes(4, "little") + attributes
     vendor_payload = b"aeabi\0" + file_scope
     vendor = (4 + len(vendor_payload)).to_bytes(4, "little") + vendor_payload
