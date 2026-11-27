@@ -47,10 +47,14 @@ def _uleb(value):
     return bytes(out)
 
 
-def _arm_attributes(cpu_arch, vfp_args, no_defaults=False, cpu_profile=None):
+def _arm_attributes(cpu_arch, vfp_args, no_defaults=False, cpu_profile=None, fp_arch=None, simd_arch=None):
     attributes = _uleb(6) + _uleb(cpu_arch)
     if cpu_profile is not None:
         attributes += _uleb(7) + _uleb(cpu_profile)
+    if fp_arch is not None:
+        attributes += _uleb(10) + _uleb(fp_arch)
+    if simd_arch is not None:
+        attributes += _uleb(12) + _uleb(simd_arch)
     if vfp_args is not None:
         attributes += _uleb(28) + _uleb(vfp_args)
     if no_defaults:
@@ -64,6 +68,7 @@ def _arm_attributes(cpu_arch, vfp_args, no_defaults=False, cpu_profile=None):
 def elf_header(
     elf_class, endian, machine, *, arm_arch=None, vfp_args=0,
     arm_flags=None, include_arm_attributes=True, no_defaults=False, cpu_profile=None,
+    fp_arch=None, simd_arch=None,
 ):
     """Build minimal ELF headers, including real ARM section/attribute tables."""
     raw = bytearray(52 if elf_class == 1 else 64)
@@ -95,7 +100,7 @@ def elf_header(
 
     if arm_arch is None:
         arm_arch = 10
-    attrs = _arm_attributes(arm_arch, vfp_args, no_defaults, cpu_profile)
+    attrs = _arm_attributes(arm_arch, vfp_args, no_defaults, cpu_profile, fp_arch, simd_arch)
     attrs_off = shstr_off + len(shstrtab)
     shoff = attrs_off + len(attrs)
     raw[32:36] = shoff.to_bytes(4, "little")
@@ -113,8 +118,14 @@ def elf_header(
 
 def arm_fixture(target):
     if target == "armv7":
-        return {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400}
-    return {"arm_arch": 6, "vfp_args": 0, "arm_flags": 0x05000200}
+        return {
+            "arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
+            "fp_arch": 4, "simd_arch": 0,
+        }
+    return {
+        "arm_arch": 6, "vfp_args": 0, "arm_flags": 0x05000200,
+        "fp_arch": 0, "simd_arch": 0,
+    }
 
 
 class OpenWrtPackageTest(unittest.TestCase):
@@ -146,6 +157,12 @@ class OpenWrtPackageTest(unittest.TestCase):
              "exceeds armv7 target"),
             ("real-time profile", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
                                   "cpu_profile": 82}, "CPU architecture profile"),
+            ("VFPv4 on v7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
+                            "fp_arch": 5}, "exceeds VFPv3-D16"),
+            ("NEON on v7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
+                            "simd_arch": 1}, "Advanced SIMD"),
+            ("VFP on v6", {"arm_arch": 6, "vfp_args": 0, "arm_flags": 0x05000200,
+                           "fp_arch": 2}, "cannot require VFP"),
             ("base PCS on hard-float", {"arm_arch": 10, "vfp_args": 0, "arm_flags": 0x05000400},
              "VFP argument ABI"),
         ]
