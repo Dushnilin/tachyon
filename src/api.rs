@@ -767,12 +767,18 @@ async fn dispatch_api(
     match (method, path) {
         ("GET", "/api/bootstrap") => {
             state.touch_telemetry_access();
-            let sys = sys_info::collect_host_info();
-            let store = Box::new(state.data.read().await.clone());
+            let (store, live) = {
+                let d_guard = state.data.read().await;
+                let l_guard = state.live.read().await;
+                (Box::new(d_guard.clone()), Box::new(l_guard.clone()))
+            };
             let redacted_store = redact_store_for_bootstrap(&store);
-            let live = Box::new(state.live.read().await.clone());
-            let doctor = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
-            let updates = core.check_updates().await;
+            let (sys_res, doctor, updates) = tokio::join!(
+                tokio::task::spawn_blocking(sys_info::collect_host_info),
+                Box::pin(diagnostics::run_local_doctor_with_core(state, core)),
+                Box::pin(core.check_updates()),
+            );
+            let sys = sys_res.unwrap_or_else(|_| sys_info::collect_host_info());
             send_json(
                 stream,
                 200,

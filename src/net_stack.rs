@@ -902,6 +902,33 @@ fn append_selective_scoped_nft_rules(
     }
 }
 
+fn append_ifname_match_return(out: &mut String, indent: &str, dir: &str, ifaces: &[String]) {
+    let mut exact = Vec::new();
+    let mut wildcards = Vec::new();
+    for raw in ifaces {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.contains('*') {
+            if !wildcards.iter().any(|w| w == trimmed) {
+                wildcards.push(trimmed.to_string());
+            }
+        } else {
+            let quoted = format!("\"{trimmed}\"");
+            if !exact.contains(&quoted) {
+                exact.push(quoted);
+            }
+        }
+    }
+    if !exact.is_empty() {
+        let _ = writeln!(out, "{indent}{dir} {{ {} }} return", exact.join(", "));
+    }
+    for pat in wildcards {
+        let _ = writeln!(out, "{indent}{dir} \"{pat}\" return");
+    }
+}
+
 fn append_source_iface_guard(out: &mut String, store: &RouterStoreData) {
     append_source_iface_guard_with_extra(out, store, &[]);
 }
@@ -912,22 +939,54 @@ fn append_source_iface_guard_with_extra(
     extra_ifaces: &[&str],
 ) {
     if !store.settings.source_network_interfaces.is_empty() {
-        let mut quoted: Vec<String> = store
-            .settings
-            .source_network_interfaces
-            .iter()
-            .map(|i| i.trim())
-            .filter(|i| !i.is_empty() && *i != "lo")
-            .map(|i| format!("\"{i}\""))
-            .collect();
-        for extra in extra_ifaces {
-            let token = format!("\"{}\"", extra.trim());
-            if !extra.trim().is_empty() && !quoted.contains(&token) {
-                quoted.push(token);
+        let mut exact_quoted: Vec<String> = Vec::new();
+        let mut wildcards: Vec<String> = Vec::new();
+        for raw in &store.settings.source_network_interfaces {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed == "lo" {
+                continue;
+            }
+            if trimmed.contains('*') {
+                if !wildcards.iter().any(|w| w == trimmed) {
+                    wildcards.push(trimmed.to_string());
+                }
+            } else {
+                let token = format!("\"{trimmed}\"");
+                if !exact_quoted.contains(&token) {
+                    exact_quoted.push(token);
+                }
             }
         }
-        quoted.push("\"lo\"".to_string());
-        let _ = writeln!(out, "        iifname != {{ {} }} return", quoted.join(", "));
+        for extra in extra_ifaces {
+            let trimmed = extra.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.contains('*') {
+                if !wildcards.iter().any(|w| w == trimmed) {
+                    wildcards.push(trimmed.to_string());
+                }
+            } else {
+                let token = format!("\"{trimmed}\"");
+                if !exact_quoted.contains(&token) {
+                    exact_quoted.push(token);
+                }
+            }
+        }
+        let lo_tok = "\"lo\"".to_string();
+        if !exact_quoted.contains(&lo_tok) {
+            exact_quoted.push(lo_tok);
+        }
+        let mut conds = Vec::new();
+        if !exact_quoted.is_empty() {
+            conds.push(format!("iifname != {{ {} }}", exact_quoted.join(", ")));
+        }
+        for pat in wildcards {
+            conds.push(format!("iifname != \"{pat}\""));
+        }
+        if !conds.is_empty() {
+            let _ = writeln!(out, "        {} return", conds.join(" "));
+        }
     }
 }
 
@@ -978,7 +1037,7 @@ fn append_doh_reject_rules(out: &mut String, ipv6_active: bool) {
 fn append_dns_redirect_chain(
     out: &mut String,
     store: &RouterStoreData,
-    bypass_ifaces_literal: &str,
+    bypass_ifaces: &[String],
     ipv6_active: bool,
 ) {
     let (src_v4, src_v6) = crate::config_gen::collect_source_aware_dns_cidrs(store, ipv6_active);
@@ -992,9 +1051,7 @@ fn append_dns_redirect_chain(
         "    chain dns_redirect {{
         type nat hook prerouting priority -100; policy accept;"
     );
-    if !bypass_ifaces_literal.trim().is_empty() {
-        let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
-    }
+    append_ifname_match_return(out, "        ", "iifname", bypass_ifaces);
     let _ = writeln!(out, "        iifname \"lo\" return");
     append_source_iface_guard(out, store);
     append_client_exclusion_returns(out, &store.settings.excluded_ips);
@@ -1222,11 +1279,11 @@ pub(crate) fn collect_managed_lan_ifaces(store: &RouterStoreData) -> Vec<String>
 
 fn append_webrtc_filter_chain(
     out: &mut String,
-    bypass_ifaces_literal: &str,
+    bypass_ifaces: &[String],
     proxy_udp_ports_literal: &str,
 ) {
     let _ = writeln!(out, "    chain webrtc_filter {{");
-    let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
+    append_ifname_match_return(out, "        ", "iifname", bypass_ifaces);
     let _ = writeln!(
         out,
         "        meta mark & {ROUTER_TPROXY_FWMARK} == {ROUTER_TPROXY_FWMARK} return"
@@ -2630,19 +2687,13 @@ fn compile_nftables_ruleset_full_with_opts(
         .any(|i| i.trim() == "tailscale0");
     let allow_tailscale_fakeip = !is_tailscale_source && store.settings.fakeip_enabled;
     let tailscale_bypass_ifaces = collect_tailscale_bypass_ifaces(store);
-    let bypass_ifaces_literal = tailscale_bypass_ifaces
-        .iter()
-        .map(|i| format!("\"{i}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let prerouting_bypass_literal = tailscale_bypass_ifaces
+    let prerouting_bypass_ifaces: Vec<String> = tailscale_bypass_ifaces
         .iter()
         .filter(|i| {
             !((is_tailscale_source || allow_tailscale_fakeip) && i.as_str() == "tailscale0")
         })
-        .map(|i| format!("\"{i}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
+        .cloned()
+        .collect();
     let proxy_udp_ports = collect_proxy_udp_ports(store);
     let proxy_udp_ports_literal = proxy_udp_ports
         .iter()
@@ -2656,9 +2707,9 @@ fn compile_nftables_ruleset_full_with_opts(
 
     let lan_ifaces_literal = format_ifname_set_literal(&lan_ifaces);
     if eff_webrtc {
-        append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
+        append_webrtc_filter_chain(&mut out, &tailscale_bypass_ifaces, &proxy_udp_ports_literal);
     }
-    append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal, ipv6_active);
+    append_dns_redirect_chain(&mut out, store, &tailscale_bypass_ifaces, ipv6_active);
     append_dnat_output_chains(
         &mut out,
         dnat_redirects,
@@ -2678,12 +2729,7 @@ fn compile_nftables_ruleset_full_with_opts(
     );
 
     // Exclude virtual tunnel interfaces (Tailscale & FPTN) from self-interception
-    if !prerouting_bypass_literal.is_empty() {
-        let _ = writeln!(
-            out,
-            "        iifname {{ {prerouting_bypass_literal} }} return"
-        );
-    }
+    append_ifname_match_return(&mut out, "        ", "iifname", &prerouting_bypass_ifaces);
     // Tailscale traffic not addressed to FakeIP must bypass TProxy unless `tailscale0` is explicitly a source iface
     if allow_tailscale_fakeip {
         let _ = writeln!(
@@ -3041,9 +3087,12 @@ fn compile_nftables_ruleset_full_with_opts(
     let _ = writeln!(
         out,
         "    chain mangle_output {{
-        type route hook output priority mangle; policy accept;
-        oifname {{ {bypass_ifaces_literal} }} return
-        meta skgid {DIRECT_PROBE_SKGID} return
+        type route hook output priority mangle; policy accept;"
+    );
+    append_ifname_match_return(&mut out, "        ", "oifname", &tailscale_bypass_ifaces);
+    let _ = writeln!(
+        out,
+        "        meta skgid {DIRECT_PROBE_SKGID} return
         meta mark & {BYPASS_FWMARK} == {BYPASS_FWMARK} return
         meta mark & 0x14000000 != 0 return
         meta mark & {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} != 0 return
@@ -3172,9 +3221,12 @@ fn compile_nftables_ruleset_full_with_opts(
         let _ = writeln!(
             out,
             "    chain webrtc_forward {{
-        type filter hook forward priority filter; policy accept;
-        oifname {{ {bypass_ifaces_literal} }} return
-        jump webrtc_filter
+        type filter hook forward priority filter; policy accept;"
+        );
+        append_ifname_match_return(&mut out, "        ", "oifname", &tailscale_bypass_ifaces);
+        let _ = writeln!(
+            out,
+            "        jump webrtc_filter
     }}"
         );
     }
@@ -3325,11 +3377,6 @@ fn compile_tun_guard_ruleset_full(
     if !bypass_ifaces.iter().any(|i| i == &tun_if) {
         bypass_ifaces.push(tun_if.clone());
     }
-    let bypass_ifaces_literal = bypass_ifaces
-        .into_iter()
-        .map(|i| format!("\"{i}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
     let proxy_udp_ports = collect_proxy_udp_ports(store);
     let proxy_udp_ports_literal = proxy_udp_ports
         .iter()
@@ -3378,9 +3425,7 @@ fn compile_tun_guard_ruleset_full(
             "    chain guest_guard_prerouting {{
         type filter hook prerouting priority -90; policy accept;"
         );
-        if !bypass_ifaces_literal.trim().is_empty() {
-            let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
-        }
+        append_ifname_match_return(&mut out, "        ", "iifname", &bypass_ifaces);
         let _ = writeln!(out, "        iifname \"lo\" return");
         append_source_iface_guard(&mut out, store);
         let _ = writeln!(
@@ -3403,17 +3448,20 @@ fn compile_tun_guard_ruleset_full(
         let _ = writeln!(out, "    }}");
     }
     if eff_webrtc {
-        append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
+        append_webrtc_filter_chain(&mut out, &bypass_ifaces, &proxy_udp_ports_literal);
         let _ = writeln!(
             out,
             "    chain webrtc_forward {{
-        type filter hook forward priority filter; policy accept;
-        oifname {{ {bypass_ifaces_literal} }} return
-        jump webrtc_filter
+        type filter hook forward priority filter; policy accept;"
+        );
+        append_ifname_match_return(&mut out, "        ", "oifname", &bypass_ifaces);
+        let _ = writeln!(
+            out,
+            "        jump webrtc_filter
     }}"
         );
     }
-    append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal, ipv6_active);
+    append_dns_redirect_chain(&mut out, store, &bypass_ifaces, ipv6_active);
     append_dnat_output_chains(
         &mut out,
         dnat_redirects,
@@ -3427,9 +3475,7 @@ fn compile_tun_guard_ruleset_full(
             "    chain dns_guard_prerouting {{
         type filter hook prerouting priority mangle; policy accept;"
         );
-        if !bypass_ifaces_literal.trim().is_empty() {
-            let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
-        }
+        append_ifname_match_return(&mut out, "        ", "iifname", &bypass_ifaces);
         let _ = writeln!(out, "        iifname \"lo\" return");
         append_source_iface_guard(&mut out, store);
         append_client_exclusion_returns(&mut out, &store.settings.excluded_ips);
@@ -3462,9 +3508,12 @@ fn compile_tun_guard_ruleset_full(
     }}
     chain fail_closed_forward {{
         type filter hook forward priority -200; policy accept;
-        iifname != {lan_ifaces_literal} return
-        oifname {{ {bypass_ifaces_literal} }} return
-        meta mark & 0x00002022 == 0x00002022 return
+        iifname != {lan_ifaces_literal} return"
+        );
+        append_ifname_match_return(&mut out, "        ", "oifname", &bypass_ifaces);
+        let _ = writeln!(
+            out,
+            "        meta mark & 0x00002022 == 0x00002022 return
         ct status dnat return"
         );
         append_client_exclusion_returns(&mut out, &store.settings.excluded_ips);
@@ -6700,8 +6749,11 @@ async fn apply_tcp_tuning_with_paths(
         } else {
             let mut chosen_qdisc = "fq_codel";
             if is_linux {
-                try_modprobe_quiet("sch_fq").await;
-                let cur_qdisc = read_sysctl_fast("net.core.default_qdisc").await;
+                let mut cur_qdisc = read_sysctl_fast("net.core.default_qdisc").await;
+                if cur_qdisc != "fq" {
+                    try_modprobe_quiet("sch_fq").await;
+                    cur_qdisc = read_sysctl_fast("net.core.default_qdisc").await;
+                }
                 if cur_qdisc == "fq" || apply_sysctl_kv("net.core.default_qdisc", "fq").await {
                     chosen_qdisc = "fq";
                 } else if cur_qdisc != "fq_codel" {
@@ -6728,7 +6780,9 @@ async fn apply_tcp_tuning_with_paths(
     }
 
     let normalized = settings.tcp_profile.trim().to_ascii_lowercase();
-    if settings.tcp_bbr || normalized == "bbr" {
+    if (settings.tcp_bbr || normalized == "bbr")
+        && read_sysctl_fast("net.ipv4.tcp_fastopen").await != "3"
+    {
         let _ = apply_sysctl_kv("net.ipv4.tcp_fastopen", "3").await;
     }
     let buf_max = if system_total_ram_mb().is_some_and(|mb| mb < 256) {
@@ -6751,7 +6805,9 @@ async fn apply_tcp_tuning_with_paths(
         _ => return,
     };
     for (k, v) in pairs {
-        let _ = apply_sysctl_kv(k, v).await;
+        if read_sysctl_fast(k).await != *v {
+            let _ = apply_sysctl_kv(k, v).await;
+        }
     }
 }
 
@@ -7206,8 +7262,10 @@ mod tests {
         let mut store = RouterStoreData::default();
         store.sections[0].fptn_preferred_server = "198.51.100.77".to_string();
         let nft = compile_nftables_ruleset(&store);
-        assert!(nft.contains("oifname { \"tailscale0\", \"fptn0\", \"tun-fptn*\" } return"));
-        assert!(nft.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(nft.contains("oifname { \"tailscale0\", \"fptn0\" } return"));
+        assert!(nft.contains("oifname \"tun-fptn*\" return"));
+        assert!(nft.contains("iifname { \"fptn0\" } return"));
+        assert!(nft.contains("iifname \"tun-fptn*\" return"));
         assert!(
             nft.contains(
                 "iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return"
@@ -8326,7 +8384,8 @@ config interface 'wan'
         let pre = &nft[pre_start..out_start];
         let mangle_out = &nft[out_start..];
 
-        assert!(pre.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(pre.contains("iifname { \"fptn0\" } return"));
+        assert!(pre.contains("iifname \"tun-fptn*\" return"));
         assert!(
             pre.contains(
                 "iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return"
@@ -8357,7 +8416,8 @@ config interface 'wan'
             .find("chain mangle_output")
             .expect("chain mangle_output");
         let src_pre = &src_nft[src_pre_start..src_out_start];
-        assert!(src_pre.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(src_pre.contains("iifname { \"fptn0\" } return"));
+        assert!(src_pre.contains("iifname \"tun-fptn*\" return"));
         assert!(!src_pre.contains("iifname \"tailscale0\" meta nfproto ipv4 ip daddr !="));
         assert!(src_pre.contains("iifname != { \"br-lan\", \"tailscale0\", \"lo\" } return"));
 
@@ -8372,7 +8432,8 @@ config interface 'wan'
             .find("chain mangle_output")
             .expect("chain mangle_output");
         let nf_pre = &no_fakeip_nft[nf_pre_start..nf_out_start];
-        assert!(nf_pre.contains("iifname { \"tailscale0\", \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(nf_pre.contains("iifname { \"tailscale0\", \"fptn0\" } return"));
+        assert!(nf_pre.contains("iifname \"tun-fptn*\" return"));
     }
 
     #[test]
@@ -9472,5 +9533,40 @@ table inet TachyonTable {
             extract_selective_v4_elements_from_ruleset(rs_a).unwrap(),
             vec!["1.1.1.0/24", "8.8.8.8"]
         );
+    }
+
+    #[test]
+    fn test_compiled_nftables_never_places_wildcard_inside_anonymous_set() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.webrtc_leak_protect = true;
+        store.settings.webrtc_leak_protect_mode = "always".to_string();
+        store.settings.dns_intercept_all = true;
+        store.settings.block_doh = true;
+        store.settings.fakeip_enabled = true;
+        store.settings.enable_ipv6 = true;
+        store.guest_mode.enabled = true;
+        store.guest_mode.guest_devices = vec!["192.168.4.10".to_string()];
+
+        let tproxy_nft = compile_nftables_ruleset_full(&store, true, &[], &[], &[]);
+        store.settings.proxy_mode = "tun".to_string();
+        store.settings.emergency_direct_bypass = false;
+        let tun_nft =
+            compile_tun_guard_ruleset_full(&store, true, &[], &[], &[]).expect("tun guard ruleset");
+
+        for ruleset in [&tproxy_nft, &tun_nft] {
+            assert!(ruleset.contains("tun-fptn*"));
+            for line in ruleset.lines() {
+                if let (Some(lbrace), Some(rbrace)) = (line.find('{'), line.find('}'))
+                    && (line.contains("iifname") || line.contains("oifname"))
+                {
+                    let inside = &line[lbrace + 1..rbrace];
+                    assert!(
+                        !inside.contains('*'),
+                        "wildcard interface name inside nft anonymous set: {line}"
+                    );
+                }
+            }
+        }
     }
 }

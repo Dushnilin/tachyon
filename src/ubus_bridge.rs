@@ -3660,17 +3660,13 @@ async fn try_fast_ui_and_settings(
         }
         "get_outbound_metadata" => {
             let sec = rest.first().map(String::as_str).unwrap_or("all");
-            let d = state.data.read().await;
-            let val = read_pure_rust_outbound_metadata(&d, sec);
-            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
-            Some((0, format!("{s}\n"), String::new()))
+            let json_line = get_outbound_metadata_cached_json(state, sec).await;
+            Some((0, json_line.to_string(), String::new()))
         }
         "get_subscription_metadata" => {
             let sec = rest.first().map(String::as_str).unwrap_or("");
-            let d = state.data.read().await;
-            let val = read_pure_rust_subscription_metadata(&d, sec);
-            let s = serde_json::to_string(&val).unwrap_or_else(|_| "[]".to_string());
-            Some((0, format!("{s}\n"), String::new()))
+            let json_line = get_subscription_metadata_cached_json(state, sec).await;
+            Some((0, json_line.to_string(), String::new()))
         }
         "component_update_check_cache" => {
             let val = read_pure_rust_component_update_cache();
@@ -5396,6 +5392,98 @@ fn build_outbound_metadata_and_links(
     (meta, links, hidden)
 }
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct MetadataCacheKey {
+    state_id: usize,
+    store_gen: u64,
+    kind: u8,
+    section: String,
+    cache_mtime_ns: u64,
+}
+
+static METADATA_JSON_CACHE: OnceLock<
+    RwLock<std::collections::HashMap<MetadataCacheKey, Arc<str>>>,
+> = OnceLock::new();
+
+#[cfg(test)]
+static METADATA_CACHE_REBUILDS: PortableAtomicU64 = PortableAtomicU64::new(0);
+
+fn metadata_section_cache_mtime_ns(section: &str) -> u64 {
+    let cache_dir = crate::store::runtime_state_dir().join("section-cache");
+    let target = if section.is_empty() || section == "all" || section == "_sources" {
+        cache_dir
+    } else if !section.contains("..") && !section.contains('/') {
+        cache_dir.join(format!("{section}.json"))
+    } else {
+        return 0;
+    };
+    std::fs::metadata(target)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
+
+async fn get_metadata_cached_json(state: &AppState, kind: u8, section: &str) -> Arc<str> {
+    const MAX_METADATA_CACHE_ENTRIES: usize = 128;
+    let state_id = std::ptr::from_ref(state) as usize;
+    let store_gen = state.store_generation();
+    let cache_mtime_ns = metadata_section_cache_mtime_ns(section);
+    let key = MetadataCacheKey {
+        state_id,
+        store_gen,
+        kind,
+        section: section.to_string(),
+        cache_mtime_ns,
+    };
+    let cache = METADATA_JSON_CACHE.get_or_init(|| RwLock::new(std::collections::HashMap::new()));
+    if let Ok(guard) = cache.read()
+        && let Some(hit) = guard.get(&key)
+    {
+        return Arc::clone(hit);
+    }
+
+    let (actual_gen, serialized): (u64, Arc<str>) = {
+        let d = state.data.read().await;
+        let gen_now = state.store_generation();
+        #[cfg(test)]
+        METADATA_CACHE_REBUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let s = if kind == 0 {
+            let val = read_pure_rust_outbound_metadata(&d, section);
+            serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string())
+        } else {
+            let val = read_pure_rust_subscription_metadata(&d, section);
+            serde_json::to_string(&val).unwrap_or_else(|_| "[]".to_string())
+        };
+        (gen_now, Arc::from(format!("{s}\n")))
+    };
+
+    let insert_key = MetadataCacheKey {
+        state_id,
+        store_gen: actual_gen,
+        kind,
+        section: section.to_string(),
+        cache_mtime_ns: metadata_section_cache_mtime_ns(section),
+    };
+    if let Ok(mut guard) = cache.write() {
+        guard.retain(|k, _| !(k.state_id == state_id && k.store_gen != actual_gen));
+        if guard.len() >= MAX_METADATA_CACHE_ENTRIES {
+            guard.clear();
+        }
+        guard.insert(insert_key, Arc::clone(&serialized));
+    }
+    serialized
+}
+
+async fn get_outbound_metadata_cached_json(state: &AppState, section: &str) -> Arc<str> {
+    get_metadata_cached_json(state, 0, section).await
+}
+
+async fn get_subscription_metadata_cached_json(state: &AppState, section: &str) -> Arc<str> {
+    get_metadata_cached_json(state, 1, section).await
+}
+
 fn read_pure_rust_outbound_metadata(store: &crate::store::RouterStoreData, section: &str) -> Value {
     let (mut meta_val, _, _) = build_outbound_metadata_and_links(store, section);
     let has_any = meta_val
@@ -5827,6 +5915,88 @@ fn read_cached_clash_proxies(path: &Path) -> Option<String> {
     Some(raw)
 }
 
+struct ClashProxiesMemCacheEntry {
+    core_ptr: usize,
+    cred_epoch: u64,
+    fetched_at: std::time::Instant,
+    body_with_nl: Arc<str>,
+}
+
+static CLASH_PROXIES_MEM_CACHE: OnceLock<RwLock<Option<ClashProxiesMemCacheEntry>>> =
+    OnceLock::new();
+static LAST_CLASH_PROXIES_DISK_WRITE_MS: PortableAtomicU64 = PortableAtomicU64::new(0);
+static CLASH_PROXIES_DISK_WRITE_IN_FLIGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn invalidate_clash_proxies_mem_cache() {
+    if let Some(cache) = CLASH_PROXIES_MEM_CACHE.get()
+        && let Ok(mut guard) = cache.write()
+    {
+        *guard = None;
+    }
+}
+
+fn monotonic_millis_since_boot_ref() -> u64 {
+    static BOOT_REF: OnceLock<std::time::Instant> = OnceLock::new();
+    let base = BOOT_REF.get_or_init(std::time::Instant::now);
+    u64::try_from(base.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+async fn fetch_clash_proxies_cached_raw(core: &Arc<CoreManager>) -> Option<Arc<str>> {
+    const PROXIES_MEM_TTL: Duration = Duration::from_millis(800);
+    const PROXIES_DISK_WRITE_INTERVAL_MS: u64 = 5000;
+
+    let core_ptr = Arc::as_ptr(core) as usize;
+    let cred_epoch = CoreManager::clash_cred_epoch();
+    let cache = CLASH_PROXIES_MEM_CACHE.get_or_init(|| RwLock::new(None));
+    if let Ok(guard) = cache.read()
+        && let Some(entry) = guard.as_ref()
+        && entry.core_ptr == core_ptr
+        && entry.cred_epoch == cred_epoch
+        && entry.fetched_at.elapsed() < PROXIES_MEM_TTL
+    {
+        return Some(Arc::clone(&entry.body_with_nl));
+    }
+
+    let raw = core.clash_request_raw("GET", "/proxies", None).await.ok()?;
+    let body_with_nl: Arc<str> = Arc::from(format!("{raw}\n"));
+    if let Ok(mut guard) = cache.write() {
+        *guard = Some(ClashProxiesMemCacheEntry {
+            core_ptr,
+            cred_epoch,
+            fetched_at: std::time::Instant::now(),
+            body_with_nl: Arc::clone(&body_with_nl),
+        });
+    }
+
+    let now_ms = monotonic_millis_since_boot_ref();
+    let prev_ms = LAST_CLASH_PROXIES_DISK_WRITE_MS.load(std::sync::atomic::Ordering::Acquire);
+    let write_due =
+        prev_ms == 0 || now_ms.saturating_sub(prev_ms) >= PROXIES_DISK_WRITE_INTERVAL_MS;
+    if write_due
+        && CLASH_PROXIES_DISK_WRITE_IN_FLIGHT
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .is_ok()
+    {
+        LAST_CLASH_PROXIES_DISK_WRITE_MS.store(now_ms, std::sync::atomic::Ordering::Release);
+        let raw_bytes = raw.into_bytes();
+        let ui_state = crate::store::runtime_state_dir().join("ui-state");
+        tokio::task::spawn_blocking(move || {
+            let _ = std::fs::create_dir_all(&ui_state);
+            let _ =
+                crypto_gen::write_file_if_changed(ui_state.join("clash-proxies.json"), &raw_bytes);
+            CLASH_PROXIES_DISK_WRITE_IN_FLIGHT.store(false, std::sync::atomic::Ordering::Release);
+        });
+    }
+
+    Some(body_with_nl)
+}
+
 async fn handle_pure_rust_clash_api(
     rest: &[String],
     state: &Arc<AppState>,
@@ -5895,16 +6065,8 @@ async fn handle_pure_rust_clash_api(
             }
         }
         "get_proxies" => {
-            if let Ok(val) = core.clash_request("GET", "/proxies", None).await
-                && let Ok(raw) = serde_json::to_string(&val)
-            {
-                let ui_state = crate::store::runtime_state_dir().join("ui-state");
-                let _ = std::fs::create_dir_all(&ui_state);
-                let _ = crypto_gen::write_file_if_changed(
-                    ui_state.join("clash-proxies.json"),
-                    raw.as_bytes(),
-                );
-                return Some((0, format!("{raw}\n"), String::new()));
+            if let Some(body_with_nl) = fetch_clash_proxies_cached_raw(core).await {
+                return Some((0, body_with_nl.to_string(), String::new()));
             }
             let cached_proxies_path = crate::store::runtime_state_dir()
                 .join("ui-state")
@@ -6208,6 +6370,7 @@ async fn handle_pure_rust_clash_api(
                 .unwrap_or_default();
                 return Some((1, format!("{s}\n"), String::new()));
             }
+            invalidate_clash_proxies_mem_cache();
             CoreManager::save_selector_choice(&effective_group, proxy);
             {
                 let mut d = state.data.write().await;
@@ -18756,5 +18919,144 @@ tls=TLSv1.3
             ),
             Some("http://127.0.0.1:1088".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_metadata_cache_hits_and_invalidates_on_store_generation_bump() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_meta_cache_test_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.outbound_sources.push(crate::store::OutboundSource {
+                id: "sub_cached".to_string(),
+                name: "CachedSub".to_string(),
+                source_type: "subscription".to_string(),
+                enabled: true,
+                subscription_urls: vec!["https://example.com/sub".to_string()],
+                proxy_links: vec![
+                    "vless://11111111-1111-4111-8111-111111111111@198.51.100.10:443#DE-1"
+                        .to_string(),
+                ],
+                ..Default::default()
+            });
+            if let Some(sec) = d.sections.first_mut() {
+                sec.outbound_source_refs.push("sub_cached".to_string());
+            }
+        }
+        state.bump_generation();
+
+        let before = METADATA_CACHE_REBUILDS.load(std::sync::atomic::Ordering::Relaxed);
+        let out1 = get_outbound_metadata_cached_json(&state, "all").await;
+        let out2 = get_outbound_metadata_cached_json(&state, "all").await;
+        assert_eq!(out1, out2);
+        assert!(out1.contains("DE-1"));
+        let sub1 = get_subscription_metadata_cached_json(&state, "all").await;
+        let sub2 = get_subscription_metadata_cached_json(&state, "all").await;
+        assert_eq!(sub1, sub2);
+        assert!(sub1.contains("CachedSub"));
+        let after_hits = METADATA_CACHE_REBUILDS.load(std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(after_hits - before, 2, "repeated calls must hit cache");
+
+        {
+            let mut d = state.data.write().await;
+            if let Some(src) = d.outbound_sources.iter_mut().find(|s| s.id == "sub_cached") {
+                src.name = "UpdatedSub".to_string();
+            }
+        }
+        state.bump_generation();
+        let sub3 = get_subscription_metadata_cached_json(&state, "all").await;
+        assert!(sub3.contains("UpdatedSub"));
+        let after_bump = METADATA_CACHE_REBUILDS.load(std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(after_bump - after_hits, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_get_proxies_ttl_cache_avoids_redundant_clash_requests_and_invalidates() {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let hits_srv = Arc::clone(&hits);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock clash");
+        let port = listener.local_addr().unwrap().port();
+        let srv = tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let hits_req = Arc::clone(&hits_srv);
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 2048];
+                    let _ = sock.read(&mut buf).await;
+                    let n = hits_req.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    let body = format!(
+                        "{{\"proxies\":{{\"sel-Main\":{{\"type\":\"Selector\",\"now\":\"Node{n}\",\"all\":[\"Node1\",\"Node2\"]}}}}}}"
+                    );
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_proxies_ttl_test_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let cfg_file = dir.join("core-cfg.json");
+        std::fs::write(
+            &cfg_file,
+            json!({
+                "experimental": {
+                    "clash_api": {
+                        "external_controller": format!("127.0.0.1:{port}"),
+                        "secret": ""
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("write cfg");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.clash_api_addr = format!("127.0.0.1:{port}");
+            d.settings.clash_api_secret.clear();
+            d.settings.core_config_path = cfg_file.to_string_lossy().to_string();
+        }
+        let core = CoreManager::new(Arc::clone(&state));
+        CoreManager::invalidate_clash_cred_cache();
+
+        let res1 = handle_pure_rust_clash_api(&["get_proxies".to_string()], &state, &core)
+            .await
+            .expect("first get_proxies");
+        let res2 = handle_pure_rust_clash_api(&["get_proxies".to_string()], &state, &core)
+            .await
+            .expect("second get_proxies");
+        assert_eq!(res1.1, res2.1);
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        invalidate_clash_proxies_mem_cache();
+        let res3 = handle_pure_rust_clash_api(&["get_proxies".to_string()], &state, &core)
+            .await
+            .expect("third get_proxies after invalidation");
+        assert!(res3.1.contains("Node2"));
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+        srv.abort();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
