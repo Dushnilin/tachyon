@@ -639,8 +639,8 @@ async fn build_doctor_report(
 /// Count only DNS upstream failures that are recent and have not been followed by
 /// a successful query. The Core counters are cumulative, so summing them forever
 /// leaves stale Doctor warnings after an upstream has recovered.
-fn recent_dns_upstream_error_count(servers: &[Value], now: u64) -> u64 {
-    const RECENT_ERROR_WINDOW_SECS: u64 = 10 * 60;
+fn recent_dns_upstream_error_count(servers: &[Value], now: i64) -> u64 {
+    const RECENT_ERROR_WINDOW_SECS: i64 = 10 * 60;
 
     servers
         .iter()
@@ -655,7 +655,7 @@ fn recent_dns_upstream_error_count(servers: &[Value], now: u64) -> u64 {
 
             let Some(last_error) = server
                 .get("last_error_unix")
-                .and_then(Value::as_u64)
+                .and_then(Value::as_i64)
                 .filter(|timestamp| *timestamp > 0)
             else {
                 // Older Core builds may not expose timestamps; preserve the
@@ -669,7 +669,7 @@ fn recent_dns_upstream_error_count(servers: &[Value], now: u64) -> u64 {
 
             if server
                 .get("last_seen_unix")
-                .and_then(Value::as_u64)
+                .and_then(Value::as_i64)
                 .is_some_and(|last_seen| last_seen > last_error)
             {
                 // A later query succeeded, so the last recorded error recovered.
