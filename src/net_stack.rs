@@ -5321,6 +5321,13 @@ pub(crate) fn nft_ruleset_skeleton_without_selective_v4(ruleset: &str) -> String
     }
 }
 
+// A socket cgroupv2 expression resolves a path to a kernel cgroup ID when
+// nft installs the rule. A recreated cgroup can have the same path and a new
+// ID, so a textual skeleton match cannot justify a selective-set-only update.
+fn nft_set_delta_eligible(cached: Option<&str>, desired_skeleton: &str) -> bool {
+    cached == Some(desired_skeleton) && !desired_skeleton.contains("socket cgroupv2")
+}
+
 pub(crate) fn extract_selective_v4_elements_from_ruleset(ruleset: &str) -> Option<Vec<String>> {
     let (start, end) = find_selective_v4_elements_span(ruleset)?;
     let inner = &ruleset[start..end];
@@ -6154,7 +6161,7 @@ async fn apply_network_stack_inner(
             let mut applied_via_delta = false;
             let skeleton_matches = {
                 let guard = nft_skeleton_lock().lock().await;
-                guard.as_deref() == Some(new_skeleton.as_str())
+                nft_set_delta_eligible(guard.as_deref(), &new_skeleton)
             };
             if skeleton_matches
                 && let Some(desired_v4) = extract_selective_v4_elements_from_ruleset(&ruleset)
@@ -9477,6 +9484,20 @@ dhcp.cfg01411c.tachyon_prev_server='1.1.1.1 8.8.8.8'
             "ip saddr { 192.168.1.5 } udp dport { 3074, 27015-27030 } tproxy ip to 127.0.0.1:1602"
         ));
         assert!(pre.contains("udp dport { 19294-19344, 50000-50100 } tproxy ip to 127.0.0.1:1602"));
+    }
+
+    #[test]
+    fn test_nft_set_delta_requires_full_apply_for_cgroup_rules() {
+        let ordinary = "chain output { meta mark set 0x40000000 }";
+        let cgroup = "chain output { socket cgroupv2 level 2 \"services/torrserver\" counter }";
+
+        assert!(nft_set_delta_eligible(Some(ordinary), ordinary));
+        assert!(!nft_set_delta_eligible(None, ordinary));
+        assert!(!nft_set_delta_eligible(Some(ordinary), cgroup));
+        // Identical path text does not prove that the kernel cgroup ID is
+        // unchanged. Also retry a prior apply that fell back without cgroup.
+        assert!(!nft_set_delta_eligible(Some(cgroup), cgroup));
+        assert!(!nft_set_delta_eligible(Some(cgroup), ordinary));
     }
 
     #[test]
