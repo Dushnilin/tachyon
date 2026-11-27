@@ -15,9 +15,7 @@ describe('release notes lookup', () => {
   const selected = { tag: 'v2.0', body: 'Earlier changes' };
   const release = (tag: string) => ({ tag, body: `Notes for ${tag}` });
   const page = (prefix: string, count = 30) =>
-    Array.from({ length: count }, (_, index) =>
-      release(`${prefix}-${index}`),
-    );
+    Array.from({ length: count }, (_, index) => release(`${prefix}-${index}`));
 
   it('prefers an exact tag before the optional v-prefix fallback', async () => {
     const { getReleaseForNotes } = await import('../releaseNotes');
@@ -106,9 +104,9 @@ describe('release notes lookup', () => {
     const { getReleaseForNotes } = await import('../releaseNotes');
     listReleases.mockResolvedValueOnce({ success: false, error: 'offline' });
 
-    await expect(
-      getReleaseForNotes('tachyon', 'v2.0'),
-    ).rejects.toThrow('offline');
+    await expect(getReleaseForNotes('tachyon', 'v2.0')).rejects.toThrow(
+      'offline',
+    );
   });
 
   it('stops at the bounded search limit for very old tags', async () => {
