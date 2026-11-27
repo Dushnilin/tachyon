@@ -47,8 +47,10 @@ def _uleb(value):
     return bytes(out)
 
 
-def _arm_attributes(cpu_arch, vfp_args, no_defaults=False):
+def _arm_attributes(cpu_arch, vfp_args, no_defaults=False, cpu_profile=None):
     attributes = _uleb(6) + _uleb(cpu_arch)
+    if cpu_profile is not None:
+        attributes += _uleb(7) + _uleb(cpu_profile)
     if vfp_args is not None:
         attributes += _uleb(28) + _uleb(vfp_args)
     if no_defaults:
@@ -61,7 +63,7 @@ def _arm_attributes(cpu_arch, vfp_args, no_defaults=False):
 
 def elf_header(
     elf_class, endian, machine, *, arm_arch=None, vfp_args=0,
-    arm_flags=None, include_arm_attributes=True, no_defaults=False,
+    arm_flags=None, include_arm_attributes=True, no_defaults=False, cpu_profile=None,
 ):
     """Build minimal ELF headers, including real ARM section/attribute tables."""
     raw = bytearray(52 if elf_class == 1 else 64)
@@ -93,7 +95,7 @@ def elf_header(
 
     if arm_arch is None:
         arm_arch = 10
-    attrs = _arm_attributes(arm_arch, vfp_args, no_defaults)
+    attrs = _arm_attributes(arm_arch, vfp_args, no_defaults, cpu_profile)
     attrs_off = shstr_off + len(shstrtab)
     shoff = attrs_off + len(attrs)
     raw[32:36] = shoff.to_bytes(4, "little")
@@ -142,6 +144,8 @@ class OpenWrtPackageTest(unittest.TestCase):
              "hard-float"),
             ("newer ISA", {"arm_arch": 14, "vfp_args": 1, "arm_flags": 0x05000400},
              "exceeds armv7 target"),
+            ("real-time profile", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
+                                  "cpu_profile": 82}, "CPU architecture profile"),
             ("base PCS on hard-float", {"arm_arch": 10, "vfp_args": 0, "arm_flags": 0x05000400},
              "VFP argument ABI"),
         ]
