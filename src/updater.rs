@@ -1438,7 +1438,7 @@ fn final_partial_release_page(
     pending: Vec<Value>,
 ) -> Option<Value> {
     if requested_page == next_page && !pending.is_empty() {
-        Some(Value::Array(pending))
+        Some(Value::Array(pending.clone()))
     } else {
         None
     }
