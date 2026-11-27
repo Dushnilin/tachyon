@@ -1041,6 +1041,8 @@ export namespace Tachyon {
     sources?: Record<string, string>;
     source_ids?: Record<string, string>;
     source_names?: Record<string, string>;
+    hidden?: Record<string, boolean>;
+    internal_hidden?: Record<string, boolean>;
   }
 
   export interface GetTachyonCoreStatus {

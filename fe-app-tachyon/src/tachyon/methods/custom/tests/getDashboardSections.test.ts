@@ -3731,4 +3731,80 @@ describe('getDashboardSections', () => {
       '/var/run/tachyon/ui-state/clash-proxies.json',
     );
   });
+
+  it('scopes bulk outbound metadata to the section and does not leak other sections into single-node WARP sections', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'src_awarp',
+        '.type': 'outbound_source',
+        source_type: 'warp',
+        name: 'AWARP',
+      },
+      {
+        '.name': 'sec_discord_warp',
+        '.type': 'section',
+        enabled: '1',
+        action: 'proxy',
+        outbound_source_refs: ['src_awarp'],
+      },
+      {
+        '.name': 'sec_no_refs',
+        '.type': 'section',
+        enabled: '1',
+        action: 'proxy',
+        selector_proxy_links: ['vless://example#FallbackNode'],
+      },
+    ]);
+    mocks.fsRead.mockRejectedValue(new Error('cache miss'));
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          WARPv3_91: proxy('WireGuard', { name: 'WARPv3_91' }),
+          tmp_vpn_1: proxy('VLESS', { name: 'tmp_vpn_1' }),
+          'desync-Desync': proxy('Desync', { name: 'desync-Desync' }),
+          FallbackNode: proxy('VLESS', { name: 'FallbackNode' }),
+        },
+      },
+    });
+    mocks.getOutboundMetadata.mockImplementation(async (section: string) => {
+      if (section === 'all') {
+        return {
+          success: true,
+          data: {
+            names: {
+              WARPv3_91: 'WARPv3_91',
+              tmp_vpn_1: 'tmp_vpn_1',
+              'desync-Desync': 'desync-Desync',
+            },
+            source_ids: {
+              WARPv3_91: 'src_awarp',
+              tmp_vpn_1: 'src_tmp_vpn',
+              'desync-Desync': 'src_desync',
+            },
+          },
+        };
+      }
+      if (section === 'sec_no_refs') {
+        return {
+          success: true,
+          data: { names: { FallbackNode: 'FallbackNode' } },
+        };
+      }
+      return { success: false };
+    });
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    const warpSection = result.data.find(
+      (s) => s.sectionName === 'sec_discord_warp',
+    );
+    expect(warpSection).toBeTruthy();
+    expect(warpSection!.outbounds.map((o) => o.code)).toEqual(['WARPv3_91']);
+    expect(mocks.getOutboundMetadata.mock.calls.map((c) => c[0])).toEqual([
+      'all',
+      'sec_no_refs',
+    ]);
+  });
 });

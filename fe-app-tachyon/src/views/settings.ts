@@ -988,13 +988,13 @@ function createWatchdogStatusWidget() {
 
   function applyWdStatus(running) {
     if (running) {
-      dot.style.background = '#4caf50';
+      dot.style.background = 'var(--success, #4caf50)';
       statusText.textContent = _('Running');
       btnStart.style.display = 'none';
       btnStop.style.display = '';
       btnStop.disabled = false;
     } else {
-      dot.style.background = '#f44336';
+      dot.style.background = 'var(--danger, #f44336)';
       statusText.textContent = _('Stopped');
       btnStart.style.display = '';
       btnStart.disabled = false;
@@ -1028,7 +1028,7 @@ function createWatchdogStatusWidget() {
         }
       })
       .catch(function () {
-        dot.style.background = '#aaa';
+        dot.style.background = 'var(--text3, #aaa)';
         statusText.textContent = _('Unknown');
       })
       .finally(function () {
@@ -1281,7 +1281,7 @@ function createSnapshotsWidget() {
           'pre',
           {
             style:
-              'max-height:320px;overflow:auto;padding:10px;border-radius:6px;border:1px solid var(--border-color,#dee2e6);background:var(--background-color-low,#f8f9fa);font-family:monospace;font-size:12px;white-space:pre-wrap;margin:8px 0;',
+              'max-height:320px;overflow:auto;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-family:var(--mono);font-size:12px;white-space:pre-wrap;margin:8px 0;',
           },
           data.has_changes
             ? data.diff || ''
@@ -1796,7 +1796,7 @@ function createSnapshotsWidget() {
     const textarea = E('textarea', {
       class: 'cbi-input-textarea',
       style:
-        'width:100%;min-height:140px;font-family:monospace;font-size:12px;',
+        'width:100%;min-height:140px;font-family:var(--mono);font-size:12px;',
       placeholder: '{"format": "tachyon-profile-v1", ...}',
     });
     textarea.addEventListener('input', function () {
@@ -2052,7 +2052,7 @@ function createSnapshotsWidget() {
       class: 'cbi-input-textarea',
       readonly: 'readonly',
       style:
-        'width:100%;min-height:56px;font-family:monospace;font-size:13px;word-break:break-all;',
+        'width:100%;min-height:56px;font-family:var(--mono);font-size:13px;word-break:break-all;',
       placeholder: 'tachyon://cfg1/...',
     }) as HTMLTextAreaElement;
 
@@ -2297,7 +2297,7 @@ function createSnapshotsWidget() {
     const codeInput = E('textarea', {
       class: 'cbi-input-textarea',
       style:
-        'width:100%;min-height:56px;font-family:monospace;font-size:13px;word-break:break-all;',
+        'width:100%;min-height:56px;font-family:var(--mono);font-size:13px;word-break:break-all;',
       placeholder: 'tachyon://cfg1/...',
     }) as HTMLTextAreaElement;
 
@@ -2738,7 +2738,8 @@ function createSmartDetectSectionsWidget(section_id) {
     });
 
     const label = E('span', {
-      style: 'flex:1;font-family:monospace;font-size:0.9rem;user-select:none;',
+      style:
+        'flex:1;font-family:var(--mono);font-size:0.9rem;user-select:none;',
     });
     label.textContent = name;
 
@@ -7496,7 +7497,7 @@ function createTelegramStatusWidget() {
         lastKnownBotUsername = cleanUser;
       }
       const displayUser = cleanUser || lastKnownBotUsername;
-      dot.style.background = '#4caf50';
+      dot.style.background = 'var(--success, #4caf50)';
       let label = _('Running');
       if (displayUser) {
         label += ' @' + displayUser;
@@ -7511,7 +7512,7 @@ function createTelegramStatusWidget() {
       btnStop.disabled = false;
     } else {
       lastKnownBotUsername = '';
-      dot.style.background = '#f44336';
+      dot.style.background = 'var(--danger, #f44336)';
       statusText.textContent = _('Stopped');
       btnStart.style.display = '';
       btnStart.disabled = false;
@@ -7539,14 +7540,14 @@ function createTelegramStatusWidget() {
       .then(function (res) {
         const parsed = parseTelegramStatusPayload(res && res.stdout);
         if (!parsed.hasStatus && res && res.code !== 0) {
-          dot.style.background = '#aaa';
+          dot.style.background = 'var(--text3, #aaa)';
           statusText.textContent = _('Unknown');
           return;
         }
         applyStatus(parsed.running, parsed.pid, parsed.botUsername);
       })
       .catch(function () {
-        dot.style.background = '#aaa';
+        dot.style.background = 'var(--text3, #aaa)';
         statusText.textContent = _('Unknown');
       })
       .finally(function () {
@@ -8316,7 +8317,7 @@ function createTelegramContent(section) {
     const result = E('div', {
       id: 'tachyon-telegram-test-result',
       style:
-        'margin-top: 8px; font-family: monospace; font-size: 12px; display: none;',
+        'margin-top: 8px; font-family: var(--mono); font-size: 12px; display: none;',
     });
     wrapper.appendChild(btn);
     wrapper.appendChild(result);

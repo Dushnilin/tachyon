@@ -485,6 +485,7 @@ const EARLY_THEME_APPLY_SCRIPT: &str = r##"<script>
   try {
     var PRESETS = {
       "default-dark": ["dark","#0b0b0c","#141416","#1c1c1f","#26262b","#0a84ff","#409cff","#f5f5f7","#a1a1a6","#6e6e73","#30d158","#ff9f0a","#ff453a"],
+      "default-light": ["light","#f5f7fb","#ffffff","#f1f5f9","#e2e8f0","#0a84ff","#005bb5","#0f172a","#334155","#475569","#15803d","#b45309","#b91c1c"],
       "legacy-dark": ["dark","#0d1117","#161b22","#1f2630","#28313d","#58a6ff","#79c0ff","#e6edf3","#8b949e","#6e7681","#3fb950","#d29922","#f85149"],
       "catppuccin": ["dark","#1e1e2e","#242436","#313244","#3b3d52","#89b4fa","#b4befe","#cdd6f4","#a6adc8","#7f849c","#a6e3a1","#f9e2af","#f38ba8"],
       "dracula": ["dark","#282a36","#2f3241","#383b4d","#44475a","#bd93f9","#d1b3ff","#f8f8f2","#b6bbd2","#6272a4","#50fa7b","#ffb86c","#ff5555"],
@@ -495,13 +496,39 @@ const EARLY_THEME_APPLY_SCRIPT: &str = r##"<script>
       "one-dark-pro": ["dark","#21252b","#282c34","#323842","#3e4451","#61afef","#82c4ff","#abb2bf","#8b93a2","#5c6370","#98c379","#e5c07b","#e06c75"],
       "tokyo-night": ["dark","#1a1b26","#202330","#292e42","#343b58","#7aa2f7","#9ab7ff","#c0caf5","#9aa5ce","#565f89","#9ece6a","#e0af68","#f7768e"],
       "solarized-dark": ["dark","#002b36","#073642","#0d414f","#144e5e","#268bd2","#2aa198","#eee8d5","#93a1a1","#657b83","#859900","#b58900","#dc322f"],
-      "vesper": ["dark","#101010","#161616","#1f1f1f","#282828","#ffc799","#ffd8b8","#ffffff","#a0a0a0","#666666","#99ffe4","#ffc799","#ff8080"]
+      "vesper": ["dark","#101010","#161616","#1f1f1f","#282828","#ffc799","#ffd8b8","#ffffff","#a0a0a0","#666666","#99ffe4","#ffc799","#ff8080"],
+      "material-dark": ["dark","#121316","#1b1d22","#24272e","#2e323b","#82aaff","#a5c2ff","#eeffff","#b2ccd6","#697098","#c3e88d","#ffcb6b","#f07178"],
+      "everforest-light": ["light","#edf2ec","#f8fbf7","#e2ebe0","#d4e2d2","#237a54","#1a6142","#1f2d27","#465c52","#687e74","#2d7a47","#b4690e","#c23b3b"],
+      "material-light": ["light","#f1f3f6","#ffffff","#e8edf3","#dce4ef","#1a73e8","#1557b0","#1c1f24","#4b5563","#6b7280","#188038","#b06000","#d93025"],
+      "apple-light": ["light","#f5f5f7","#ffffff","#ebebf0","#e2e2e8","#0071e3","#005bb5","#1d1d1f","#515154","#6e6e73","#248a3d","#b25000","#d70015"],
+      "gruvbox-light": ["light","#f2e5bc","#fbf1c7","#ebdbb2","#dfcfa0","#076678","#427b58","#282828","#504945","#7c6f64","#79740e","#b57614","#9d0006"]
     };
+    var FONT_SANS = {
+      "system": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"Inter\", system-ui, sans-serif",
+      "geometric": "\"Inter\", \"Segoe UI Variable\", \"Segoe UI\", \"Roboto\", \"Helvetica Neue\", Arial, sans-serif",
+      "humanist": "\"Ubuntu\", \"Cantarell\", \"Noto Sans\", \"DejaVu Sans\", \"Segoe UI\", Tahoma, sans-serif",
+      "mono": "var(--mono)",
+      "serif": "\"Charter\", \"Iowan Old Style\", Georgia, \"Times New Roman\", serif"
+    };
+    var FONT_MONO = {
+      "system": "\"SF Mono\", ui-monospace, \"Cascadia Code\", \"JetBrains Mono\", \"Fira Code\", Consolas, monospace",
+      "jetbrains": "\"JetBrains Mono\", \"Fira Code\", \"Cascadia Code\", ui-monospace, Consolas, monospace",
+      "cascadia": "\"Cascadia Code\", \"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "plex": "\"IBM Plex Mono\", \"Roboto Mono\", \"DejaVu Sans Mono\", ui-monospace, monospace"
+    };
+    var FONT_SIZE = { "compact": "13px", "normal": "14px", "large": "15px" };
     function hexRgb(hex, fallback) {
       var m = /^#([0-9a-f]{6})$/i.exec(String(hex || "").trim());
       if (!m) return fallback;
       var n = parseInt(m[1], 16);
       return ((n >> 16) & 255) + ", " + ((n >> 8) & 255) + ", " + (n & 255);
+    }
+    function isLightColor(hex) {
+      var m = /^#([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+      if (!m) return false;
+      var n = parseInt(m[1], 16);
+      var lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+      return lum > 0.56;
     }
     var mode = localStorage.getItem("tachyon_ui_theme_mode") || "manual";
     var tid = localStorage.getItem("tachyon_ui_theme_id") || "default-dark";
@@ -546,24 +573,73 @@ const EARLY_THEME_APPLY_SCRIPT: &str = r##"<script>
     var r = document.documentElement;
     var s = r.style;
     var isLight = p[0] === "light";
+    var surfaceRgb = hexRgb(p[2], isLight ? "255, 255, 255" : "20, 20, 22");
+    var accentRgb = hexRgb(p[5], "10, 132, 255");
+    var successRgb = hexRgb(p[10], "48, 209, 88");
+    var warnRgb = hexRgb(p[11], "255, 159, 10");
+    var dangerRgb = hexRgb(p[12], "255, 69, 58");
+    var border = isLight ? "rgba(0, 0, 0, 0.10)" : "rgba(255, 255, 255, 0.08)";
+    var borderStrong = isLight ? "rgba(0, 0, 0, 0.18)" : "rgba(255, 255, 255, 0.15)";
+    var accentSoft = "rgba(" + accentRgb + ", " + (isLight ? "0.12" : "0.16") + ")";
+    var accentRing = "rgba(" + accentRgb + ", " + (isLight ? "0.38" : "0.36") + ")";
+    var successSoft = "rgba(" + successRgb + ", " + (isLight ? "0.11" : "0.13") + ")";
+    var successBorder = "rgba(" + successRgb + ", " + (isLight ? "0.32" : "0.34") + ")";
+    var warnSoft = "rgba(" + warnRgb + ", " + (isLight ? "0.11" : "0.13") + ")";
+    var warnBorder = "rgba(" + warnRgb + ", " + (isLight ? "0.34" : "0.35") + ")";
+    var dangerSoft = "rgba(" + dangerRgb + ", " + (isLight ? "0.10" : "0.13") + ")";
+    var dangerBorder = "rgba(" + dangerRgb + ", " + (isLight ? "0.32" : "0.36") + ")";
     var vars = {
       "--color-scheme": isLight ? "light" : "dark",
-      "--bg": p[1], "--surface": p[2], "--bg2": p[2], "--hover": p[3], "--elevated": p[4],
-      "--accent": p[5], "--accent-hover": p[6], "--text": p[7], "--text2": p[8], "--text3": p[9],
-      "--success": p[10], "--ok": p[10], "--warn": p[11], "--danger": p[12],
-      "--border": isLight ? "rgba(0, 0, 0, 0.10)" : "rgba(255, 255, 255, 0.08)",
-      "--border-strong": isLight ? "rgba(0, 0, 0, 0.18)" : "rgba(255, 255, 255, 0.15)",
-      "--border-hi": isLight ? "rgba(0, 0, 0, 0.18)" : "rgba(255, 255, 255, 0.15)",
-      "--surface-glass": "rgba(" + hexRgb(p[2], "20, 20, 22") + ", 0.84)",
-      "--topbar-glass": "rgba(" + hexRgb(p[2], "20, 20, 22") + ", 0.96)",
-      "--accent-soft": "rgba(" + hexRgb(p[5], "10, 132, 255") + ", 0.16)",
-      "--accent-ring": "rgba(" + hexRgb(p[5], "10, 132, 255") + ", 0.34)",
-      "--bg-grid-stroke": isLight ? "rgba(0, 0, 0, 0.045)" : "rgba(255, 255, 255, 0.028)"
+      "--bg": p[1], "--surface": p[2], "--bg2": p[2], "--surface2": p[3], "--hover": p[3], "--elevated": p[4],
+      "--accent": p[5], "--accent-hover": p[6], "--accent-fg": isLightColor(p[5]) ? "#0b0b0c" : "#ffffff",
+      "--tachyon-theme-accent": p[5],
+      "--text": p[7], "--text2": p[8], "--text3": p[9], "--muted": p[8],
+      "--success": p[10], "--ok": p[10], "--warn": p[11], "--warning": p[11], "--danger": p[12],
+      "--border": border, "--border-strong": borderStrong, "--border-hi": borderStrong,
+      "--surface-glass": "rgba(" + surfaceRgb + ", " + (isLight ? "0.92" : "0.86") + ")",
+      "--topbar-glass": "rgba(" + surfaceRgb + ", " + (isLight ? "0.96" : "0.94") + ")",
+      "--accent-soft": accentSoft, "--accent-ring": accentRing,
+      "--accent-text": p[6], "--accent-text-hover": isLight ? p[5] : p[6],
+      "--success-soft": successSoft, "--success-border": successBorder,
+      "--warn-soft": warnSoft, "--warn-border": warnBorder,
+      "--danger-soft": dangerSoft, "--danger-border": dangerBorder,
+      "--row-hover": isLight ? "rgba(0, 0, 0, 0.03)" : "rgba(255, 255, 255, 0.03)",
+      "--bg-grid-stroke": isLight ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.028)",
+      "--modal-backdrop": isLight ? "rgba(15, 23, 42, 0.36)" : "rgba(0, 0, 0, 0.62)",
+      "--shadow-card": isLight ? "0 2px 10px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7)" : "inset 0 1px 0 rgba(255, 255, 255, 0.04)",
+      "--shadow-popover": isLight ? "0 16px 40px rgba(15, 23, 42, 0.16)" : "0 18px 44px rgba(0, 0, 0, 0.62)",
+      "--shadow-modal": isLight ? "0 24px 48px rgba(15, 23, 42, 0.18)" : "0 24px 48px rgba(0, 0, 0, 0.58)",
+      "--background-color-high": p[2], "--background-color-medium": p[1], "--background-color-low": p[3],
+      "--border-color-high": borderStrong, "--border-color-medium": border,
+      "--border-color-low": isLight ? "rgba(0, 0, 0, 0.07)" : "rgba(255, 255, 255, 0.06)",
+      "--text-color-high": p[7], "--text-color-medium": p[8], "--text-color-low": p[9],
+      "--primary-color-high": p[5], "--primary-color-medium": p[5], "--primary-color-low": accentSoft,
+      "--tachyon-text-primary": p[7], "--tachyon-bg-input": isLight ? p[3] : p[1],
+      "--tachyon-accent": p[5], "--tachyon-accent-strong": p[6], "--tachyon-accent-soft": accentSoft, "--tachyon-accent-border": accentRing,
+      "--tachyon-accent-text": p[6], "--tachyon-accent-text-hover": isLight ? p[5] : p[6],
+      "--tachyon-success": p[10], "--tachyon-success-soft": successSoft, "--tachyon-success-border": successBorder,
+      "--tachyon-warning": p[11], "--tachyon-warning-soft": warnSoft, "--tachyon-warning-border": warnBorder,
+      "--tachyon-danger": p[12], "--tachyon-danger-soft": dangerSoft, "--tachyon-danger-border": dangerBorder
     };
     for (var k in vars) s.setProperty(k, vars[k]);
+    var fsans = localStorage.getItem("tachyon_ui_font_sans") || "system";
+    if (!FONT_SANS[fsans]) fsans = "system";
+    var fmono = localStorage.getItem("tachyon_ui_font_mono") || "system";
+    if (!FONT_MONO[fmono]) fmono = "system";
+    var fsize = localStorage.getItem("tachyon_ui_font_size") || "normal";
+    if (!FONT_SIZE[fsize]) fsize = "normal";
+    s.setProperty("--sans", FONT_SANS[fsans]);
+    s.setProperty("--mono", FONT_MONO[fmono]);
+    s.setProperty("--tachyon-font-mono", FONT_MONO[fmono]);
+    s.setProperty("--font-mono", FONT_MONO[fmono]);
+    s.setProperty("--tachyon-font-size", FONT_SIZE[fsize]);
     r.setAttribute("data-tachyon-theme", tid);
     r.setAttribute("data-tachyon-theme-scheme", isLight ? "light" : "dark");
     r.setAttribute("data-darkmode", isLight ? "false" : "true");
+    r.setAttribute("data-tachyon-font-sans", fsans);
+    r.setAttribute("data-tachyon-font-mono", fmono);
+    r.setAttribute("data-tachyon-font-size", fsize);
+    r.setAttribute("data-tachyon-bg-animation", localStorage.getItem("tachyon_ui_bg_animation") === "false" ? "false" : "true");
   } catch (e) {}
 })();
 </script>"##;
@@ -666,22 +742,31 @@ pub fn serve_login_page(ui_lang: &str, auth_mode: &str) -> String {
     :root {{
       --bg: #0b0b0c;
       --surface: #141416;
+      --surface2: #1c1c1f;
       --hover: #1c1c1f;
       --elevated: #26262b;
       --border: rgba(255, 255, 255, 0.08);
       --border-strong: rgba(255, 255, 255, 0.15);
       --accent: #0a84ff;
       --accent-hover: #409cff;
+      --accent-fg: #ffffff;
       --danger: #ff453a;
+      --danger-soft: rgba(255, 69, 58, 0.13);
+      --danger-border: rgba(255, 69, 58, 0.36);
       --text: #f5f5f7;
       --text2: #a1a1a6;
       --text3: #6e6e73;
+      --muted: #a1a1a6;
       --surface-glass: rgba(20, 20, 22, 0.88);
       --accent-soft: rgba(10, 132, 255, 0.16);
-      --accent-ring: rgba(10, 132, 255, 0.34);
+      --accent-ring: rgba(10, 132, 255, 0.36);
       --bg-grid-stroke: rgba(255, 255, 255, 0.028);
-      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-      --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
+      --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.58);
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Inter", system-ui, sans-serif;
+      --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace;
+      --tachyon-font-mono: var(--mono);
+      --font-mono: var(--mono);
+      --tachyon-font-size: 14px;
     }}
     * {{ box-sizing: border-box; }}
     html, body {{
@@ -690,7 +775,7 @@ pub fn serve_login_page(ui_lang: &str, auth_mode: &str) -> String {
       background-color: var(--bg);
       color: var(--text);
       font-family: var(--sans);
-      font-size: 14px;
+      font-size: var(--tachyon-font-size, 14px);
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
     }}
@@ -808,8 +893,8 @@ pub fn serve_login_page(ui_lang: &str, auth_mode: &str) -> String {
       margin: 0 0 14px;
       padding: 9px 12px;
       border-radius: 8px;
-      border: 1px solid rgba(255, 69, 58, 0.35);
-      background: rgba(255, 69, 58, 0.12);
+      border: 1px solid var(--danger-border, rgba(255, 69, 58, 0.36));
+      background: var(--danger-soft, rgba(255, 69, 58, 0.13));
       color: var(--danger);
       font-size: 13px;
       line-height: 1.4;
@@ -821,7 +906,7 @@ pub fn serve_login_page(ui_lang: &str, auth_mode: &str) -> String {
       border: 0;
       border-radius: 8px;
       background: var(--accent);
-      color: #ffffff;
+      color: var(--accent-fg, #ffffff);
       font-size: 14px;
       font-weight: 600;
       font-family: inherit;
@@ -989,29 +1074,49 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     :root {{
       --bg: #0b0b0c;
       --surface: #141416;
+      --surface2: #1c1c1f;
       --hover: #1c1c1f;
       --elevated: #26262b;
       --border: rgba(255, 255, 255, 0.08);
       --border-strong: rgba(255, 255, 255, 0.15);
       --accent: #0a84ff;
       --accent-hover: #409cff;
+      --accent-fg: #ffffff;
+      --accent-text: #409cff;
+      --accent-text-hover: #409cff;
       --danger: #ff453a;
+      --danger-soft: rgba(255, 69, 58, 0.13);
+      --danger-border: rgba(255, 69, 58, 0.36);
       --success: #30d158;
       --ok: #30d158;
+      --success-soft: rgba(48, 209, 88, 0.13);
+      --success-border: rgba(48, 209, 88, 0.34);
       --warn: #ff9f0a;
+      --warning: #ff9f0a;
+      --warn-soft: rgba(255, 159, 10, 0.13);
+      --warn-border: rgba(255, 159, 10, 0.35);
       --text: #f5f5f7;
       --text2: #a1a1a6;
       --text3: #6e6e73;
+      --muted: #a1a1a6;
       --bg2: #141416;
       --border-hi: rgba(255, 255, 255, 0.15);
-      --surface-glass: rgba(20, 20, 22, 0.84);
-      --topbar-glass: rgba(20, 20, 22, 0.96);
+      --surface-glass: rgba(20, 20, 22, 0.86);
+      --topbar-glass: rgba(20, 20, 22, 0.94);
       --accent-soft: rgba(10, 132, 255, 0.16);
-      --accent-ring: rgba(10, 132, 255, 0.34);
+      --accent-ring: rgba(10, 132, 255, 0.36);
+      --row-hover: rgba(255, 255, 255, 0.03);
       --bg-grid-stroke: rgba(255, 255, 255, 0.028);
+      --modal-backdrop: rgba(0, 0, 0, 0.62);
+      --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      --shadow-popover: 0 18px 44px rgba(0, 0, 0, 0.62);
+      --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.58);
       --color-scheme: dark;
-      --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
-      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+      --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace;
+      --tachyon-font-mono: var(--mono);
+      --font-mono: var(--mono);
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Inter", system-ui, sans-serif;
+      --tachyon-font-size: 14px;
       --r-card: 12px;
       --r-btn: 8px;
       --r-xs: 6px;
@@ -1042,7 +1147,7 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       background-color: var(--bg) !important;
       color: var(--text) !important;
       font-family: var(--sans) !important;
-      font-size: 14px;
+      font-size: var(--tachyon-font-size, 14px);
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
       font-optical-sizing: auto;
@@ -5258,6 +5363,90 @@ fn detect_openwrt_interface_protocol(iface_name: &str) -> String {
     }
 }
 
+fn compute_stability_event_counters(
+    events: &[crate::store::EventRecord],
+) -> (usize, usize, usize, usize, usize) {
+    let mut watchdog_restarts = 0usize;
+    let mut engine_crashes = 0usize;
+    let mut wan_flaps = 0usize;
+    let mut dns_failovers = 0usize;
+    let mut config_rollbacks = 0usize;
+
+    for e in events {
+        let sub_lc = e.subsystem.to_ascii_lowercase();
+        let lvl_lc = e.level.to_ascii_lowercase();
+        let msg_lc = e.message.to_ascii_lowercase();
+
+        if sub_lc == "watchdog" {
+            let is_wan_msg = msg_lc.contains("wan unreachable")
+                || msg_lc.contains("wan_down")
+                || msg_lc.contains("wan flap");
+            if is_wan_msg {
+                wan_flaps += 1;
+            }
+            if !msg_lc.contains("suppressing")
+                && !msg_lc.contains("rollback failed")
+                && (msg_lc.contains("watchdog action executed:")
+                    || msg_lc.contains("restart")
+                    || msg_lc.contains("reload")
+                    || msg_lc.contains("rollback"))
+            {
+                watchdog_restarts += 1;
+            }
+            if msg_lc.contains("dns_failover")
+                || msg_lc.contains("dns failover")
+                || msg_lc.contains("l1_dns")
+            {
+                dns_failovers += 1;
+            }
+        } else if sub_lc == "dns"
+            && (msg_lc.contains("dns_failover") || msg_lc.contains("dns failover"))
+        {
+            dns_failovers += 1;
+        }
+
+        if lvl_lc == "error"
+            && (sub_lc == "core" || sub_lc == "core_mgr" || msg_lc.contains("tachyon-core"))
+        {
+            engine_crashes += 1;
+        }
+
+        if sub_lc == "rollback"
+            || (msg_lc.contains("rollback") && !msg_lc.contains("rollback failed"))
+        {
+            config_rollbacks += 1;
+        }
+    }
+
+    (
+        watchdog_restarts,
+        engine_crashes,
+        wan_flaps,
+        dns_failovers,
+        config_rollbacks,
+    )
+}
+
+fn lookup_uri_by_tag<'a>(
+    uri_by_tag: &'a std::collections::HashMap<String, String>,
+    tag: &str,
+) -> Option<&'a str> {
+    if let Some(exact) = uri_by_tag.get(tag) {
+        return Some(exact.as_str());
+    }
+    let mut cur = tag;
+    while let Some((base, suffix)) = cur.rsplit_once('-') {
+        if suffix.is_empty() || !suffix.bytes().all(|b| b.is_ascii_digit()) {
+            break;
+        }
+        if let Some(found) = uri_by_tag.get(base) {
+            return Some(found.as_str());
+        }
+        cur = base;
+    }
+    None
+}
+
 fn build_outbound_metadata_and_links(
     store: &crate::store::RouterStoreData,
     section: &str,
@@ -5273,8 +5462,10 @@ fn build_outbound_metadata_and_links(
     let mut source_names = Map::new();
     let mut sources = Map::new();
     let mut hidden = Map::new();
+    let mut internal_hidden = Map::new();
     let mut links = Map::new();
 
+    let all_built = crate::config_gen::build_all_source_outbounds(store);
     let mut sub_idx_by_sec: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
     let allowed_tags = if !section.is_empty() && section != "all" && section != "_sources" {
@@ -5333,9 +5524,11 @@ fn build_outbound_metadata_and_links(
             }
         }
 
-        for (tag, out_val, _) in crate::config_gen::build_source_outbounds(src) {
+        for (tag, out_val, visible_in_selector) in
+            all_built.get(&src.id).map(Vec::as_slice).unwrap_or(&[])
+        {
             if let Some(ref allowed) = allowed_tags
-                && !allowed.contains(&tag)
+                && !allowed.contains(tag)
             {
                 continue;
             }
@@ -5352,7 +5545,7 @@ fn build_outbound_metadata_and_links(
             } else {
                 names.entry(tag.clone()).or_insert_with(|| json!(tag));
             }
-            let cc = crate::config_gen::detect_country_code(&tag);
+            let cc = crate::config_gen::detect_country_code(tag);
             if !cc.is_empty() {
                 countries.entry(tag.clone()).or_insert_with(|| json!(cc));
             }
@@ -5390,14 +5583,17 @@ fn build_outbound_metadata_and_links(
             if let Some(port) = out_val.get("server_port").and_then(Value::as_u64) {
                 ports.entry(tag.clone()).or_insert_with(|| json!(port));
             }
-            if let Some(raw_uri) = uri_by_tag.get(&tag) {
+            if let Some(raw_uri) = lookup_uri_by_tag(&uri_by_tag, tag) {
                 links.insert(tag.clone(), json!(raw_uri));
             }
             source_ids.insert(tag.clone(), json!(src.id));
             source_names.insert(tag.clone(), json!(src_label));
             sources.insert(tag.clone(), json!(source_group));
-            if is_hidden {
-                hidden.insert(tag, json!(true));
+            if !*visible_in_selector {
+                internal_hidden.insert(tag.clone(), json!(true));
+                hidden.insert(tag.clone(), json!(true));
+            } else if is_hidden {
+                hidden.insert(tag.clone(), json!(true));
             }
         }
     }
@@ -5414,6 +5610,7 @@ fn build_outbound_metadata_and_links(
         "source_names": source_names,
         "sources": sources,
         "hidden": hidden.clone(),
+        "internal_hidden": internal_hidden,
     });
     (meta, links, hidden)
 }
@@ -5734,6 +5931,7 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
     }
 
     // Materialize tmpfs Pool_<sid>-subscription-1.* files for UI views without touching flash
+    let all_built = crate::config_gen::build_all_source_outbounds(store);
     let sub_dir = virtual_sub_cache_dir();
     let _ = std::fs::create_dir_all(&sub_dir);
     let mut active_pool_files = std::collections::HashSet::new();
@@ -5777,13 +5975,14 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
                     .or_insert_with(|| trimmed.to_string());
             }
         }
-        for (tag, mut ob_val, visible) in crate::config_gen::build_source_outbounds(src) {
-            if !visible {
+        for (tag, ob_val, visible) in all_built.get(&src.id).map(Vec::as_slice).unwrap_or(&[]) {
+            if !*visible {
                 continue;
             }
+            let mut ob_val = ob_val.clone();
             if let Some(obj) = ob_val.as_object_mut() {
                 obj.entry("tag").or_insert_with(|| json!(tag));
-                if let Some(lnk) = link_by_tag.get(&tag) {
+                if let Some(lnk) = lookup_uri_by_tag(&link_by_tag, tag) {
                     obj.insert("share_link".into(), json!(lnk));
                 }
             }
@@ -6783,16 +6982,18 @@ fn collect_store_section_leaf_tags(
 ) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
+    let all_built = crate::config_gen::build_all_source_outbounds(store);
     for (owner_sec, src, _hidden) in collect_section_sources_with_owner(store, section) {
         let sec_owner = store.sections.iter().find(|s| s.id == owner_sec);
         if src.source_type == "subscription" {
-            for (tag, out_val, _visible) in crate::config_gen::build_source_outbounds(src) {
+            for (tag, out_val, _visible) in all_built.get(&src.id).map(Vec::as_slice).unwrap_or(&[])
+            {
                 if out_val.get("type").and_then(Value::as_str) == Some("urltest") {
                     continue;
                 }
                 if let Some(sec) = sec_owner
                     && !crate::config_gen::subscription_keyword_passes(
-                        &tag,
+                        tag,
                         &sec.subscription_filter_include_keywords,
                         &sec.subscription_filter_exclude_keywords,
                     )
@@ -6814,7 +7015,8 @@ fn collect_store_section_leaf_tags(
                 }
             }
         } else if src.source_type != "desync" {
-            for (tag, out_val, _visible) in crate::config_gen::build_source_outbounds(src) {
+            for (tag, out_val, _visible) in all_built.get(&src.id).map(Vec::as_slice).unwrap_or(&[])
+            {
                 let otype = out_val
                     .get("type")
                     .and_then(Value::as_str)
@@ -13054,9 +13256,10 @@ async fn execute_cli_part_routes_state(
             let mut measured_cnt = 0usize;
             let mut seen_tags = std::collections::HashSet::new();
             let mut best_cand: Option<(String, u32, String, String)> = None;
+            let all_built = crate::config_gen::build_all_source_outbounds(d);
 
             for (owner_sec, src, _) in collect_section_sources_with_owner(d, "all") {
-                let nodes = crate::config_gen::build_source_outbounds(src);
+                let nodes = all_built.get(&src.id).map(Vec::as_slice).unwrap_or(&[]);
                 if nodes.is_empty() {
                     let tag = src.id.clone();
                     if !seen_tags.insert(tag.clone()) {
@@ -13119,7 +13322,7 @@ async fn execute_cli_part_routes_state(
                         if !seen_tags.insert(tag.clone()) {
                             continue;
                         }
-                        let ms_opt = live.node_latencies_ms.get(&tag).copied();
+                        let ms_opt = live.node_latencies_ms.get(tag).copied();
                         let ms = ms_opt.unwrap_or(0);
                         let proto = out_val
                             .get("type")
@@ -13250,15 +13453,16 @@ async fn execute_cli_part_routes_state(
             let test_url = url_encode_component(&d.settings.latency_test_url);
             let mut targets: Vec<(String, String, String)> = Vec::new();
             let mut seen = std::collections::HashSet::new();
+            let all_built = crate::config_gen::build_all_source_outbounds(d);
             for (owner_sec, src, _) in collect_section_sources_with_owner(d, "all") {
-                for (tag, out_val, _) in crate::config_gen::build_source_outbounds(src) {
+                for (tag, out_val, _) in all_built.get(&src.id).map(Vec::as_slice).unwrap_or(&[]) {
                     if seen.insert(tag.clone()) {
                         let p = out_val
                             .get("type")
                             .and_then(Value::as_str)
                             .unwrap_or("vless")
                             .to_string();
-                        targets.push((tag, owner_sec.clone(), p));
+                        targets.push((tag.clone(), owner_sec.clone(), p));
                     }
                 }
             }
@@ -13336,21 +13540,8 @@ async fn execute_cli_part_routes_state(
                     .sum::<u64>()
                     / (live.node_latencies_ms.len() as u64)
             };
-            let watchdog_restarts = live
-                .events
-                .iter()
-                .filter(|e| e.subsystem == "watchdog" && e.message.contains("restarted"))
-                .count();
-            let engine_crashes = live
-                .events
-                .iter()
-                .filter(|e| e.level == "error" && e.subsystem == "core")
-                .count();
-            let config_rollbacks = live
-                .events
-                .iter()
-                .filter(|e| e.subsystem == "rollback" || e.message.contains("rollback"))
-                .count();
+            let (watchdog_restarts, engine_crashes, wan_flaps, dns_failovers, config_rollbacks) =
+                compute_stability_event_counters(&live.events);
             let mut score: i32 = 100;
             let mut penalties: Vec<&str> = Vec::new();
             if !live.core_running {
@@ -13379,8 +13570,11 @@ async fn execute_cli_part_routes_state(
                     "score": score,
                     "grade": grade,
                     "system_uptime": uptime_pretty,
-                    "wan_flaps": 0,
+                    "wan_flaps": wan_flaps,
                     "watchdog_restarts": watchdog_restarts,
+                    "engine_crashes": engine_crashes,
+                    "dns_failovers": dns_failovers,
+                    "config_rollbacks": config_rollbacks,
                     "memory_used_pct": used_pct,
                     "memory_pressure": pressure,
                     "healthy_servers": healthy_srv,
@@ -13486,11 +13680,11 @@ async fn execute_cli_part_routes_state(
                         "daemons": Value::Object(daemons_map)
                     },
                     "restarts_and_flaps": {
-                        "wan_flaps": 0,
+                        "wan_flaps": wan_flaps,
                         "watchdog_restarts": watchdog_restarts,
                         "engine_crashes": engine_crashes,
                         "dnsmasq_restarts": 0,
-                        "dns_failovers": 0,
+                        "dns_failovers": dns_failovers,
                         "config_rollbacks": config_rollbacks
                     },
                     "resources": {
@@ -19108,5 +19302,148 @@ tls=TLSv1.3
 
         srv.abort();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_metadata_preserves_duplicate_sub_nodes_marks_internal_hidden_and_counts_stability() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.sections.push(RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            connection_type: "proxy".to_string(),
+            action: "connection".to_string(),
+            outbound_source_refs: vec![
+                "sub_one".to_string(),
+                "sub_two".to_string(),
+                "sub_three".to_string(),
+            ],
+            ..Default::default()
+        });
+        let make_src = |id: &str, with_tier: bool| OutboundSource {
+            id: id.to_string(),
+            name: id.to_string(),
+            source_type: "subscription".to_string(),
+            enabled: true,
+            include_urltest_groups: true,
+            hide_urltest_group_outbounds: true,
+            cached_nodes: {
+                let mut v = vec![crate::store::ParsedProxyNode {
+                    tag: "🇪🇪 Эстония".to_string(),
+                    protocol: "vless".to_string(),
+                    server: format!("{id}.example.net"),
+                    server_port: 443,
+                    country: "EE".to_string(),
+                    raw_uri: format!(
+                        "vless://11111111-1111-1111-1111-111111111111@{id}.example.net:443#EE"
+                    ),
+                    outbound_json: json!({
+                        "type": "vless",
+                        "tag": "🇪🇪 Эстония",
+                        "server": format!("{id}.example.net"),
+                        "server_port": 443
+                    }),
+                }];
+                if with_tier {
+                    v.push(crate::store::ParsedProxyNode {
+                        tag: "tier0-1".to_string(),
+                        protocol: "vless".to_string(),
+                        server: format!("{id}-t0.example.net"),
+                        server_port: 443,
+                        country: String::new(),
+                        raw_uri: "json:hidden".to_string(),
+                        outbound_json: json!({
+                            "type": "vless",
+                            "tag": "tier0-1",
+                            "server": format!("{id}-t0.example.net"),
+                            "server_port": 443,
+                            "__tachyon_hidden": true
+                        }),
+                    });
+                    v.push(crate::store::ParsedProxyNode {
+                        tag: "Авто".to_string(),
+                        protocol: "urltest".to_string(),
+                        server: String::new(),
+                        server_port: 0,
+                        country: String::new(),
+                        raw_uri: "json:urltest|Авто".to_string(),
+                        outbound_json: json!({
+                            "type": "urltest",
+                            "tag": "Авто",
+                            "outbounds": ["tier0-1"]
+                        }),
+                    });
+                }
+                v
+            },
+            ..Default::default()
+        };
+
+        store.outbound_sources = vec![
+            make_src("sub_one", false),
+            make_src("sub_two", true),
+            make_src("sub_three", false),
+        ];
+
+        let (meta1, links1, hidden1) = build_outbound_metadata_and_links(&store, "Main");
+        let names1 = meta1["names"].as_object().unwrap();
+        assert!(names1.contains_key("🇪🇪 Эстония"));
+        assert!(names1.contains_key("🇪🇪 Эстония-1"));
+        assert!(names1.contains_key("🇪🇪 Эстония-2"));
+        assert_eq!(meta1["sources"]["🇪🇪 Эстония"], json!("sub:1"));
+        assert_eq!(meta1["sources"]["🇪🇪 Эстония-1"], json!("sub:2"));
+        assert_eq!(meta1["sources"]["🇪🇪 Эстония-2"], json!("sub:3"));
+        assert!(links1.contains_key("🇪🇪 Эстония-2"));
+        assert_eq!(meta1["internal_hidden"]["tier0-1"], json!(true));
+        assert_eq!(hidden1.get("tier0-1"), Some(&json!(true)));
+        assert!(meta1["internal_hidden"].get("Авто").is_none());
+
+        store.sections[0].outbound_source_refs.reverse();
+        let (meta2, _, _) = build_outbound_metadata_and_links(&store, "Main");
+        let ee_count = meta2["names"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .filter(|k| k.starts_with("🇪🇪 Эстония"))
+            .count();
+        assert_eq!(ee_count, 3);
+
+        let events = vec![
+            crate::store::EventRecord {
+                timestamp: 1,
+                seq: 1,
+                level: "warn".into(),
+                subsystem: "watchdog".into(),
+                message: "Watchdog action executed: L2_core_restart".into(),
+            },
+            crate::store::EventRecord {
+                timestamp: 2,
+                seq: 2,
+                level: "warn".into(),
+                subsystem: "watchdog".into(),
+                message: "WAN unreachable: suppressing core/DNS restart escalations".into(),
+            },
+            crate::store::EventRecord {
+                timestamp: 3,
+                seq: 3,
+                level: "warn".into(),
+                subsystem: "watchdog".into(),
+                message: "Watchdog action executed: L1_dns_failover".into(),
+            },
+            crate::store::EventRecord {
+                timestamp: 4,
+                seq: 4,
+                level: "error".into(),
+                subsystem: "core_mgr".into(),
+                message: "tachyon-core exited unexpectedly".into(),
+            },
+            crate::store::EventRecord {
+                timestamp: 5,
+                seq: 5,
+                level: "warn".into(),
+                subsystem: "watchdog".into(),
+                message: "Watchdog action executed: L4_lkg_rollback".into(),
+            },
+        ];
+        assert_eq!(compute_stability_event_counters(&events), (3, 1, 1, 1, 1));
     }
 }

@@ -5389,6 +5389,147 @@ fn split_host_port_with_default(raw: &str, default_port: u16) -> (String, u16) {
     (trimmed.trim_matches(['[', ']']).to_string(), default_port)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WarpRegTransport {
+    Proxy(String),
+    Interface(String),
+    Direct,
+}
+
+fn push_unique_warp_transport(list: &mut Vec<WarpRegTransport>, item: WarpRegTransport) {
+    if !list.contains(&item) {
+        list.push(item);
+    }
+}
+
+fn resolve_warp_registration_transports(
+    snapshot: &crate::store::RouterStoreData,
+    core_config_path: &Path,
+) -> (bool, Vec<WarpRegTransport>) {
+    let cfg_str = core_config_path.to_string_lossy();
+    let raw_target = snapshot.settings.warp_proxy_section.trim();
+    if !raw_target.is_empty() {
+        let clean = raw_target
+            .strip_prefix("netif:")
+            .unwrap_or(raw_target)
+            .trim();
+        if clean.eq_ignore_ascii_case("direct") {
+            return (true, vec![WarpRegTransport::Direct]);
+        }
+        let mut transports = Vec::new();
+        if let Some(sec) = snapshot
+            .sections
+            .iter()
+            .find(|s| s.id == clean || s.label.eq_ignore_ascii_case(clean))
+        {
+            if let Some(port) = read_inbound_port_from_config(&cfg_str, "warp-reg-in") {
+                push_unique_warp_transport(
+                    &mut transports,
+                    WarpRegTransport::Proxy(format!("http://127.0.0.1:{port}")),
+                );
+            }
+            if sec.mixed_proxy_enabled && sec.mixed_proxy_port > 0 {
+                push_unique_warp_transport(
+                    &mut transports,
+                    WarpRegTransport::Proxy(format!("http://127.0.0.1:{}", sec.mixed_proxy_port)),
+                );
+            }
+            let iface = sec.output_interface.trim();
+            if !iface.is_empty() {
+                push_unique_warp_transport(
+                    &mut transports,
+                    WarpRegTransport::Interface(iface.to_string()),
+                );
+            } else if sec.action == "interface" {
+                push_unique_warp_transport(
+                    &mut transports,
+                    WarpRegTransport::Interface(sec.id.clone()),
+                );
+            }
+            if transports.is_empty()
+                && let Some(port) = read_service_mixed_port_from_config(&cfg_str)
+            {
+                push_unique_warp_transport(
+                    &mut transports,
+                    WarpRegTransport::Proxy(format!("http://127.0.0.1:{port}")),
+                );
+            }
+        } else if !clean.is_empty() {
+            push_unique_warp_transport(
+                &mut transports,
+                WarpRegTransport::Interface(clean.to_string()),
+            );
+        }
+        if transports.is_empty() {
+            transports.push(WarpRegTransport::Direct);
+        }
+        return (false, transports);
+    }
+
+    let mut transports = Vec::new();
+    if let Some(port) = read_service_mixed_port_from_config(&cfg_str) {
+        push_unique_warp_transport(
+            &mut transports,
+            WarpRegTransport::Proxy(format!("http://127.0.0.1:{port}")),
+        );
+    }
+    let mut section_proxy_count = 0usize;
+    for sec in snapshot
+        .sections
+        .iter()
+        .filter(|s| s.enabled && s.mixed_proxy_enabled && s.mixed_proxy_port > 0)
+    {
+        let candidate =
+            WarpRegTransport::Proxy(format!("http://127.0.0.1:{}", sec.mixed_proxy_port));
+        if !transports.contains(&candidate) {
+            transports.push(candidate);
+            section_proxy_count += 1;
+            if section_proxy_count >= 2 {
+                break;
+            }
+        }
+    }
+    push_unique_warp_transport(&mut transports, WarpRegTransport::Direct);
+    (true, transports)
+}
+
+fn build_warp_curl_args(
+    reg_json: &str,
+    api_url: &str,
+    transport: &WarpRegTransport,
+) -> Vec<String> {
+    let mut args = vec![
+        "--silent".to_string(),
+        "--show-error".to_string(),
+        "--fail".to_string(),
+        "--connect-timeout".to_string(),
+        "10".to_string(),
+        "--max-time".to_string(),
+        "18".to_string(),
+        "-X".to_string(),
+        "POST".to_string(),
+        "-H".to_string(),
+        "Content-Type: application/json".to_string(),
+        "-H".to_string(),
+        "User-Agent: okhttp/3.12.1".to_string(),
+        "--data".to_string(),
+        reg_json.to_string(),
+    ];
+    match transport {
+        WarpRegTransport::Proxy(url) => {
+            args.push("--proxy".to_string());
+            args.push(url.clone());
+        }
+        WarpRegTransport::Interface(iface) => {
+            args.push("--interface".to_string());
+            args.push(iface.clone());
+        }
+        WarpRegTransport::Direct => {}
+    }
+    args.push(api_url.to_string());
+    args
+}
+
 impl CoreManager {
     async fn provision_warp_internal(&self) -> anyhow::Result<WarpProvisioned> {
         let mut kp = crypto_gen::generate_wg_keypair();
@@ -5403,8 +5544,16 @@ impl CoreManager {
         let mut reserved_vec: Vec<u8> = Vec::new();
         let mut masque_outbound = json!(null);
 
-        if let Ok(core_warp) = self
-            .clash_request("POST", "/tachyon/warp/register", Some("{}"))
+        let snapshot = self.state.data.read().await.clone();
+        let eff_core_cfg = Self::effective_core_config_path_for(&self.state, &snapshot.settings);
+        let (try_core_direct_api, transports) =
+            resolve_warp_registration_transports(&snapshot, &eff_core_cfg);
+
+        if try_core_direct_api
+            && let Ok(Ok(core_warp)) = tokio::time::timeout(
+                Duration::from_secs(6),
+                self.clash_request("POST", "/tachyon/warp/register", Some("{}")),
+            )
             .await
             && core_warp.get("ok").and_then(Value::as_bool) == Some(true)
         {
@@ -5474,41 +5623,74 @@ impl CoreManager {
                 "locale": "en_US",
             });
             let reg_json = serde_json::to_string(&reg_body)?;
-            let out = tokio::time::timeout(
-                Duration::from_secs(12),
-                Command::new("curl")
-                    .args([
-                        "--silent",
-                        "--show-error",
-                        "--fail",
-                        "--connect-timeout",
-                        "4",
-                        "--max-time",
-                        "10",
-                        "-X",
-                        "POST",
-                        "-H",
-                        "Content-Type: application/json",
-                        "-H",
-                        "User-Agent: okhttp/3.12.1",
-                        "--data",
-                        &reg_json,
-                        "https://api.cloudflareclient.com/v0a2158/reg",
-                    ])
-                    .output(),
-            )
-            .await
-            .map_err(|_| anyhow::anyhow!("Таймаут регистрации Cloudflare WARP"))??;
+            let mut last_err = "Таймаут регистрации Cloudflare WARP".to_string();
+            let mut registered_cf: Option<Value> = None;
 
-            if !out.status.success() {
-                let err_txt = String::from_utf8_lossy(&out.stderr);
-                anyhow::bail!(
-                    "Не удалось зарегистрировать устройство Cloudflare WARP: {}",
-                    err_txt.trim()
-                );
+            'transports: for transport in &transports {
+                for prefix in ["v0a5641", "v0a2158"] {
+                    let api_url = format!("https://api.cloudflareclient.com/{prefix}/reg");
+                    let args = build_warp_curl_args(&reg_json, &api_url, transport);
+                    let res = tokio::time::timeout(
+                        Duration::from_secs(22),
+                        Command::new("curl").args(&args).output(),
+                    )
+                    .await;
+                    match res {
+                        Err(_) => {
+                            last_err = "Таймаут регистрации Cloudflare WARP".to_string();
+                            break;
+                        }
+                        Ok(Err(e)) => {
+                            last_err = format!("Ошибка запуска curl: {e}");
+                            break;
+                        }
+                        Ok(Ok(out)) if !out.status.success() => {
+                            let err_txt = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                            last_err = if err_txt.is_empty() {
+                                format!("curl завершился с кодом {:?}", out.status.code())
+                            } else {
+                                err_txt
+                            };
+                            if matches!(out.status.code(), Some(6 | 7 | 28 | 35 | 52 | 56)) {
+                                break;
+                            }
+                        }
+                        Ok(Ok(out)) => match serde_json::from_slice::<Value>(&out.stdout) {
+                            Ok(cf)
+                                if cf
+                                    .pointer("/config/peers/0/public_key")
+                                    .and_then(Value::as_str)
+                                    .is_some_and(|s| !s.trim().is_empty()) =>
+                            {
+                                registered_cf = Some(cf);
+                                break 'transports;
+                            }
+                            Ok(_) => {
+                                last_err = "Ответ Cloudflare WARP API не содержит peer public_key"
+                                    .to_string();
+                            }
+                            Err(e) => {
+                                last_err = format!("Некорректный ответ Cloudflare WARP API: {e}");
+                            }
+                        },
+                    }
+                }
             }
-            let cf: Value = serde_json::from_slice(&out.stdout)
-                .map_err(|e| anyhow::anyhow!("Некорректный ответ Cloudflare WARP API: {e}"))?;
+
+            let Some(cf) = registered_cf else {
+                let selected = snapshot.settings.warp_proxy_section.trim();
+                let hint = if selected.is_empty() {
+                    ". Проверьте доступность api.cloudflareclient.com или выберите секцию с туннелем/прокси в «Расширенных настройках» (Прокси для регистрации WARP).".to_string()
+                } else {
+                    format!(
+                        ". Выбранный транспорт «{selected}» не смог подключиться к api.cloudflareclient.com — проверьте, что секция активна и конфигурация применена."
+                    )
+                };
+                anyhow::bail!(
+                    "Не удалось зарегистрировать устройство Cloudflare WARP: {last_err}{hint}"
+                );
+            };
+
             if let Some(id) = cf.get("id").and_then(Value::as_str) {
                 dev_id = id.to_string();
             }
@@ -7734,12 +7916,12 @@ fn compute_subscription_jitter_offset(interval_secs: u64, raw_jitter: &str, seed
     (hash % span) as i64 - max_jitter as i64
 }
 
-fn read_service_mixed_port_from_config(config_path: &str) -> Option<u16> {
+fn read_inbound_port_from_config(config_path: &str, tag: &str) -> Option<u16> {
     let raw = std::fs::read_to_string(config_path).ok()?;
     let val: Value = serde_json::from_str(&raw).ok()?;
     let inbounds = val.get("inbounds")?.as_array()?;
     inbounds.iter().find_map(|inb| {
-        if inb.get("tag").and_then(Value::as_str) == Some("service-mixed-in") {
+        if inb.get("tag").and_then(Value::as_str) == Some(tag) {
             inb.get("listen_port")
                 .and_then(Value::as_u64)
                 .and_then(|p| u16::try_from(p).ok())
@@ -7748,6 +7930,10 @@ fn read_service_mixed_port_from_config(config_path: &str) -> Option<u16> {
             None
         }
     })
+}
+
+fn read_service_mixed_port_from_config(config_path: &str) -> Option<u16> {
+    read_inbound_port_from_config(config_path, "service-mixed-in")
 }
 
 fn parse_subscription_interval_secs(raw: &str) -> u64 {
@@ -9684,6 +9870,152 @@ mod core_mgr_tests {
         assert!(mgr.has_spawned_child().await);
         mgr.force_kill_spawned_child_fast().await;
         assert!(!mgr.has_spawned_child().await);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_warp_registration_transports_and_curl_args() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_warp_transports_test_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let cfg_path = dir.join("core-config.json");
+        std::fs::write(
+            &cfg_path,
+            json!({
+                "inbounds": [
+                    { "tag": "service-mixed-in", "listen_port": 4534 },
+                    { "tag": "warp-reg-in", "listen_port": 4536 }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write cfg");
+
+        let mut store = crate::store::RouterStoreData::default();
+        store.sections.push(crate::store::RoutingSection {
+            id: "sec_vpn".to_string(),
+            enabled: true,
+            label: "VPN".to_string(),
+            action: "proxy".to_string(),
+            mixed_proxy_enabled: true,
+            mixed_proxy_port: 10808,
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "sec_wg".to_string(),
+            enabled: true,
+            label: "WG".to_string(),
+            action: "interface".to_string(),
+            output_interface: "wg0".to_string(),
+            mixed_proxy_enabled: true,
+            mixed_proxy_port: 10809,
+            ..Default::default()
+        });
+
+        // 1. Section with warp-reg-in and mixed_proxy_port
+        store.settings.warp_proxy_section = "sec_vpn".to_string();
+        let (try_direct, transports) = resolve_warp_registration_transports(&store, &cfg_path);
+        assert!(!try_direct);
+        assert_eq!(
+            transports,
+            vec![
+                WarpRegTransport::Proxy("http://127.0.0.1:4536".to_string()),
+                WarpRegTransport::Proxy("http://127.0.0.1:10808".to_string()),
+            ]
+        );
+
+        // 2. Config without warp-reg-in uses section mixed_proxy_port + interface
+        store.settings.warp_proxy_section = "sec_wg".to_string();
+        let cfg_no_warp_in = dir.join("core-config-no-warp.json");
+        std::fs::write(
+            &cfg_no_warp_in,
+            json!({
+                "inbounds": [
+                    { "tag": "service-mixed-in", "listen_port": 4534 }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write cfg2");
+        let (try_direct2, transports2) =
+            resolve_warp_registration_transports(&store, &cfg_no_warp_in);
+        assert!(!try_direct2);
+        assert_eq!(
+            transports2,
+            vec![
+                WarpRegTransport::Proxy("http://127.0.0.1:10809".to_string()),
+                WarpRegTransport::Interface("wg0".to_string()),
+            ]
+        );
+
+        // 3. Explicit OS network interface (netif:awg0)
+        store.settings.warp_proxy_section = "netif:awg0".to_string();
+        let (try_direct3, transports3) =
+            resolve_warp_registration_transports(&store, &cfg_no_warp_in);
+        assert!(!try_direct3);
+        assert_eq!(
+            transports3,
+            vec![WarpRegTransport::Interface("awg0".to_string())]
+        );
+
+        // 4. Empty setting -> direct core API + service-mixed-in + up to 2 section proxies + Direct
+        store.settings.warp_proxy_section.clear();
+        let (try_direct4, transports4) =
+            resolve_warp_registration_transports(&store, &cfg_no_warp_in);
+        assert!(try_direct4);
+        assert_eq!(
+            transports4,
+            vec![
+                WarpRegTransport::Proxy("http://127.0.0.1:4534".to_string()),
+                WarpRegTransport::Proxy("http://127.0.0.1:10808".to_string()),
+                WarpRegTransport::Proxy("http://127.0.0.1:10809".to_string()),
+                WarpRegTransport::Direct,
+            ]
+        );
+
+        // 5. Explicit direct
+        store.settings.warp_proxy_section = "direct".to_string();
+        let (try_direct5, transports5) =
+            resolve_warp_registration_transports(&store, &cfg_no_warp_in);
+        assert!(try_direct5);
+        assert_eq!(transports5, vec![WarpRegTransport::Direct]);
+
+        let proxy_args = build_warp_curl_args(
+            "{}",
+            "https://api.cloudflareclient.com/v0a5641/reg",
+            &WarpRegTransport::Proxy("http://127.0.0.1:4536".to_string()),
+        );
+        assert!(
+            proxy_args
+                .windows(2)
+                .any(|w| w == ["--proxy", "http://127.0.0.1:4536"])
+        );
+        assert_eq!(
+            proxy_args.last().map(String::as_str),
+            Some("https://api.cloudflareclient.com/v0a5641/reg")
+        );
+
+        let iface_args = build_warp_curl_args(
+            "{}",
+            "https://api.cloudflareclient.com/v0a2158/reg",
+            &WarpRegTransport::Interface("wg0".to_string()),
+        );
+        assert!(iface_args.windows(2).any(|w| w == ["--interface", "wg0"]));
+
+        let direct_args = build_warp_curl_args(
+            "{}",
+            "https://api.cloudflareclient.com/v0a2158/reg",
+            &WarpRegTransport::Direct,
+        );
+        assert!(
+            !direct_args
+                .iter()
+                .any(|a| a == "--proxy" || a == "--interface")
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -5,7 +5,13 @@ import { tr } from '../helpers/i18n';
 import {
   BUILTIN_THEMES,
   BG_ANIMATION_CHANGED_EVENT,
+  FONT_MONO_PRESETS,
+  FONT_SANS_PRESETS,
+  FONT_SIZE_PRESETS,
+  FontMonoPresetId,
+  FontSansPresetId,
   THEME_COLOR_FIELDS,
+  TYPOGRAPHY_CHANGED_EVENT,
   TachyonThemeColors,
   TachyonThemeDefinition,
   ThemeScheme,
@@ -15,6 +21,7 @@ import {
   getActiveTheme,
   getAllThemes,
   getThemeAutoConfig,
+  getTypographyConfig,
   inferSchemeFromBg,
   isBgAnimationEnabled,
   normalizeHexColor,
@@ -24,6 +31,7 @@ import {
   setActiveTheme,
   setBgAnimationEnabled,
   setThemeAutoConfig,
+  setTypographyConfig,
   subscribeThemeChange,
 } from './themeCatalog';
 
@@ -1079,6 +1087,93 @@ export function renderThemeSettingsCard(): HTMLElement {
       autoControlsChildren,
     );
 
+    const typoCfg = getTypographyConfig();
+    const makeFontSelect = <T extends string>(
+      id: string,
+      presets: ReadonlyArray<{ id: T; labelRu: string; labelEn: string }>,
+      selectedId: T,
+      onChange: (nextId: T) => void,
+    ) => {
+      const sel = createEl(
+        'select',
+        {
+          id,
+          class: 'tachyon-theme-input',
+          change: () => onChange(sel.value as T),
+        },
+        presets.map((p) =>
+          createEl(
+            'option',
+            {
+              value: p.id,
+              ...(p.id === selectedId ? { selected: 'selected' } : {}),
+            },
+            [tr(p.labelRu, p.labelEn)],
+          ),
+        ),
+      ) as HTMLSelectElement;
+      sel.value = selectedId;
+      return sel;
+    };
+
+    const typographyBar = createEl('div', { class: 'tachyon-theme-auto-bar' }, [
+      createEl('div', { class: 'tachyon-theme-auto-pair' }, [
+        createEl('div', { class: 'tachyon-theme-meta-col' }, [
+          createEl(
+            'label',
+            {
+              class: 'tachyon-theme-meta-lbl',
+              for: 'tachyon-font-sans-select',
+            },
+            [tr('Шрифт интерфейса', 'Interface font')],
+          ),
+          makeFontSelect<FontSansPresetId>(
+            'tachyon-font-sans-select',
+            FONT_SANS_PRESETS,
+            typoCfg.sans,
+            (sans) => setTypographyConfig({ sans }),
+          ),
+        ]),
+        createEl('div', { class: 'tachyon-theme-meta-col' }, [
+          createEl(
+            'label',
+            {
+              class: 'tachyon-theme-meta-lbl',
+              for: 'tachyon-font-mono-select',
+            },
+            [tr('Моноширинный шрифт', 'Monospace font')],
+          ),
+          makeFontSelect<FontMonoPresetId>(
+            'tachyon-font-mono-select',
+            FONT_MONO_PRESETS,
+            typoCfg.mono,
+            (mono) => setTypographyConfig({ mono }),
+          ),
+        ]),
+      ]),
+      createEl('div', { class: 'tachyon-theme-auto-modes' }, [
+        createEl('div', { class: 'tachyon-theme-meta-lbl' }, [
+          tr('Размер текста', 'Font size'),
+        ]),
+        createEl(
+          'div',
+          { class: 'tachyon-theme-scheme-tabs' },
+          FONT_SIZE_PRESETS.map((sz) =>
+            createEl(
+              'button',
+              {
+                type: 'button',
+                class: `tachyon-theme-scheme-btn${typoCfg.size === sz.id ? ' is-active' : ''}`,
+                'data-font-size-btn': sz.id,
+                click: () => setTypographyConfig({ size: sz.id }),
+              },
+              [tr(sz.labelRu, sz.labelEn)],
+            ),
+          ),
+        ),
+      ]),
+    ]);
+
     const grid = createEl(
       'div',
       { class: 'tachyon-theme-cards-grid' },
@@ -1203,7 +1298,7 @@ export function renderThemeSettingsCard(): HTMLElement {
       }),
     );
 
-    card.replaceChildren(header, autoBar, grid);
+    card.replaceChildren(header, autoBar, typographyBar, grid);
   };
 
   subscribeThemeChange(() => {
@@ -1215,6 +1310,9 @@ export function renderThemeSettingsCard(): HTMLElement {
     typeof window.addEventListener === 'function'
   ) {
     window.addEventListener(BG_ANIMATION_CHANGED_EVENT, () => {
+      render();
+    });
+    window.addEventListener(TYPOGRAPHY_CHANGED_EVENT, () => {
       render();
     });
   }

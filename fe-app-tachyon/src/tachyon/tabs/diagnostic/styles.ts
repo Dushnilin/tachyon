@@ -70,8 +70,8 @@ export const styles = `
 /* GPUI-Kit System Node Telemetry Strip (1px Divided Instrument Matrix) */
 .tachyon_diagnostic-page__right-bar__system-info {
     padding: 0;
-    background: #111114;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
     display: flex;
@@ -83,12 +83,12 @@ export const styles = `
 .tachyon_diagnostic-page__right-bar__system-info__title {
     padding: 7px 12px;
     min-height: 32px;
-    background: #16161a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
-    color: #d4d4d8;
+    color: var(--text);
     margin: 0;
     display: flex;
     align-items: center;
@@ -104,22 +104,22 @@ export const styles = `
 }
 
 .tachyon_diagnostic-sys-head-left svg {
-    color: #71717a;
+    color: var(--text3);
 }
 
 .tachyon_diagnostic-sys-head-code {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10px;
     font-weight: 500;
     letter-spacing: 0.05em;
-    color: #71717a;
+    color: var(--text3);
 }
 
 .tachyon_diagnostic-sys-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
     gap: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--border);
     width: 100%;
     box-sizing: border-box;
 }
@@ -131,7 +131,7 @@ export const styles = `
     gap: 5px;
     padding: 9px 12px;
     border-radius: 0;
-    background: #111114;
+    background: var(--surface);
     border: none;
     min-width: 0;
 }
@@ -141,7 +141,7 @@ export const styles = `
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    color: #71717a;
+    color: var(--text3);
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row > div {
@@ -150,11 +150,11 @@ export const styles = `
     justify-content: space-between;
     gap: 6px;
     flex-wrap: wrap;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 12px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: #f4f4f5;
+    color: var(--text);
     word-break: break-word;
 }
 
@@ -162,7 +162,7 @@ export const styles = `
     width: 100%;
     height: 2px;
     border-radius: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--border);
     overflow: hidden;
 }
 
@@ -170,27 +170,27 @@ export const styles = `
     display: block;
     height: 100%;
     border-radius: 1px;
-    background: #3b82f6;
+    background: var(--accent);
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row__progress-fill.is-success {
-    background: #22c55e;
+    background: var(--success);
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row__progress-fill.is-warning {
-    background: #f59e0b;
+    background: var(--warn);
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row__progress-fill.is-danger {
-    background: #ef4444;
+    background: var(--danger);
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row__sub {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
-    color: #71717a;
+    color: var(--text3);
     line-height: 1.3;
     word-break: break-word;
 }
@@ -206,7 +206,7 @@ export const styles = `
     align-items: center;
     padding: 1px 5px;
     border-radius: 3px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 9.5px;
     font-weight: 600;
     line-height: 1.3;
@@ -214,21 +214,21 @@ export const styles = `
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #a1a1aa;
+    background: var(--hover);
+    border-color: var(--border);
+    color: var(--text2);
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row__tag--warning {
-    background: rgba(245, 158, 11, 0.1);
-    border-color: rgba(245, 158, 11, 0.25);
-    color: #fbbf24;
+    background: var(--warn-soft);
+    border-color: var(--warn-border);
+    color: var(--warn);
 }
 
 .tachyon_diagnostic-page__right-bar__system-info__row__tag--success {
-    background: rgba(34, 197, 94, 0.1);
-    border-color: rgba(34, 197, 94, 0.25);
-    color: #4ade80;
+    background: var(--success-soft);
+    border-color: var(--success-border);
+    color: var(--success);
 }
 
 /* GPUI-Kit 3-Pane Tachyon-Core Deep Telemetry Workbench */
@@ -247,8 +247,8 @@ export const styles = `
     justify-content: space-between;
     gap: 10px;
     padding: 12px;
-    background: #111114;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
     min-width: 0;
     box-sizing: border-box;
@@ -261,8 +261,8 @@ export const styles = `
     gap: 10px;
     margin: -12px -12px 2px -12px;
     padding: 8px 12px;
-    background: #16161a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
 }
 
 .tachyon_diag-telemetry__title-group {
@@ -275,7 +275,7 @@ export const styles = `
 .tachyon_diag-telemetry__title-icon {
     width: 14px;
     height: 14px;
-    color: #71717a;
+    color: var(--text3);
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -285,7 +285,7 @@ export const styles = `
     margin: 0;
     font-size: 11.5px;
     font-weight: 600;
-    color: #e4e4e7;
+    color: var(--text);
     line-height: 1.25;
 }
 
@@ -305,24 +305,24 @@ export const styles = `
     align-items: center;
     padding: 2px 7px;
     border-radius: 4px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 11px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    background: var(--bg);
 }
 
 .tachyon_diag-telemetry__rate-pill.is-down {
-    color: #38bdf8;
-    border-color: rgba(56, 189, 248, 0.25);
-    background: rgba(56, 189, 248, 0.08);
+    color: var(--accent-text);
+    border-color: var(--accent-ring);
+    background: var(--accent-soft);
 }
 
 .tachyon_diag-telemetry__rate-pill.is-up {
-    color: #4ade80;
-    border-color: rgba(74, 222, 128, 0.25);
-    background: rgba(74, 222, 128, 0.08);
+    color: var(--success);
+    border-color: var(--success-border);
+    background: var(--success-soft);
 }
 
 .tachyon_diag-telemetry__status-badge {
@@ -330,7 +330,7 @@ export const styles = `
     align-items: center;
     padding: 2px 7px;
     border-radius: 4px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
     font-weight: 600;
     white-space: nowrap;
@@ -338,15 +338,15 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__status-badge.is-ok {
-    color: #4ade80;
-    background: rgba(34, 197, 94, 0.1);
-    border: 1px solid rgba(34, 197, 94, 0.26);
+    color: var(--success);
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
 }
 
 .tachyon_diag-telemetry__status-badge.is-warn {
-    color: #fbbf24;
-    background: rgba(245, 158, 11, 0.12);
-    border: 1px solid rgba(245, 158, 11, 0.28);
+    color: var(--warn);
+    background: var(--warn-soft);
+    border: 1px solid var(--warn-border);
 }
 
 .tachyon_diag-telemetry__sparkline-wrap {
@@ -355,8 +355,8 @@ export const styles = `
     gap: 4px;
     padding: 6px 8px;
     border-radius: 6px;
-    background: #0b0b0e;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg);
+    border: 1px solid var(--border);
 }
 
 .tachyon_diag-telemetry__sparkline {
@@ -369,9 +369,9 @@ export const styles = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10px;
-    color: #71717a;
+    color: var(--text3);
     font-variant-numeric: tabular-nums;
 }
 
@@ -387,24 +387,24 @@ export const styles = `
     gap: 2px;
     padding: 6px 8px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg);
+    border: 1px solid var(--border);
     min-width: 0;
 }
 
 .tachyon_diag-telemetry__kpi-label {
     font-size: 10px;
-    color: #71717a;
+    color: var(--text3);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .tachyon_diag-telemetry__kpi-val {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 12px;
     font-weight: 600;
-    color: #f4f4f5;
+    color: var(--text);
     font-variant-numeric: tabular-nums;
 }
 
@@ -420,17 +420,17 @@ export const styles = `
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
     font-variant-numeric: tabular-nums;
 }
 
 .tachyon_diag-telemetry__split-tag.is-proxied {
-    color: #38bdf8;
+    color: var(--accent-text);
 }
 
 .tachyon_diag-telemetry__split-tag.is-direct {
-    color: #a1a1aa;
+    color: var(--text2);
 }
 
 .tachyon_diag-telemetry__split-bar {
@@ -439,15 +439,15 @@ export const styles = `
     height: 6px;
     border-radius: 3px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--border);
 }
 
 .tachyon_diag-telemetry__split-seg.is-proxied {
-    background: #0a84ff;
+    background: var(--accent);
 }
 
 .tachyon_diag-telemetry__split-seg.is-direct {
-    background: #52525b;
+    background: var(--text3);
 }
 
 .tachyon_diag-telemetry__proto-row {
@@ -460,11 +460,11 @@ export const styles = `
 .tachyon_diag-telemetry__proto-chip {
     padding: 1px 6px;
     border-radius: 4px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10px;
-    color: #a1a1aa;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    color: var(--text2);
+    background: var(--bg);
+    border: 1px solid var(--border);
 }
 
 .tachyon_diag-telemetry__mem-strip {
@@ -478,9 +478,9 @@ export const styles = `
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
-    color: #a1a1aa;
+    color: var(--text2);
     font-variant-numeric: tabular-nums;
 }
 
@@ -488,7 +488,7 @@ export const styles = `
     width: 100%;
     height: 5px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--border);
     overflow: hidden;
 }
 
@@ -499,21 +499,21 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__progress-fill.is-accent {
-    background: #0a84ff;
+    background: var(--accent);
 }
 
 .tachyon_diag-telemetry__progress-fill.is-warn {
-    background: #f59e0b;
+    background: var(--warn);
 }
 
 .tachyon_diag-telemetry__progress-fill.is-danger {
-    background: #ef4444;
+    background: var(--danger);
 }
 
 .tachyon_diag-telemetry__section-caption {
     font-size: 10.5px;
     font-weight: 600;
-    color: #a1a1aa;
+    color: var(--text2);
 }
 
 .tachyon_diag-telemetry__outbounds {
@@ -539,13 +539,13 @@ export const styles = `
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
     font-variant-numeric: tabular-nums;
 }
 
 .tachyon_diag-telemetry__outbound-tag {
-    color: #e4e4e7;
+    color: var(--text);
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -553,7 +553,7 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__outbound-stats {
-    color: #71717a;
+    color: var(--text3);
     flex-shrink: 0;
 }
 
@@ -561,7 +561,7 @@ export const styles = `
     width: 100%;
     height: 4px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--border);
     overflow: hidden;
 }
 
@@ -569,7 +569,7 @@ export const styles = `
     display: block;
     height: 100%;
     border-radius: 2px;
-    background: #3b82f6;
+    background: var(--accent);
 }
 
 .tachyon_diag-telemetry__card-actions {
@@ -590,15 +590,15 @@ export const styles = `
     font-size: 11.5px !important;
     font-weight: 600 !important;
     border-radius: 6px !important;
-    background: rgba(255, 255, 255, 0.04) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: #e4e4e7 !important;
+    background: var(--hover) !important;
+    border: 1px solid var(--border-strong) !important;
+    color: var(--text) !important;
     cursor: pointer;
 }
 
 .tachyon_diag-telemetry__action-btn:hover {
-    background: rgba(255, 255, 255, 0.08) !important;
-    border-color: rgba(255, 255, 255, 0.18) !important;
+    background: var(--elevated) !important;
+    border-color: var(--accent-ring) !important;
 }
 
 .tachyon_diag-telemetry__btn-icon {
@@ -620,25 +620,25 @@ export const styles = `
     gap: 6px;
     padding: 5px 8px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-left: 2px solid #22c55e;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--success);
 }
 
 .tachyon_diag-telemetry__leak-chip.is-warn {
-    border-left-color: #f59e0b;
+    border-left-color: var(--warn);
 }
 
 .tachyon_diag-telemetry__leak-name {
     font-size: 10.5px;
-    color: #a1a1aa;
+    color: var(--text2);
 }
 
 .tachyon_diag-telemetry__leak-val {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
     font-weight: 600;
-    color: #e4e4e7;
+    color: var(--text);
 }
 
 .tachyon_diag-telemetry__subhead {
@@ -655,14 +655,15 @@ export const styles = `
     font-size: 10.5px !important;
     font-weight: 600 !important;
     border-radius: 4px !important;
-    background: rgba(255, 255, 255, 0.04) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: #d4d4d8 !important;
+    background: var(--hover) !important;
+    border: 1px solid var(--border-strong) !important;
+    color: var(--text2) !important;
     cursor: pointer;
 }
 
 .tachyon_diag-telemetry__mini-btn:hover {
-    background: rgba(255, 255, 255, 0.09) !important;
+    background: var(--elevated) !important;
+    color: var(--text) !important;
 }
 
 .tachyon_diag-telemetry__failover-box,
@@ -688,8 +689,8 @@ export const styles = `
     gap: 8px;
     padding: 4px 8px;
     border-radius: 5px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg);
+    border: 1px solid var(--border);
     font-size: 11px;
 }
 
@@ -702,7 +703,7 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__failover-tag {
-    color: #e4e4e7;
+    color: var(--text);
     font-size: 11px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -710,9 +711,9 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__failover-node {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
-    color: #71717a;
+    color: var(--text3);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -726,27 +727,27 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__rtt-pill {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10px;
-    color: #a1a1aa;
+    color: var(--text2);
 }
 
 .tachyon_diag-telemetry__backup-pill {
     padding: 1px 5px;
     border-radius: 4px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 9.5px;
     font-weight: 600;
 }
 
 .tachyon_diag-telemetry__backup-pill.is-ok {
-    color: #4ade80;
-    background: rgba(34, 197, 94, 0.1);
+    color: var(--success);
+    background: var(--success-soft);
 }
 
 .tachyon_diag-telemetry__backup-pill.is-warn {
-    color: #fbbf24;
-    background: rgba(245, 158, 11, 0.14);
+    color: var(--warn);
+    background: var(--warn-soft);
 }
 
 .tachyon_diag-telemetry__flight-row {
@@ -756,9 +757,9 @@ export const styles = `
     gap: 6px;
     padding: 3px 6px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
     font-size: 10.5px;
     font-variant-numeric: tabular-nums;
 }
@@ -772,34 +773,34 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__flight-pill.is-ok {
-    color: #4ade80;
-    background: rgba(34, 197, 94, 0.12);
+    color: var(--success);
+    background: var(--success-soft);
 }
 
 .tachyon_diag-telemetry__flight-pill.is-warn {
-    color: #fbbf24;
-    background: rgba(245, 158, 11, 0.14);
+    color: var(--warn);
+    background: var(--warn-soft);
 }
 
 .tachyon_diag-telemetry__flight-pill.is-danger {
-    color: #f87171;
-    background: rgba(239, 68, 68, 0.14);
+    color: var(--danger);
+    background: var(--danger-soft);
 }
 
 .tachyon_diag-telemetry__flight-net {
-    color: #71717a;
+    color: var(--text3);
     font-size: 10px;
 }
 
 .tachyon_diag-telemetry__flight-host {
-    color: #e4e4e7;
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .tachyon_diag-telemetry__flight-out {
-    color: #38bdf8;
+    color: var(--accent-text);
     font-size: 10px;
     max-width: 16ch;
     overflow: hidden;
@@ -808,14 +809,14 @@ export const styles = `
 }
 
 .tachyon_diag-telemetry__flight-dur {
-    color: #71717a;
+    color: var(--text3);
     font-size: 10px;
     text-align: right;
 }
 
 .tachyon_diag-telemetry__empty {
     font-size: 11px;
-    color: #71717a;
+    color: var(--text3);
     padding: 6px 0;
 }
 
@@ -834,8 +835,8 @@ export const styles = `
     flex-direction: column;
     gap: 0;
     padding: 0;
-    background: #111114;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
     min-width: 0;
     overflow: hidden;
@@ -850,8 +851,8 @@ export const styles = `
     flex-wrap: wrap;
     min-height: 38px;
     padding: 6px 12px;
-    background: #16161a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
 }
 
 .tachyon_diagnostic-page__left-bar__header-titles {
@@ -868,19 +869,19 @@ export const styles = `
     gap: 6px;
     font-size: 12.5px;
     font-weight: 600;
-    color: #f4f4f5;
+    color: var(--text);
     line-height: 1.25;
 }
 
 .tachyon_diagnostic-page__left-bar__title svg {
-    color: #71717a;
+    color: var(--text3);
     flex-shrink: 0;
 }
 
 .tachyon_diagnostic-page__left-bar__subtitle {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
-    color: #71717a;
+    color: var(--text3);
     line-height: 1.25;
 }
 
@@ -906,40 +907,40 @@ export const styles = `
     gap: 12px;
     padding: 8px 12px;
     border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.09);
-    background: #151519;
+    border: 1px solid var(--border);
+    background: var(--hover);
 }
 
 .tachyon_diagnostic-summary-banner--loading {
-    border-color: rgba(59, 130, 246, 0.28);
+    border-color: var(--accent-ring);
 }
 
 .tachyon_diagnostic-summary-banner--loading .tachyon_diagnostic-summary-banner__title svg {
-    color: #60a5fa;
+    color: var(--accent);
 }
 
 .tachyon_diagnostic-summary-banner--success {
-    border-color: rgba(34, 197, 94, 0.24);
+    border-color: var(--success-border);
 }
 
 .tachyon_diagnostic-summary-banner--success .tachyon_diagnostic-summary-banner__title svg {
-    color: #4ade80;
+    color: var(--success);
 }
 
 .tachyon_diagnostic-summary-banner--warning {
-    border-color: rgba(245, 158, 11, 0.32);
+    border-color: var(--warn-border);
 }
 
 .tachyon_diagnostic-summary-banner--warning .tachyon_diagnostic-summary-banner__title svg {
-    color: #fbbf24;
+    color: var(--warn);
 }
 
 .tachyon_diagnostic-summary-banner--error {
-    border-color: rgba(239, 68, 68, 0.36);
+    border-color: var(--danger-border);
 }
 
 .tachyon_diagnostic-summary-banner--error .tachyon_diagnostic-summary-banner__title svg {
-    color: #f87171;
+    color: var(--danger);
 }
 
 .tachyon_diagnostic-summary-banner__main {
@@ -955,7 +956,7 @@ export const styles = `
     gap: 7px;
     font-size: 12.5px;
     font-weight: 600;
-    color: #f4f4f5;
+    color: var(--text);
     line-height: 1.25;
 }
 
@@ -973,9 +974,9 @@ export const styles = `
 }
 
 .tachyon_diagnostic-summary-banner__subtitle {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
-    color: #a1a1aa;
+    color: var(--text2);
     font-variant-numeric: tabular-nums;
 }
 
@@ -1016,8 +1017,8 @@ export const styles = `
     flex-direction: column;
     gap: 0;
     padding: 0;
-    background: #111114;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -1029,23 +1030,23 @@ export const styles = `
     gap: 8px;
     min-height: 34px;
     padding: 5px 11px;
-    background: #16161a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
 }
 
 .tachyon_diagnostic-action-group__title {
     font-size: 12px;
     font-weight: 600;
-    color: #e4e4e7;
+    color: var(--text);
     line-height: 1.25;
 }
 
 .tachyon_diagnostic-action-group__subtitle {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 9.5px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: #71717a;
+    color: var(--text3);
     white-space: nowrap;
 }
 
@@ -1085,8 +1086,8 @@ export const styles = `
     gap: 6px;
     padding: 0 10px 8px 10px;
     border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: #111114;
+    border: 1px solid var(--border);
+    background: var(--surface);
     overflow: hidden;
 }
 
@@ -1099,8 +1100,8 @@ export const styles = `
     gap: 10px;
     min-height: 32px;
     padding: 4px 11px;
-    background: #16161a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
 }
 
 .tachyon_diagnostic-page__right-bar__wiki__texts {
@@ -1116,7 +1117,7 @@ export const styles = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #71717a;
+    color: var(--text3);
     flex-shrink: 0;
 }
 
@@ -1128,15 +1129,15 @@ export const styles = `
 .tachyon_diagnostic-page__right-bar__wiki__texts b {
     font-size: 12px;
     font-weight: 600;
-    color: #e4e4e7;
+    color: var(--text);
 }
 
 .tachyon_diagnostic-page__right-bar__wiki__meta {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 9.5px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: #71717a;
+    color: var(--text3);
 }
 
 .tachyon_diagnostic-page__right-bar__wiki > .tachyon-partial-button,
@@ -1154,24 +1155,24 @@ export const styles = `
     font-size: 11.5px;
     font-weight: 500;
     border-radius: 4px !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    background: #16161a !important;
-    color: #d4d4d8 !important;
+    border: 1px solid var(--border) !important;
+    background: var(--hover) !important;
+    color: var(--text2) !important;
 }
 
 .tachyon_diagnostic-page__right-bar__wiki > .tachyon-partial-button:hover,
 .tachyon_diagnostic-page__right-bar__wiki > button:hover {
-    border-color: rgba(255, 255, 255, 0.16) !important;
-    background: #1c1c21 !important;
-    color: #f4f4f5 !important;
+    border-color: var(--border-strong) !important;
+    background: var(--elevated) !important;
+    color: var(--text) !important;
 }
 
-/* GPUI-Kit Subsystem Inspector Cards (Flat dark surface, zero full-box tint, zero left-border callout) */
+/* GPUI-Kit Subsystem Inspector Cards (Flat surface, zero full-box tint, zero left-border callout) */
 .tachyon_diagnostic_alert {
     padding: 9px 11px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    background: #141418;
+    background: var(--surface);
     display: grid;
     grid-template-columns: 22px minmax(0, 1fr);
     gap: 7px 9px;
@@ -1180,8 +1181,8 @@ export const styles = `
 }
 
 .tachyon_diagnostic_alert:hover {
-    border-color: rgba(255, 255, 255, 0.15);
-    background: #17171c;
+    border-color: var(--border-strong);
+    background: var(--hover);
 }
 
 .tachyon_diagnostic_alert__icon {
@@ -1191,9 +1192,9 @@ export const styles = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: #1a1a20;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #a1a1aa;
+    background: var(--hover);
+    border: 1px solid var(--border);
+    color: var(--text2);
 }
 
 .tachyon_diagnostic_alert__icon svg {
@@ -1217,7 +1218,7 @@ export const styles = `
     flex-wrap: wrap;
     font-size: 12px;
     font-weight: 600;
-    color: #f4f4f5;
+    color: var(--text);
     line-height: 1.25;
 }
 
@@ -1226,34 +1227,34 @@ export const styles = `
     align-items: center;
     padding: 1px 6px;
     border-radius: 3px;
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    background: #1a1a20;
-    border: 1px solid rgba(255, 255, 255, 0.09);
-    color: #a1a1aa;
+    background: var(--hover);
+    border: 1px solid var(--border);
+    color: var(--text2);
 }
 
 .tachyon_diagnostic_alert__counts-badge--success {
-    border-color: rgba(34, 197, 94, 0.25);
-    color: #4ade80;
+    border-color: var(--success-border);
+    color: var(--success);
 }
 
 .tachyon_diagnostic_alert__counts-badge--warning {
-    border-color: rgba(245, 158, 11, 0.3);
-    color: #fbbf24;
+    border-color: var(--warn-border);
+    color: var(--warn);
 }
 
 .tachyon_diagnostic_alert__counts-badge--error {
-    border-color: rgba(239, 68, 68, 0.32);
-    color: #f87171;
+    border-color: var(--danger-border);
+    color: var(--danger);
 }
 
 .tachyon_diagnostic_alert__description {
     font-size: 11px;
     font-weight: 400;
-    color: #8f8f99;
+    color: var(--text2);
     line-height: 1.3;
 }
 
@@ -1276,23 +1277,23 @@ export const styles = `
     max-width: 100%;
     padding: 1px 5px;
     border-radius: 3px;
-    background: #101013;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
     font-size: 10px;
     line-height: 1.3;
 }
 
 .tachyon_diagnostic_alert__preview-chip--error {
-    border-color: rgba(239, 68, 68, 0.3);
+    border-color: var(--danger-border);
 }
 
 .tachyon_diagnostic_alert__preview-chip--warning {
-    border-color: rgba(245, 158, 11, 0.28);
+    border-color: var(--warn-border);
 }
 
 .tachyon_diagnostic_alert__preview-chip--info {
-    border-color: rgba(148, 163, 184, 0.28);
+    border-color: var(--border-strong);
 }
 
 .tachyon_diagnostic_alert__preview-dot {
@@ -1300,28 +1301,28 @@ export const styles = `
     height: 5px;
     border-radius: 999px;
     flex-shrink: 0;
-    background: #22c55e;
+    background: var(--success);
 }
 
 .tachyon_diagnostic_alert__preview-dot--warning {
-    background: #f59e0b;
+    background: var(--warn);
 }
 
 .tachyon_diagnostic_alert__preview-dot--error {
-    background: #ef4444;
+    background: var(--danger);
 }
 
 .tachyon_diagnostic_alert__preview-dot--info {
-    background: #94a3b8;
+    background: var(--text3);
 }
 
 .tachyon_diagnostic_alert__preview-key {
-    color: #a1a1aa;
+    color: var(--text2);
     white-space: nowrap;
 }
 
 .tachyon_diagnostic_alert__preview-val {
-    color: #e4e4e7;
+    color: var(--text);
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1337,12 +1338,12 @@ export const styles = `
 .tachyon_diagnostic_alert__toggle-hint {
     font-size: 10.5px;
     font-weight: 500;
-    color: #71717a;
+    color: var(--text3);
     margin-top: 2px;
 }
 
 .tachyon_diagnostic_alert:hover .tachyon_diagnostic_alert__toggle-hint {
-    color: #d4d4d8;
+    color: var(--text);
 }
 
 .tachyon_diagnostic_alert__summary {
@@ -1353,8 +1354,8 @@ export const styles = `
     margin-top: 4px;
     border-radius: 4px;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    background: var(--border);
 }
 
 .tachyon_diagnostic_alert__summary--expanded {
@@ -1375,21 +1376,21 @@ export const styles = `
     align-items: center;
     font-size: 11px;
     padding: 5px 9px;
-    background: #0e0e11;
+    background: var(--bg);
 }
 
 .tachyon_diagnostic_alert__summary__item b {
     font-weight: 500;
-    color: #d4d4d8;
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .tachyon_diagnostic_alert__summary__item > div {
-    font-family: var(--tachyon-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-family: var(--mono);
     font-size: 10.5px;
     font-weight: 600;
-    color: #a1a1aa;
+    color: var(--text2);
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
@@ -1408,75 +1409,75 @@ export const styles = `
 }
 
 .tachyon_diagnostic_alert__summary__item--error {
-    color: #f87171;
+    color: var(--danger);
 }
 
 .tachyon_diagnostic_alert__summary__item--error b {
-    color: #fca5a5;
+    color: var(--danger);
 }
 
 .tachyon_diagnostic_alert__summary__item--error > div {
-    color: #f87171;
+    color: var(--danger);
 }
 
 .tachyon_diagnostic_alert__summary__item--warning {
-    color: #fbbf24;
+    color: var(--warn);
 }
 
 .tachyon_diagnostic_alert__summary__item--warning > div {
-    color: #fbbf24;
+    color: var(--warn);
 }
 
 .tachyon_diagnostic_alert__summary__item--success {
-    color: #4ade80;
+    color: var(--success);
 }
 
 .tachyon_diagnostic_alert__summary__item--info {
-    color: #94a3b8;
+    color: var(--text2);
 }
 
 .tachyon_diagnostic_alert__summary__item--info > div {
-    color: #94a3b8;
+    color: var(--text2);
 }
 
 .tachyon_diagnostic_alert--loading {
-    border-color: rgba(59, 130, 246, 0.28);
+    border-color: var(--accent-ring);
 }
 
 .tachyon_diagnostic_alert--loading .tachyon_diagnostic_alert__icon {
-    color: #60a5fa;
-    border-color: rgba(59, 130, 246, 0.28);
+    color: var(--accent);
+    border-color: var(--accent-ring);
 }
 
 .tachyon_diagnostic_alert--warning {
-    border-color: rgba(245, 158, 11, 0.3);
+    border-color: var(--warn-border);
 }
 
 .tachyon_diagnostic_alert--warning .tachyon_diagnostic_alert__icon {
-    color: #fbbf24;
-    border-color: rgba(245, 158, 11, 0.28);
+    color: var(--warn);
+    border-color: var(--warn-border);
 }
 
 .tachyon_diagnostic_alert--error {
-    border-color: rgba(239, 68, 68, 0.34);
+    border-color: var(--danger-border);
 }
 
 .tachyon_diagnostic_alert--error .tachyon_diagnostic_alert__icon {
-    color: #f87171;
-    border-color: rgba(239, 68, 68, 0.32);
+    color: var(--danger);
+    border-color: var(--danger-border);
 }
 
 .tachyon_diagnostic_alert--success {
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--border);
 }
 
 .tachyon_diagnostic_alert--success .tachyon_diagnostic_alert__icon {
-    color: #4ade80;
-    border-color: rgba(34, 197, 94, 0.24);
+    color: var(--success);
+    border-color: var(--success-border);
 }
 
 .tachyon_diagnostic_alert--skipped {
-    border-color: rgba(255, 255, 255, 0.05);
+    border-color: var(--border);
     opacity: 0.72;
 }
 
@@ -1518,14 +1519,14 @@ export const styles = `
     width: 100%;
     height: 3px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--border);
     overflow: hidden;
 }
 
 .tachyon_diagnostic-modal__progress-bar {
     height: 100%;
     border-radius: 2px;
-    background: #3b82f6;
+    background: var(--accent);
     transition: width 0.2s ease;
 }
 
@@ -1544,7 +1545,7 @@ export const styles = `
     justify-content: flex-end;
     gap: 8px;
     padding-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--border);
 }
 
 @media (max-width: 1200px) {

@@ -967,15 +967,27 @@ export function createSearchableCheckboxMultiSelect(
       rowChildren,
     );
 
-    const handleToggle = (ev: Event) => {
+    const handleRowClick = (ev: Event) => {
+      if (ev.target === checkbox) return;
       ev.preventDefault();
       ev.stopPropagation();
-      if (isDisabled) return;
-      toggleValue(choice.value);
+      if (!isDisabled) {
+        toggleValue(choice.value);
+      }
+      checkbox.checked = selectedSet.has(choice.value);
     };
 
-    checkbox.addEventListener('click', handleToggle);
-    row.addEventListener('click', handleToggle);
+    checkbox.addEventListener('click', (ev: Event) => {
+      ev.stopPropagation();
+      if (!isDisabled) {
+        toggleValue(choice.value);
+      }
+      checkbox.checked = selectedSet.has(choice.value);
+    });
+    checkbox.addEventListener('change', (ev: Event) => {
+      ev.stopPropagation();
+    });
+    row.addEventListener('click', handleRowClick);
     row.addEventListener('keydown', (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
@@ -1532,8 +1544,23 @@ function ensureDynListDomItems(
   widget?: any,
 ): void {
   if (!node || typeof node.querySelectorAll !== 'function') return;
+  const anchor =
+    node.querySelector?.('.tachyon-ms') ||
+    node.querySelector?.('.add-item') ||
+    null;
+  const existingItems = Array.from(
+    node.querySelectorAll('.item'),
+  ) as HTMLElement[];
+  const hasMisplacedItem =
+    Boolean(anchor) &&
+    existingItems.some(
+      (el) =>
+        typeof el.compareDocumentPosition === 'function' &&
+        (el.compareDocumentPosition(anchor as Node) & 2) !== 0,
+    );
   const currentDom = readDomDynListHiddenValues(node);
   if (
+    !hasMisplacedItem &&
     currentDom.length === values.length &&
     currentDom.every((v, idx) => v === values[idx])
   ) {
@@ -1542,9 +1569,6 @@ function ensureDynListDomItems(
 
   const desiredSet = new Set(values);
   const existingByValue = new Map<string, HTMLElement>();
-  const existingItems = Array.from(
-    node.querySelectorAll('.item'),
-  ) as HTMLElement[];
 
   for (const item of existingItems) {
     const hidden = item.querySelector?.(
@@ -1559,11 +1583,6 @@ function ensureDynListDomItems(
       existingByValue.set(itemVal, item);
     }
   }
-
-  const anchor =
-    node.querySelector?.('.tachyon-ms') ||
-    node.querySelector?.('.add-item') ||
-    null;
 
   const insertBeforeAnchor = (el: HTMLElement) => {
     if (anchor && typeof node.insertBefore === 'function') {
@@ -1795,6 +1814,7 @@ export function attachSearchableCheckboxMultiSelect(
           );
         }
       } finally {
+        observer?.takeRecords?.();
         internalSync = false;
       }
     },

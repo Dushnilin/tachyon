@@ -10,9 +10,128 @@ export const CUSTOM_THEMES_STORAGE_KEY = 'tachyon_ui_custom_themes';
 export const THEME_CHANGED_EVENT = 'tachyon:theme-changed';
 export const BG_ANIMATION_STORAGE_KEY = 'tachyon_ui_bg_animation';
 export const BG_ANIMATION_CHANGED_EVENT = 'tachyon:bg-animation-changed';
+export const FONT_SANS_STORAGE_KEY = 'tachyon_ui_font_sans';
+export const FONT_MONO_STORAGE_KEY = 'tachyon_ui_font_mono';
+export const FONT_SIZE_STORAGE_KEY = 'tachyon_ui_font_size';
+export const TYPOGRAPHY_CHANGED_EVENT = 'tachyon:typography-changed';
 
 export type ThemeScheme = 'dark' | 'light';
 export type ThemeAutoMode = 'manual' | 'system' | 'schedule';
+export type FontSansPresetId =
+  | 'system'
+  | 'geometric'
+  | 'humanist'
+  | 'mono'
+  | 'serif';
+export type FontMonoPresetId = 'system' | 'jetbrains' | 'cascadia' | 'plex';
+export type FontSizePresetId = 'compact' | 'normal' | 'large';
+
+export interface TypographyConfig {
+  sans: FontSansPresetId;
+  mono: FontMonoPresetId;
+  size: FontSizePresetId;
+}
+
+export interface FontPresetDefinition<T extends string = string> {
+  id: T;
+  labelRu: string;
+  labelEn: string;
+  value: string;
+}
+
+export const FONT_SANS_PRESETS: ReadonlyArray<
+  FontPresetDefinition<FontSansPresetId>
+> = [
+  {
+    id: 'system',
+    labelRu: 'Системный (Apple / UI)',
+    labelEn: 'System (Apple / UI)',
+    value:
+      '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Inter", system-ui, sans-serif',
+  },
+  {
+    id: 'geometric',
+    labelRu: 'Геометрический (Inter / Segoe)',
+    labelEn: 'Geometric (Inter / Segoe)',
+    value:
+      '"Inter", "Segoe UI Variable", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif',
+  },
+  {
+    id: 'humanist',
+    labelRu: 'Гуманистический (Ubuntu / Noto)',
+    labelEn: 'Humanist (Ubuntu / Noto)',
+    value:
+      '"Ubuntu", "Cantarell", "Noto Sans", "DejaVu Sans", "Segoe UI", Tahoma, sans-serif',
+  },
+  {
+    id: 'mono',
+    labelRu: 'Терминальный (Mono)',
+    labelEn: 'Terminal (Monospace)',
+    value: 'var(--mono)',
+  },
+  {
+    id: 'serif',
+    labelRu: 'Книжный (Serif)',
+    labelEn: 'Editorial (Serif)',
+    value: '"Charter", "Iowan Old Style", Georgia, "Times New Roman", serif',
+  },
+];
+
+export const FONT_MONO_PRESETS: ReadonlyArray<
+  FontPresetDefinition<FontMonoPresetId>
+> = [
+  {
+    id: 'system',
+    labelRu: 'Системный Mono',
+    labelEn: 'System Mono',
+    value:
+      '"SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace',
+  },
+  {
+    id: 'jetbrains',
+    labelRu: 'JetBrains / Fira Code',
+    labelEn: 'JetBrains / Fira Code',
+    value:
+      '"JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, Consolas, monospace',
+  },
+  {
+    id: 'cascadia',
+    labelRu: 'Cascadia / Consolas',
+    labelEn: 'Cascadia / Consolas',
+    value:
+      '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace',
+  },
+  {
+    id: 'plex',
+    labelRu: 'IBM Plex / Roboto Mono',
+    labelEn: 'IBM Plex / Roboto Mono',
+    value:
+      '"IBM Plex Mono", "Roboto Mono", "DejaVu Sans Mono", ui-monospace, monospace',
+  },
+];
+
+export const FONT_SIZE_PRESETS: ReadonlyArray<
+  FontPresetDefinition<FontSizePresetId>
+> = [
+  {
+    id: 'compact',
+    labelRu: 'Компактный (13px)',
+    labelEn: 'Compact (13px)',
+    value: '13px',
+  },
+  {
+    id: 'normal',
+    labelRu: 'Стандартный (14px)',
+    labelEn: 'Default (14px)',
+    value: '14px',
+  },
+  {
+    id: 'large',
+    labelRu: 'Крупный (15px)',
+    labelEn: 'Large (15px)',
+    value: '15px',
+  },
+];
 
 export interface ThemeAutoConfig {
   mode: ThemeAutoMode;
@@ -314,6 +433,26 @@ export const BUILTIN_THEMES: readonly TachyonThemeDefinition[] = [
     },
   },
   {
+    id: 'material-dark',
+    name: 'Material Dark',
+    scheme: 'dark',
+    builtin: true,
+    colors: {
+      bg: '#121316',
+      surface: '#1b1d22',
+      hover: '#24272e',
+      elevated: '#2e323b',
+      accent: '#82aaff',
+      accentHover: '#a5c2ff',
+      text: '#eeffff',
+      text2: '#b2ccd6',
+      text3: '#697098',
+      success: '#c3e88d',
+      warn: '#ffcb6b',
+      danger: '#f07178',
+    },
+  },
+  {
     id: 'everforest-light',
     name: 'Everforest Light',
     scheme: 'light',
@@ -331,6 +470,26 @@ export const BUILTIN_THEMES: readonly TachyonThemeDefinition[] = [
       success: '#2d7a47',
       warn: '#b4690e',
       danger: '#c23b3b',
+    },
+  },
+  {
+    id: 'material-light',
+    name: 'Material Light',
+    scheme: 'light',
+    builtin: true,
+    colors: {
+      bg: '#f1f3f6',
+      surface: '#ffffff',
+      hover: '#e8edf3',
+      elevated: '#dce4ef',
+      accent: '#1a73e8',
+      accentHover: '#1557b0',
+      text: '#1c1f24',
+      text2: '#4b5563',
+      text3: '#6b7280',
+      success: '#188038',
+      warn: '#b06000',
+      danger: '#d93025',
     },
   },
   {
@@ -504,54 +663,232 @@ export function computeThemeCssVars(
 ): Record<string, string> {
   const c = normalizeThemeColors(theme.colors);
   const isLight = theme.scheme === 'light';
+  const surfaceRgb = hexToRgbTuple(
+    c.surface,
+    isLight ? '255, 255, 255' : '20, 20, 22',
+  );
+  const accentRgb = hexToRgbTuple(c.accent, '10, 132, 255');
+  const successRgb = hexToRgbTuple(c.success, '48, 209, 88');
+  const warnRgb = hexToRgbTuple(c.warn, '255, 159, 10');
+  const dangerRgb = hexToRgbTuple(c.danger, '255, 69, 58');
+
+  const border = isLight ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.08)';
+  const borderStrong = isLight
+    ? 'rgba(0, 0, 0, 0.18)'
+    : 'rgba(255, 255, 255, 0.15)';
+  const accentSoft = `rgba(${accentRgb}, ${isLight ? '0.12' : '0.16'})`;
+  const accentRing = `rgba(${accentRgb}, ${isLight ? '0.38' : '0.36'})`;
+  const accentText = c.accentHover;
+  const accentTextHover = isLight ? c.accent : c.accentHover;
+  const successSoft = `rgba(${successRgb}, ${isLight ? '0.11' : '0.13'})`;
+  const successBorder = `rgba(${successRgb}, ${isLight ? '0.32' : '0.34'})`;
+  const warnSoft = `rgba(${warnRgb}, ${isLight ? '0.11' : '0.13'})`;
+  const warnBorder = `rgba(${warnRgb}, ${isLight ? '0.34' : '0.35'})`;
+  const dangerSoft = `rgba(${dangerRgb}, ${isLight ? '0.10' : '0.13'})`;
+  const dangerBorder = `rgba(${dangerRgb}, ${isLight ? '0.32' : '0.36'})`;
+
   return {
     '--color-scheme': isLight ? 'light' : 'dark',
     '--bg': c.bg,
     '--surface': c.surface,
     '--bg2': c.surface,
+    '--surface2': c.hover,
     '--hover': c.hover,
     '--elevated': c.elevated,
     '--accent': c.accent,
     '--accent-hover': c.accentHover,
+    '--accent-fg':
+      inferSchemeFromBg(c.accent) === 'light' ? '#0b0b0c' : '#ffffff',
     '--tachyon-theme-accent': c.accent,
     '--text': c.text,
     '--text2': c.text2,
     '--text3': c.text3,
+    '--muted': c.text2,
     '--success': c.success,
     '--ok': c.success,
     '--warn': c.warn,
+    '--warning': c.warn,
     '--danger': c.danger,
-    '--border': isLight ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.08)',
-    '--border-strong': isLight
-      ? 'rgba(0, 0, 0, 0.18)'
-      : 'rgba(255, 255, 255, 0.15)',
-    '--border-hi': isLight
-      ? 'rgba(0, 0, 0, 0.18)'
-      : 'rgba(255, 255, 255, 0.15)',
-    '--surface-glass': `rgba(${hexToRgbTuple(c.surface, '20, 20, 22')}, 0.84)`,
-    '--topbar-glass': `rgba(${hexToRgbTuple(c.surface, '20, 20, 22')}, 0.96)`,
-    '--accent-soft': `rgba(${hexToRgbTuple(c.accent, '10, 132, 255')}, 0.16)`,
-    '--accent-ring': `rgba(${hexToRgbTuple(c.accent, '10, 132, 255')}, 0.34)`,
+    '--border': border,
+    '--border-strong': borderStrong,
+    '--border-hi': borderStrong,
+    '--surface-glass': `rgba(${surfaceRgb}, ${isLight ? '0.92' : '0.86'})`,
+    '--topbar-glass': `rgba(${surfaceRgb}, ${isLight ? '0.96' : '0.94'})`,
+    '--accent-soft': accentSoft,
+    '--accent-ring': accentRing,
+    '--accent-text': accentText,
+    '--accent-text-hover': accentTextHover,
+    '--success-soft': successSoft,
+    '--success-border': successBorder,
+    '--warn-soft': warnSoft,
+    '--warn-border': warnBorder,
+    '--danger-soft': dangerSoft,
+    '--danger-border': dangerBorder,
+    '--row-hover': isLight
+      ? 'rgba(0, 0, 0, 0.03)'
+      : 'rgba(255, 255, 255, 0.03)',
     '--bg-grid-stroke': isLight
-      ? 'rgba(0, 0, 0, 0.045)'
+      ? 'rgba(0, 0, 0, 0.05)'
       : 'rgba(255, 255, 255, 0.028)',
-    ...(isLight
-      ? {
-          '--background-color-high': c.surface,
-          '--background-color-medium': c.bg,
-          '--background-color-low': c.hover,
-          '--border-color-high': 'rgba(15, 23, 42, 0.22)',
-          '--border-color-medium': 'rgba(15, 23, 42, 0.14)',
-          '--border-color-low': 'rgba(15, 23, 42, 0.09)',
-          '--text-color-high': c.text,
-          '--text-color-medium': c.text2,
-          '--text-color-low': c.text3,
-          '--muted': c.text2,
-          '--tachyon-text-primary': c.text,
-          '--tachyon-bg-input': c.hover,
-        }
-      : {}),
+    '--modal-backdrop': isLight
+      ? 'rgba(15, 23, 42, 0.36)'
+      : 'rgba(0, 0, 0, 0.62)',
+    '--shadow-card': isLight
+      ? '0 2px 10px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7)'
+      : 'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+    '--shadow-popover': isLight
+      ? '0 16px 40px rgba(15, 23, 42, 0.16)'
+      : '0 18px 44px rgba(0, 0, 0, 0.62)',
+    '--shadow-modal': isLight
+      ? '0 24px 48px rgba(15, 23, 42, 0.18)'
+      : '0 24px 48px rgba(0, 0, 0, 0.58)',
+    '--background-color-high': c.surface,
+    '--background-color-medium': c.bg,
+    '--background-color-low': c.hover,
+    '--border-color-high': borderStrong,
+    '--border-color-medium': border,
+    '--border-color-low': isLight
+      ? 'rgba(0, 0, 0, 0.07)'
+      : 'rgba(255, 255, 255, 0.06)',
+    '--text-color-high': c.text,
+    '--text-color-medium': c.text2,
+    '--text-color-low': c.text3,
+    '--primary-color-high': c.accent,
+    '--primary-color-medium': c.accent,
+    '--primary-color-low': accentSoft,
+    '--tachyon-text-primary': c.text,
+    '--tachyon-bg-input': isLight ? c.hover : c.bg,
+    '--tachyon-accent': c.accent,
+    '--tachyon-accent-strong': c.accentHover,
+    '--tachyon-accent-soft': accentSoft,
+    '--tachyon-accent-border': accentRing,
+    '--tachyon-accent-text': accentText,
+    '--tachyon-accent-text-hover': accentTextHover,
+    '--tachyon-success': c.success,
+    '--tachyon-success-soft': successSoft,
+    '--tachyon-success-border': successBorder,
+    '--tachyon-warning': c.warn,
+    '--tachyon-warning-soft': warnSoft,
+    '--tachyon-warning-border': warnBorder,
+    '--tachyon-danger': c.danger,
+    '--tachyon-danger-soft': dangerSoft,
+    '--tachyon-danger-border': dangerBorder,
   };
+}
+
+function findFontPresetValue<T extends string>(
+  presets: ReadonlyArray<FontPresetDefinition<T>>,
+  id: string,
+): string {
+  return (presets.find((p) => p.id === id) || presets[0]).value;
+}
+
+export function getTypographyConfig(): TypographyConfig {
+  const fallback: TypographyConfig = {
+    sans: 'system',
+    mono: 'system',
+    size: 'normal',
+  };
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const rawSans = String(
+      localStorage.getItem(FONT_SANS_STORAGE_KEY) || '',
+    ).trim();
+    const rawMono = String(
+      localStorage.getItem(FONT_MONO_STORAGE_KEY) || '',
+    ).trim();
+    const rawSize = String(
+      localStorage.getItem(FONT_SIZE_STORAGE_KEY) || '',
+    ).trim();
+    return {
+      sans: FONT_SANS_PRESETS.some((p) => p.id === rawSans)
+        ? (rawSans as FontSansPresetId)
+        : fallback.sans,
+      mono: FONT_MONO_PRESETS.some((p) => p.id === rawMono)
+        ? (rawMono as FontMonoPresetId)
+        : fallback.mono,
+      size: FONT_SIZE_PRESETS.some((p) => p.id === rawSize)
+        ? (rawSize as FontSizePresetId)
+        : fallback.size,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function computeTypographyCssVars(
+  cfg: TypographyConfig,
+): Record<string, string> {
+  const sans = findFontPresetValue(FONT_SANS_PRESETS, cfg.sans);
+  const mono = findFontPresetValue(FONT_MONO_PRESETS, cfg.mono);
+  const size = findFontPresetValue(FONT_SIZE_PRESETS, cfg.size);
+  return {
+    '--sans': sans,
+    '--mono': mono,
+    '--tachyon-font-mono': mono,
+    '--font-mono': mono,
+    '--tachyon-font-size': size,
+  };
+}
+
+export function applyTypographyToDocument(
+  cfg: TypographyConfig = getTypographyConfig(),
+): TypographyConfig {
+  const vars = computeTypographyCssVars(cfg);
+  if (typeof document !== 'undefined' && document.documentElement) {
+    const root = document.documentElement;
+    for (const [key, val] of Object.entries(vars)) {
+      root.style?.setProperty?.(key, val);
+    }
+    root.setAttribute?.('data-tachyon-font-sans', cfg.sans);
+    root.setAttribute?.('data-tachyon-font-mono', cfg.mono);
+    root.setAttribute?.('data-tachyon-font-size', cfg.size);
+  }
+  return cfg;
+}
+
+export function setTypographyConfig(
+  patch: Partial<TypographyConfig>,
+): TypographyConfig {
+  const cur = getTypographyConfig();
+  const next: TypographyConfig = {
+    sans:
+      patch.sans && FONT_SANS_PRESETS.some((p) => p.id === patch.sans)
+        ? patch.sans
+        : cur.sans,
+    mono:
+      patch.mono && FONT_MONO_PRESETS.some((p) => p.id === patch.mono)
+        ? patch.mono
+        : cur.mono,
+    size:
+      patch.size && FONT_SIZE_PRESETS.some((p) => p.id === patch.size)
+        ? patch.size
+        : cur.size,
+  };
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(FONT_SANS_STORAGE_KEY, next.sans);
+      localStorage.setItem(FONT_MONO_STORAGE_KEY, next.mono);
+      localStorage.setItem(FONT_SIZE_STORAGE_KEY, next.size);
+    } catch {
+      // ignore
+    }
+  }
+  applyTypographyToDocument(next);
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.dispatchEvent === 'function' &&
+    typeof CustomEvent === 'function'
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(TYPOGRAPHY_CHANGED_EVENT, { detail: next }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+  return next;
 }
 
 export function getCustomThemes(): TachyonThemeDefinition[] {
@@ -810,30 +1147,10 @@ export function applyThemeToDocument(
   if (typeof document !== 'undefined' && document.documentElement) {
     const root = document.documentElement;
     const vars = computeThemeCssVars(theme);
-    if (
-      theme.scheme !== 'light' &&
-      typeof root.style?.removeProperty === 'function'
-    ) {
-      for (const key of [
-        '--background-color-high',
-        '--background-color-medium',
-        '--background-color-low',
-        '--border-color-high',
-        '--border-color-medium',
-        '--border-color-low',
-        '--text-color-high',
-        '--text-color-medium',
-        '--text-color-low',
-        '--muted',
-        '--tachyon-text-primary',
-        '--tachyon-bg-input',
-      ]) {
-        root.style.removeProperty(key);
-      }
-    }
     for (const [key, val] of Object.entries(vars)) {
       root.style?.setProperty?.(key, val);
     }
+    applyTypographyToDocument();
     if (document.head) {
       let meta = document.head.querySelector(
         'meta[name="color-scheme"]',

@@ -933,4 +933,125 @@ describe('searchableCheckboxMultiSelect', () => {
     expect(outboundsSource).toContain('BATCH_SIZE = 120');
     expect(outboundsSource).not.toContain('filtered.slice(0, 200)');
   });
+
+  it('toggles checkbox directly without preventDefault, validates errors, and keeps .item before .tachyon-ms in showChips:false mode', () => {
+    const doc = domEnv.documentMock;
+    const ms = createSearchableCheckboxMultiSelect({
+      choices: [
+        { value: '1.1.1.1', label: 'Cloudflare' },
+        { value: 'bad-dns', label: 'Invalid DNS' },
+      ],
+      values: [],
+      validateItem: (val) => (val === 'bad-dns' ? 'Invalid server' : true),
+    });
+    doc.body.appendChild(ms.element);
+    ms.open();
+
+    const validCheckbox = ms.listElement.querySelector(
+      '[data-value="1.1.1.1"] input[type="checkbox"]',
+    ) as any;
+    let prevented = false;
+    validCheckbox.checked = !validCheckbox.checked;
+    validCheckbox.dispatchEvent({
+      type: 'click',
+      bubbles: true,
+      preventDefault() {
+        prevented = true;
+      },
+      stopPropagation() {},
+    });
+    expect(prevented).toBe(false);
+    expect(ms.getValues()).toEqual(['1.1.1.1']);
+    expect(validCheckbox.checked).toBe(true);
+
+    // Repeat click on checkbox unchecks without preventDefault
+    validCheckbox.checked = !validCheckbox.checked;
+    validCheckbox.dispatchEvent({
+      type: 'click',
+      bubbles: true,
+      preventDefault() {
+        prevented = true;
+      },
+      stopPropagation() {},
+    });
+    expect(prevented).toBe(false);
+    expect(ms.getValues()).toEqual([]);
+    expect(validCheckbox.checked).toBe(false);
+
+    // Invalid item stays unchecked and displays validation error
+    const badCheckbox = ms.listElement.querySelector(
+      '[data-value="bad-dns"] input[type="checkbox"]',
+    ) as any;
+    badCheckbox.checked = true;
+    badCheckbox.dispatchEvent({
+      type: 'click',
+      bubbles: true,
+      preventDefault() {},
+      stopPropagation() {},
+    });
+    expect(ms.getValues()).toEqual([]);
+    expect(badCheckbox.checked).toBe(false);
+    expect(
+      (ms.panel.querySelector('.tachyon-ms__error') as any)?.textContent,
+    ).toBe('Invalid server');
+
+    // UIDynamicList simulation in showChips:false mode keeps .item before .tachyon-ms even when compareDocumentPosition reports misplaced order
+    const dlNode = doc.createElement('div');
+    dlNode.className = 'cbi-dynlist';
+    dlNode.id = 'cbid.tachyon.settings.bootstrap_dns_server';
+    const addItemEl = doc.createElement('div');
+    addItemEl.className = 'add-item';
+    dlNode.appendChild(addItemEl);
+    doc.body.appendChild(dlNode);
+
+    let vals: string[] = [];
+    const widget: any = {
+      node: dlNode,
+      choices: { '1.1.1.1': 'Cloudflare', '8.8.8.8': 'Google' },
+      options: { id: dlNode.id },
+      getValue: () => vals.slice(),
+      setValue: (next: string[]) => {
+        vals = next.slice();
+        for (const el of dlNode.querySelectorAll('.item')) {
+          dlNode.removeChild(el);
+        }
+        for (const v of vals) {
+          const item = doc.createElement('div');
+          item.className = 'item';
+          const hid = doc.createElement('input');
+          hid.setAttribute('type', 'hidden');
+          hid.value = v;
+          item.appendChild(hid);
+          // Simulate browser compareDocumentPosition against .tachyon-ms
+          item.compareDocumentPosition = (other: any) =>
+            dlNode.children.indexOf(other) < dlNode.children.indexOf(item)
+              ? 2
+              : 4;
+          dlNode.insertBefore(item, addItemEl);
+        }
+      },
+    };
+
+    const handle = attachSearchableCheckboxMultiSelect(widget, dlNode, {
+      choices: [
+        { value: '1.1.1.1', label: 'Cloudflare' },
+        { value: '8.8.8.8', label: 'Google' },
+      ],
+      showChips: false,
+      allowCustom: true,
+    })!;
+    handle.open();
+    const cb = handle.listElement.querySelector(
+      '[data-value="1.1.1.1"] input[type="checkbox"]',
+    ) as any;
+    cb.click();
+    expect(handle.getValues()).toEqual(['1.1.1.1']);
+    expect(cb.checked).toBe(true);
+    const items = dlNode.querySelectorAll('.item');
+    expect(items.length).toBe(1);
+    expect(
+      dlNode.children.indexOf(items[0]) <
+        dlNode.children.indexOf(handle.element),
+    ).toBe(true);
+  });
 });

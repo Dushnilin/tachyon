@@ -7167,6 +7167,61 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
         .collect()
 }
 
+/// Build outbound JSON objects for all `outbound_sources` in `store`, enforcing
+/// globally unique outbound tags across sources and rewriting internal `detour` /
+/// `outbounds` references when cross-source tag collisions occur.
+pub(crate) fn build_all_source_outbounds(
+    store: &RouterStoreData,
+) -> HashMap<String, Vec<(String, Value, bool)>> {
+    let mut global_taken: HashSet<String> = HashSet::new();
+    let mut out: HashMap<String, Vec<(String, Value, bool)>> =
+        HashMap::with_capacity(store.outbound_sources.len());
+
+    for src in &store.outbound_sources {
+        let mut pairs = build_source_outbounds(src);
+        if pairs.is_empty() {
+            out.insert(src.id.clone(), pairs);
+            continue;
+        }
+        let mut rename_map: HashMap<String, String> = HashMap::new();
+        for (tag, val, _) in &mut pairs {
+            let unique_tag = make_unique_tag(tag, &mut global_taken);
+            if unique_tag != *tag {
+                rename_map.insert(tag.clone(), unique_tag.clone());
+                *tag = unique_tag.clone();
+                if let Some(obj) = val.as_object_mut() {
+                    obj.insert("tag".into(), json!(unique_tag));
+                }
+            }
+        }
+        if !rename_map.is_empty() {
+            for (_, val, _) in &mut pairs {
+                if let Some(obj) = val.as_object_mut() {
+                    if let Some(d_new) = obj
+                        .get("detour")
+                        .and_then(Value::as_str)
+                        .and_then(|s| rename_map.get(s).cloned())
+                    {
+                        obj.insert("detour".into(), json!(d_new));
+                    }
+                    if let Some(arr) = obj.get_mut("outbounds").and_then(Value::as_array_mut) {
+                        for item in arr.iter_mut() {
+                            if let Some(old_m) = item.as_str()
+                                && let Some(new_m) = rename_map.get(old_m)
+                            {
+                                *item = json!(new_m);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out.insert(src.id.clone(), pairs);
+    }
+
+    out
+}
+
 fn safe_tailscale_id(value: &str) -> String {
     value
         .chars()
@@ -13615,10 +13670,11 @@ pub(crate) fn is_usable_external_sub_host(raw: &str) -> bool {
 }
 
 pub fn resolve_outbound_group_member_tags(store: &RouterStoreData) -> HashMap<String, Vec<String>> {
+    let mut all_built = build_all_source_outbounds(store);
     let mut source_tag_map: HashMap<String, Vec<String>> = HashMap::new();
     let mut outbounds: Vec<Value> = Vec::new();
     for src in &store.outbound_sources {
-        let pairs = build_source_outbounds(src);
+        let pairs = all_built.remove(&src.id).unwrap_or_default();
         let mut tags = Vec::new();
         for (tag, obj, visible) in pairs {
             if visible {
@@ -13659,10 +13715,11 @@ pub fn resolve_section_allowed_member_tags(
         return None;
     }
 
+    let mut all_built = build_all_source_outbounds(store);
     let mut source_tag_map: HashMap<String, Vec<String>> = HashMap::new();
     let mut outbounds: Vec<Value> = Vec::new();
     for src in &store.outbound_sources {
-        let pairs = build_source_outbounds(src);
+        let pairs = all_built.remove(&src.id).unwrap_or_default();
         let mut tags = Vec::new();
         for (tag, obj, visible) in pairs {
             if visible {
@@ -14086,10 +14143,11 @@ fn compile_core_config_with_rt_dir(
         "listen_port": service_mixed_port
     }));
 
-    // 2. Collect all outbounds from `outbound_sources`
+    // 2. Collect all outbounds from `outbound_sources` with global tag uniqueness
+    let mut all_built = build_all_source_outbounds(store);
     let mut source_tag_map: HashMap<String, Vec<String>> = HashMap::new();
     for src in &store.outbound_sources {
-        let pairs = build_source_outbounds(src);
+        let pairs = all_built.remove(&src.id).unwrap_or_default();
         let mut tags = Vec::new();
         for (tag, obj, visible_in_selector) in pairs {
             if obj.get("type").and_then(Value::as_str) == Some("tailscale") {
@@ -14261,6 +14319,55 @@ fn compile_core_config_with_rt_dir(
             rules.push(json!({
                 "inbound": ["tg-bot-in"],
                 "outbound": tg_out
+            }));
+        }
+    }
+
+    // Optional dedicated loopback inbound + top-priority route rule for WARP registration proxy override
+    let warp_sec_ref = store
+        .settings
+        .warp_proxy_section
+        .trim()
+        .strip_prefix("netif:")
+        .unwrap_or(store.settings.warp_proxy_section.trim())
+        .trim();
+    if !warp_sec_ref.is_empty() {
+        let warp_out = if warp_sec_ref.eq_ignore_ascii_case("direct") {
+            Some("direct".to_string())
+        } else if let Some(sec) = store.sections.iter().find(|s| {
+            s.enabled
+                && s.action != "dns"
+                && s.connection_type != "dns"
+                && (s.id == warp_sec_ref || s.label.eq_ignore_ascii_case(warp_sec_ref))
+        }) {
+            let mut visited_secs = Vec::new();
+            Some(resolve_section_outbound(
+                sec,
+                &store.outbound_sources,
+                &source_tag_map,
+                &group_tag_map,
+                &sec_map,
+                &bal_map,
+                &mut outbounds,
+                &mut endpoints,
+                &mut ts_dns_metas,
+                &mut seen_outbound_tags,
+                &mut visited_secs,
+            ))
+        } else {
+            None
+        };
+        if let Some(warp_out) = warp_out {
+            let warp_reg_port = allocate_loopback_port(4536, &mut used_ports);
+            inbounds.push(json!({
+                "type": "mixed",
+                "tag": "warp-reg-in",
+                "listen": "127.0.0.1",
+                "listen_port": warp_reg_port
+            }));
+            rules.push(json!({
+                "inbound": ["warp-reg-in"],
+                "outbound": warp_out
             }));
         }
     }
@@ -20468,8 +20575,9 @@ pub fn build_all_section_balancer_caches(
     let mut outbounds: Vec<Value> = Vec::new();
     let mut seen_tags: HashMap<String, bool> = HashMap::new();
 
+    let mut all_built = build_all_source_outbounds(store);
     for src in &store.outbound_sources {
-        let pairs = build_source_outbounds(src);
+        let pairs = all_built.remove(&src.id).unwrap_or_default();
         let mut tags = Vec::new();
         for (tag, obj, visible) in pairs {
             let eff_tag = if obj.get("type").and_then(Value::as_str) == Some("tailscale") {
@@ -24545,6 +24653,61 @@ config timeserver 'ntp'
             .expect("tg-bot-in");
         assert_eq!(svc_in["listen_port"], 4536);
         assert_eq!(tg_in["listen_port"], 4537);
+
+        let mut ports: Vec<u64> = inbounds
+            .iter()
+            .filter_map(|i| i.get("listen_port").and_then(Value::as_u64))
+            .collect();
+        let total_ports = ports.len();
+        ports.sort_unstable();
+        ports.dedup();
+        assert_eq!(ports.len(), total_ports, "all inbound ports must be unique");
+    }
+
+    #[test]
+    fn test_warp_reg_inbound_for_section_and_port_allocation() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "src_warp_proxy".to_string(),
+            enabled: true,
+            name: "Proxy Source".to_string(),
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@203.0.113.10:443?type=tcp#WarpRegProxy"
+                    .to_string(),
+            ],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec_vpn".to_string(),
+            enabled: true,
+            label: "VPN Section".to_string(),
+            action: "proxy".to_string(),
+            outbound_source_refs: vec!["src_warp_proxy".to_string()],
+            mixed_proxy_enabled: true,
+            mixed_proxy_port: 4536,
+            ..Default::default()
+        });
+        store.telegram.bot_proxy_section = "sec_vpn".to_string();
+        store.settings.warp_proxy_section = "sec_vpn".to_string();
+
+        let cfg = compile_core_config(&store).expect("compile config with warp_proxy_section");
+        let inbounds = cfg["inbounds"].as_array().unwrap();
+        let warp_in = inbounds
+            .iter()
+            .find(|i| i["tag"] == "warp-reg-in")
+            .expect("warp-reg-in must be emitted");
+        assert_eq!(warp_in["type"], "mixed");
+        assert_eq!(warp_in["listen"], "127.0.0.1");
+        assert_eq!(warp_in["listen_port"], 4537);
+
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(rules.iter().any(|r| {
+            r.get("inbound")
+                .and_then(Value::as_array)
+                .is_some_and(|arr| arr.iter().any(|x| x == "warp-reg-in"))
+                && r.get("outbound").and_then(Value::as_str).is_some()
+        }));
 
         let mut ports: Vec<u64> = inbounds
             .iter()
@@ -33350,5 +33513,127 @@ proxies:
         assert_eq!(bal_json["url"], "https://www.gstatic.com/generate_204");
         assert_eq!(bal_json["idle_timeout"], "600s");
         assert_eq!(bal_json["tolerance"], u16::MAX);
+    }
+
+    #[test]
+    fn test_cross_subscription_duplicate_tags_preserve_all_nodes_and_urltest_refs() {
+        let make_sub = |id: &str, urltest_mode: bool| {
+            let mut nodes = vec![
+                ParsedProxyNode {
+                    tag: "🇪🇪 Эстония".to_string(),
+                    protocol: "vless".to_string(),
+                    server: format!("{id}-ee.example.com"),
+                    server_port: 443,
+                    country: "EE".to_string(),
+                    raw_uri: if urltest_mode {
+                        "json:hidden".to_string()
+                    } else {
+                        format!(
+                            "vless://11111111-1111-1111-1111-111111111111@{id}-ee.example.com:443#EE"
+                        )
+                    },
+                    outbound_json: json!({
+                        "type": "vless",
+                        "tag": "🇪🇪 Эстония",
+                        "server": format!("{id}-ee.example.com"),
+                        "server_port": 443
+                    }),
+                },
+                ParsedProxyNode {
+                    tag: "🇩🇪 Германия".to_string(),
+                    protocol: "vless".to_string(),
+                    server: format!("{id}-de.example.com"),
+                    server_port: 443,
+                    country: "DE".to_string(),
+                    raw_uri: format!(
+                        "vless://22222222-2222-2222-2222-222222222222@{id}-de.example.com:443#DE"
+                    ),
+                    outbound_json: json!({
+                        "type": "vless",
+                        "tag": "🇩🇪 Германия",
+                        "server": format!("{id}-de.example.com"),
+                        "server_port": 443
+                    }),
+                },
+            ];
+            if urltest_mode {
+                nodes.push(ParsedProxyNode {
+                    tag: "Авто".to_string(),
+                    protocol: "urltest".to_string(),
+                    server: String::new(),
+                    server_port: 0,
+                    country: String::new(),
+                    raw_uri: "json:urltest|Авто".to_string(),
+                    outbound_json: json!({
+                        "type": "urltest",
+                        "tag": "Авто",
+                        "outbounds": ["🇪🇪 Эстония", "🇩🇪 Германия"]
+                    }),
+                });
+            }
+            OutboundSource {
+                id: id.to_string(),
+                name: id.to_string(),
+                source_type: "subscription".to_string(),
+                enabled: true,
+                include_urltest_groups: urltest_mode,
+                hide_urltest_group_outbounds: true,
+                cached_nodes: nodes,
+                ..Default::default()
+            }
+        };
+
+        let store = RouterStoreData {
+            outbound_sources: vec![
+                make_sub("sub_a", true),
+                make_sub("sub_b", true),
+                make_sub("sub_c", false),
+            ],
+            sections: vec![RoutingSection {
+                id: "Main".to_string(),
+                enabled: true,
+                connection_type: "proxy".to_string(),
+                action: "connection".to_string(),
+                outbound_source_refs: vec![
+                    "sub_a".to_string(),
+                    "sub_b".to_string(),
+                    "sub_c".to_string(),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let cfg = compile_core_config(&store).expect("compile config with overlapping sub tags");
+        let obs = cfg["outbounds"].as_array().unwrap();
+        let vless_servers: Vec<&str> = obs
+            .iter()
+            .filter(|o| o["type"] == "vless")
+            .filter_map(|o| o["server"].as_str())
+            .collect();
+        assert_eq!(vless_servers.len(), 6);
+        assert!(vless_servers.contains(&"sub_a-ee.example.com"));
+        assert!(vless_servers.contains(&"sub_b-ee.example.com"));
+        assert!(vless_servers.contains(&"sub_c-ee.example.com"));
+
+        let sel = obs
+            .iter()
+            .find(|o| o["tag"] == "sel-Main")
+            .expect("sel-Main");
+        let sel_members: Vec<&str> = sel["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert!(sel_members.contains(&"Авто"));
+        assert!(sel_members.contains(&"Авто-1"));
+        assert!(sel_members.contains(&"🇩🇪 Германия-2"));
+        assert!(sel_members.contains(&"🇪🇪 Эстония-2"));
+
+        let auto_b = obs.iter().find(|o| o["tag"] == "Авто-1").expect("Авто-1");
+        let auto_b_members = auto_b["outbounds"].as_array().unwrap();
+        assert!(auto_b_members.contains(&json!("🇪🇪 Эстония-1")));
+        assert!(auto_b_members.contains(&json!("🇩🇪 Германия-1")));
     }
 }

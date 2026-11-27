@@ -7108,16 +7108,17 @@ pub async fn build_support_bundle(state: &Arc<AppState>) -> Value {
 }
 
 pub async fn build_nodes_status_report(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
-    let (sources, events, recent_logs, core_running) = {
+    let (store_snapshot, events, recent_logs, core_running) = {
         let d = state.data.read().await;
         let live = state.live.read().await;
         (
-            d.outbound_sources.clone(),
+            d.clone(),
             live.events.clone(),
             live.recent_logs.clone(),
             live.core_running,
         )
     };
+    let all_built = crate::config_gen::build_all_source_outbounds(&store_snapshot);
     let proxies_map = core
         .clash_request("GET", "/proxies", None)
         .await
@@ -7139,10 +7140,11 @@ pub async fn build_nodes_status_report(state: &Arc<AppState>, core: &Arc<CoreMan
         .unwrap_or_default();
 
     let mut items = Vec::new();
-    for src in sources.iter().filter(|s| s.enabled) {
+    for src in store_snapshot.outbound_sources.iter().filter(|s| s.enabled) {
         let mut nodes_out = Vec::new();
-        for (tag, _, visible) in crate::config_gen::build_source_outbounds(src) {
-            if !visible {
+        for (tag, _, visible) in all_built.get(&src.id).map(Vec::as_slice).unwrap_or(&[]) {
+            let tag = tag.clone();
+            if !*visible {
                 continue;
             }
             let proxy_entry = proxies_map.get(&tag);

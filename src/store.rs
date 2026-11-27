@@ -5181,7 +5181,6 @@ impl RouterStoreData {
                         self.settings.section_failover_enabled = prev.section_failover_enabled;
                         self.settings.section_failover_threshold = prev.section_failover_threshold;
                         self.settings.qos_priority_engine = prev.qos_priority_engine;
-                        self.settings.warp_proxy_section = prev.warp_proxy_section;
                     }
                     let has_key = |k: &str| b.lists.contains_key(k) || b.options.contains_key(k);
                     if let Some(v) = b.opt("proxy_mode") {
@@ -5686,6 +5685,9 @@ impl RouterStoreData {
                     }
                     if let Some(v) = b.opt("download_components_via_proxy_section") {
                         self.settings.download_components_via_proxy_section = v.to_string();
+                    }
+                    if let Some(v) = b.opt("warp_proxy_section") {
+                        self.settings.warp_proxy_section = v.trim().to_string();
                     }
                     if let Some(v) = b.opt("component_update_channel") {
                         self.settings.component_update_channel =
@@ -14352,5 +14354,54 @@ config outbound_source 'awg31_src'
         store.import_from_blocks_with_cache(&explicit_blocks, Path::new("/nonexistent"));
         let sec_a_updated = store.sections.iter().find(|s| s.id == "SecA").unwrap();
         assert_eq!(sec_a_updated.active_selected_tag, "Node C");
+    }
+
+    #[test]
+    fn test_warp_proxy_section_uci_sync_partial_and_full_reset() {
+        let mut store = RouterStoreData::default();
+        let initial_blocks = vec![LegacyUciBlock {
+            kind: "settings".to_string(),
+            name: "settings".to_string(),
+            options: HashMap::from([("warp_proxy_section".to_string(), " sec_vpn ".to_string())]),
+            lists: HashMap::new(),
+        }];
+        store.import_from_blocks_with_cache(&initial_blocks, Path::new("/nonexistent"));
+        assert_eq!(store.settings.warp_proxy_section, "sec_vpn");
+
+        // Partial update without warp_proxy_section key preserves it.
+        let partial_blocks = vec![
+            LegacyUciBlock {
+                kind: "settings".to_string(),
+                name: "settings".to_string(),
+                options: HashMap::from([("disable_quic".to_string(), "1".to_string())]),
+                lists: HashMap::new(),
+            },
+            LegacyUciBlock {
+                kind: "section".to_string(),
+                name: "sec_vpn".to_string(),
+                options: HashMap::from([("action".to_string(), "proxy".to_string())]),
+                lists: HashMap::new(),
+            },
+        ];
+        store.import_from_blocks_with_cache(&partial_blocks, Path::new("/nonexistent"));
+        assert_eq!(store.settings.warp_proxy_section, "sec_vpn");
+
+        // Full snapshot reset with omitted warp_proxy_section clears it to empty string.
+        let reset_blocks = vec![
+            LegacyUciBlock {
+                kind: "settings".to_string(),
+                name: "settings".to_string(),
+                options: HashMap::from([("proxy_mode".to_string(), "tproxy".to_string())]),
+                lists: HashMap::new(),
+            },
+            LegacyUciBlock {
+                kind: "section".to_string(),
+                name: "sec_vpn".to_string(),
+                options: HashMap::from([("action".to_string(), "proxy".to_string())]),
+                lists: HashMap::new(),
+            },
+        ];
+        store.import_from_blocks_impl(&reset_blocks, Path::new("/nonexistent"), true);
+        assert_eq!(store.settings.warp_proxy_section, "");
     }
 }
