@@ -1515,7 +1515,7 @@ mod release_catalog_pagination_tests {
             final_partial_release_page(60, next_page, pending.clone()),
             Some(Value::Array(pending))
         );
-        assert_eq!(final_partial_release_page(61, next_page, items(0, 0).collect()), None);
+        assert_eq!(final_partial_release_page(61, next_page, pending.clone()), None);
         assert_eq!(final_partial_release_page(60, next_page, Vec::new()), None);
     }
 
