@@ -1429,6 +1429,21 @@ fn should_cache_release_page(requested: usize, current: usize, per_page: usize) 
     current == requested || (per_page >= 5 && current > requested && current - requested <= 5)
 }
 
+/// Return the last partial picker page when the bounded raw API scan ends.
+/// This is not evidence that the upstream catalogue is exhausted, so callers
+/// must not cache the result as an authoritative end-of-catalogue page.
+fn final_partial_release_page(
+    requested_page: usize,
+    next_page: usize,
+    pending: Vec<Value>,
+) -> Option<Value> {
+    if requested_page == next_page && !pending.is_empty() {
+        Some(Value::Array(pending))
+    } else {
+        None
+    }
+}
+
 fn release_catalog_matches(item: &Value, canon: &str, include_prerelease: bool) -> bool {
     (include_prerelease
         || !item
@@ -1476,6 +1491,32 @@ mod release_catalog_pagination_tests {
         assert!(should_cache_release_page(1, 4, 5));
         assert!(!should_cache_release_page(1, 7, 5));
         assert!(!should_cache_release_page(4, 3, 5));
+    }
+
+    #[test]
+    fn raw_page_cap_returns_the_final_partial_picker_page_only() {
+        let eligible_before_last_page = items(0, 270);
+        let mut pending = Vec::new();
+        let mut next_page = 1;
+        for chunk in eligible_before_last_page.collect::<Vec<_>>().chunks(30) {
+            for complete in append_release_pages(chunk.iter().cloned(), 5, &mut pending) {
+                assert_eq!(complete.len(), 5);
+                next_page += 1;
+            }
+        }
+        let last_raw_page = items(270, 299);
+        for complete in append_release_pages(last_raw_page, 5, &mut pending) {
+            assert_eq!(complete.len(), 5);
+            next_page += 1;
+        }
+        assert_eq!(next_page, 60);
+        assert_eq!(pending.len(), 4);
+        assert_eq!(
+            final_partial_release_page(60, next_page, pending.clone()),
+            Some(Value::Array(pending))
+        );
+        assert_eq!(final_partial_release_page(61, next_page, items(0, 0).collect()), None);
+        assert_eq!(final_partial_release_page(60, next_page, Vec::new()), None);
     }
 
     #[test]
@@ -1610,7 +1651,9 @@ pub async fn list_releases(
                 return Some(out);
             }
         }
-        None
+        // The hard raw-page cap is not catalogue exhaustion. Preserve a final
+        // partial picker page for this request, but do not cache it as complete.
+        final_partial_release_page(page, picker_page, pending)
     })
     .await;
     if let Ok(Some(out)) = rest {
