@@ -6023,6 +6023,638 @@ async fn fetch_clash_proxies_cached_raw(core: &Arc<CoreManager>) -> Option<Arc<s
     Some(body_with_nl)
 }
 
+async fn handle_clash_get_switch_history(
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    let limit = rest
+        .get(1)
+        .and_then(|arg| arg.parse().ok())
+        .unwrap_or(crate::switch_history::LIMIT);
+    let group = rest.get(2).map(String::as_str).unwrap_or("");
+    let reason = rest.get(3).map(String::as_str).unwrap_or("");
+    match crate::switch_history::recent(&crate::switch_history::path(), limit, group, reason) {
+        Ok(events) => {
+            let store_snap = state.data.read().await.clone();
+            let tag_map = build_telemetry_tag_display_map(&store_snap);
+            let enriched: Vec<Value> = events
+                .into_iter()
+                .map(|ev| {
+                    let mut val = serde_json::to_value(&ev).unwrap_or(Value::Null);
+                    if let Some(obj) = val.as_object_mut() {
+                        for (raw_key, disp_key) in [
+                            ("group", "group_display_name"),
+                            ("from", "from_display_name"),
+                            ("to", "to_display_name"),
+                            ("primary", "primary_display_name"),
+                        ] {
+                            if let Some(raw_val) = obj
+                                .get(raw_key)
+                                .and_then(Value::as_str)
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_owned)
+                            {
+                                obj.insert(
+                                    disp_key.to_string(),
+                                    json!(resolve_telemetry_tag_display_name(
+                                        &raw_val,
+                                        &tag_map,
+                                        &store_snap
+                                    )),
+                                );
+                            }
+                        }
+                    }
+                    val
+                })
+                .collect();
+            Some((
+                0,
+                format!(
+                    "{}\n",
+                    json!({ "events": enriched, "stats": core.switch_history_stats() })
+                ),
+                String::new(),
+            ))
+        }
+        Err(_) => Some((1, String::new(), "Switch history unavailable\n".to_owned())),
+    }
+}
+
+async fn handle_clash_get_proxies(core: &Arc<CoreManager>) -> Option<(i32, String, String)> {
+    if let Some(body_with_nl) = fetch_clash_proxies_cached_raw(core).await {
+        return Some((0, body_with_nl.to_string(), String::new()));
+    }
+    let cached_proxies_path = crate::store::runtime_state_dir()
+        .join("ui-state")
+        .join("clash-proxies.json");
+    if let Some(cached) = read_cached_clash_proxies(&cached_proxies_path) {
+        return Some((0, cached, String::new()));
+    }
+    Some((0, "{\"proxies\":{}}\n".to_string(), String::new()))
+}
+
+async fn handle_clash_get_connections(
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    state.touch_telemetry_access();
+    let conntrack_only = rest.get(1).map(String::as_str) == Some("conntrack");
+    if !conntrack_only {
+        let cache_path = crate::store::runtime_state_dir()
+            .join("ui-state")
+            .join("clash-connections.json");
+        if let Ok(meta) = std::fs::metadata(&cache_path)
+            && let Ok(mtime) = meta.modified()
+            && mtime.elapsed().is_ok_and(|age| age.as_secs() < 2)
+            && let Ok(cached) = std::fs::read_to_string(cache_path)
+            && !cached.trim().is_empty()
+            && serde_json::from_str::<Value>(&cached).is_ok()
+        {
+            let body = if cached.ends_with('\n') {
+                cached
+            } else {
+                format!("{cached}\n")
+            };
+            return Some((0, body, String::new()));
+        }
+    }
+    let mut ip_host_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    if let Ok(raw_hosts) = std::fs::read_to_string("/tmp/tachyon_dns_hosts.json")
+        && let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw_hosts)
+    {
+        for (ip, dom) in map {
+            if let Some(d) = dom.as_str()
+                && !ip.is_empty()
+                && !d.is_empty()
+            {
+                ip_host_map.insert(ip, d.to_string());
+            }
+        }
+    }
+    let fakeip_cidr_owned = state.data.read().await.settings.fakeip_inet4_range.clone();
+    let fakeip_cidr = (!fakeip_cidr_owned.trim().is_empty()).then_some(fakeip_cidr_owned.trim());
+    if conntrack_only {
+        let ct_conns = read_pure_rust_conntrack_connections(
+            &ip_host_map,
+            &std::collections::HashSet::new(),
+            &std::collections::HashSet::new(),
+            fakeip_cidr,
+            150,
+        );
+        let out = json!({ "connections": ct_conns });
+        let raw =
+            serde_json::to_string(&out).unwrap_or_else(|_| "{\"connections\":[]}".to_string());
+        return Some((0, format!("{raw}\n"), String::new()));
+    }
+    if let Ok(mut val) = core.clash_request("GET", "/connections", None).await {
+        if let Some(rev) = val
+            .as_object_mut()
+            .and_then(|o| o.remove("reverseDns"))
+            .and_then(|v| v.as_object().cloned())
+        {
+            for (ip, dom) in rev {
+                if let Some(d) = dom.as_str()
+                    && !ip.is_empty()
+                    && !d.is_empty()
+                {
+                    ip_host_map.insert(ip, d.to_string());
+                }
+            }
+        }
+        let mut seen_tuples: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_client_sockets: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        if let Some(conns) = val.get_mut("connections").and_then(Value::as_array_mut) {
+            for c in conns.iter_mut() {
+                if let Some(obj) = c.as_object_mut() {
+                    obj.entry("dataSource".to_string())
+                        .or_insert_with(|| json!("core"));
+                    if let Some(meta) = obj.get_mut("metadata").and_then(Value::as_object_mut) {
+                        let proto = meta
+                            .get("network")
+                            .and_then(Value::as_str)
+                            .unwrap_or("tcp")
+                            .to_ascii_lowercase();
+                        let src = meta
+                            .get("sourceIP")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        let sport = meta
+                            .get("sourcePort")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        let dst = meta
+                            .get("destinationIP")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        let dport = meta
+                            .get("destinationPort")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        if !src.is_empty() && !dst.is_empty() {
+                            seen_tuples.insert(format!("{proto}|{src}|{sport}|{dst}|{dport}"));
+                        }
+                        // Only match by 4-tuple (omitting destinationIP) when core left destinationIP empty;
+                        // symmetric/full-cone UDP flows can share (src, sport, dport) across multiple dst IPs.
+                        if dst.is_empty()
+                            && !src.is_empty()
+                            && !sport.is_empty()
+                            && !dport.is_empty()
+                        {
+                            seen_client_sockets.insert(format!("{proto}|{src}|{sport}|{dport}"));
+                        }
+                        let cur_host = meta.get("host").and_then(Value::as_str).unwrap_or("");
+                        if cur_host.is_empty()
+                            && let Some(resolved) = ip_host_map.get(&dst)
+                        {
+                            meta.insert("host".to_string(), json!(resolved));
+                        } else if !cur_host.is_empty() && !dst.is_empty() {
+                            ip_host_map
+                                .entry(dst)
+                                .or_insert_with(|| cur_host.to_string());
+                        }
+                    }
+                }
+            }
+            let ct_conns = read_pure_rust_conntrack_connections(
+                &ip_host_map,
+                &seen_tuples,
+                &seen_client_sockets,
+                fakeip_cidr,
+                120,
+            );
+            conns.extend(ct_conns);
+        }
+        let mut raw =
+            serde_json::to_string(&val).unwrap_or_else(|_| "{\"connections\":[]}".to_string());
+        if raw.len() > 56_000 {
+            if let Some(conns) = val.get_mut("connections").and_then(Value::as_array_mut) {
+                for c in conns.iter_mut() {
+                    if let Some(obj) = c.as_object_mut()
+                        && let Some(rule_str) = obj.get("rule").and_then(Value::as_str)
+                        && rule_str.len() > 96
+                    {
+                        let short = if let Some(pos) = rule_str.rfind(" => ") {
+                            format!("...{}", &rule_str[pos..])
+                        } else {
+                            rule_str.chars().take(96).collect()
+                        };
+                        obj.insert("rule".to_string(), json!(short));
+                    }
+                }
+            }
+            loop {
+                let candidate = serde_json::to_string(&val).unwrap_or_default();
+                if candidate.len() <= 56_000 {
+                    raw = candidate;
+                    break;
+                }
+                let Some(conns) = val.get_mut("connections").and_then(Value::as_array_mut) else {
+                    break;
+                };
+                if conns.len() <= 20 {
+                    raw = candidate;
+                    break;
+                }
+                let new_len = ((conns.len() * 3) / 4).max(20);
+                conns.truncate(new_len);
+            }
+        }
+        let ui_dir = crate::store::runtime_state_dir().join("ui-state");
+        let _ = std::fs::create_dir_all(&ui_dir);
+        let _ = crypto_gen::write_file_if_changed(
+            ui_dir.join("clash-connections.json"),
+            raw.as_bytes(),
+        );
+        return Some((0, format!("{raw}\n"), String::new()));
+    }
+    if let Ok(cached) = std::fs::read_to_string(
+        crate::store::runtime_state_dir()
+            .join("ui-state")
+            .join("clash-connections.json"),
+    ) && !cached.trim().is_empty()
+    {
+        return Some((0, format!("{}\n", cached.trim()), String::new()));
+    }
+    let ct_conns = read_pure_rust_conntrack_connections(
+        &ip_host_map,
+        &std::collections::HashSet::new(),
+        &std::collections::HashSet::new(),
+        fakeip_cidr,
+        120,
+    );
+    let fallback = json!({
+        "uploadTotal": 0,
+        "downloadTotal": 0,
+        "connections": ct_conns
+    });
+    let raw =
+        serde_json::to_string(&fallback).unwrap_or_else(|_| "{\"connections\":[]}".to_string());
+    Some((0, format!("{raw}\n"), String::new()))
+}
+
+async fn handle_clash_set_group_proxy(
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    let group = rest.get(1).map(String::as_str).unwrap_or("");
+    let proxy = rest.get(2).map(String::as_str).unwrap_or("");
+    if group.is_empty() || proxy.is_empty() {
+        let s = serde_json::to_string(&json!({
+            "success": false,
+            "error": "Missing group or proxy"
+        }))
+        .unwrap_or_default();
+        return Some((1, format!("{s}\n"), String::new()));
+    }
+    let d_snap = state.data.read().await.clone();
+    let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+    let proxies_map = proxies_val
+        .as_ref()
+        .and_then(|v| v.get("proxies"))
+        .and_then(Value::as_object);
+    let mut effective_group = resolve_clash_group_for_target(&d_snap, proxies_map, group);
+    if let Some(map) = proxies_map
+        && let Some(entry) = map.get(&effective_group)
+        && entry.get("type").and_then(Value::as_str) != Some("Selector")
+    {
+        let sec_match = d_snap.sections.iter().find(|s| {
+            effective_group == s.id
+                || effective_group == format!("sel-{}", s.id)
+                || effective_group == format!("{}-out", s.id)
+                || effective_group.starts_with(&format!("bal-{}-", s.id))
+        });
+        if let Some(sec) = sec_match {
+            for cand in [format!("sel-{}", sec.id), format!("{}-out", sec.id)] {
+                if map
+                    .get(&cand)
+                    .and_then(|v| v.get("type"))
+                    .and_then(Value::as_str)
+                    == Some("Selector")
+                {
+                    effective_group = cand;
+                    break;
+                }
+            }
+        }
+        if map
+            .get(&effective_group)
+            .and_then(|v| v.get("type"))
+            .and_then(Value::as_str)
+            != Some("Selector")
+        {
+            let has_member = |entry: &Value, target: &str| {
+                entry
+                    .get("all")
+                    .and_then(Value::as_array)
+                    .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(target)))
+            };
+            if let Some((cand, _)) = map
+                .iter()
+                .find(|(_, v)| {
+                    v.get("type").and_then(Value::as_str) == Some("Selector")
+                        && has_member(v, &effective_group)
+                        && has_member(v, proxy)
+                })
+                .or_else(|| {
+                    map.iter().find(|(_, v)| {
+                        v.get("type").and_then(Value::as_str) == Some("Selector")
+                            && has_member(v, proxy)
+                    })
+                })
+            {
+                effective_group = cand.clone();
+            }
+        }
+    }
+    let encoded = url_encode_component(&effective_group);
+    let body = serde_json::to_string(&json!({ "name": proxy })).unwrap_or_default();
+    if let Err(e) = core
+        .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&body))
+        .await
+    {
+        let s = serde_json::to_string(&json!({
+            "success": false,
+            "group": effective_group,
+            "error": format!("{e:#}")
+        }))
+        .unwrap_or_default();
+        return Some((1, format!("{s}\n"), String::new()));
+    }
+    invalidate_clash_proxies_mem_cache();
+    CoreManager::save_selector_choice(&effective_group, proxy);
+    {
+        let mut d = state.data.write().await;
+        let base_id = group
+            .strip_prefix("sel-")
+            .or_else(|| group.strip_suffix("-out"))
+            .unwrap_or(group);
+        if let Some(sec) = d.sections.iter_mut().find(|s| {
+            s.id == group
+                || s.id == base_id
+                || format!("sel-{}", s.id) == effective_group
+                || effective_group.starts_with(&format!("bal-{}-", s.id))
+        }) {
+            sec.active_selected_tag = proxy.to_string();
+        }
+    }
+    let _ = state.save().await;
+    let d_updated = state.data.read().await.clone();
+    sync_from_store_to_json_and_cache(&d_updated);
+    Some((0, "{\"success\":true}\n".to_string(), String::new()))
+}
+
+async fn handle_clash_get_latency(
+    action: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    let tag = rest.get(1).map(String::as_str).unwrap_or("");
+    let timeout = rest.get(2).map(String::as_str).unwrap_or("8000");
+    let url = rest
+        .get(3)
+        .map(String::as_str)
+        .unwrap_or("https://www.gstatic.com/generate_204");
+    if tag.is_empty() {
+        return Some((
+            1,
+            "{\"success\":false,\"delay\":0,\"error\":\"Missing tag\"}\n".to_string(),
+            String::new(),
+        ));
+    }
+    let is_group = action == "get_group_latency";
+    let timeout_ms = timeout
+        .trim()
+        .parse::<u64>()
+        .unwrap_or(8000)
+        .clamp(1000, 20_000);
+    let encoded_url = url_encode_component(url);
+    let build_delay_path = |probe_tag: &str, t_ms: u64| {
+        let enc = url_encode_component(probe_tag);
+        if is_group {
+            format!("/group/{enc}/delay?url={encoded_url}&timeout={t_ms}")
+        } else {
+            format!("/proxies/{enc}/delay?url={encoded_url}&timeout={t_ms}")
+        }
+    };
+
+    let mut proxies_cache: Option<Value> = None;
+    let mut probed_tag = if is_group {
+        let d_snap = state.data.read().await.clone();
+        proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
+        let proxies_map = proxies_cache
+            .as_ref()
+            .and_then(|v| v.get("proxies"))
+            .and_then(Value::as_object);
+        resolve_clash_group_for_target(&d_snap, proxies_map, tag)
+    } else {
+        tag.to_string()
+    };
+
+    let primary_path = build_delay_path(&probed_tag, timeout_ms);
+    let primary_res = core.clash_request("GET", &primary_path, None).await;
+    let mut resolved_fallback = false;
+
+    let mut final_res = if !is_group
+        && match &primary_res {
+            Err(_) => true,
+            Ok(val) => !has_positive_delay_response(val),
+        } {
+        let d_snap = state.data.read().await.clone();
+        if proxies_cache.is_none() {
+            proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
+        }
+        let proxies_map = proxies_cache
+            .as_ref()
+            .and_then(|v| v.get("proxies"))
+            .and_then(Value::as_object);
+        if let Some(fallback_tag) =
+            proxies_map.and_then(|pm| resolve_clash_proxy_for_target(&d_snap, pm, tag))
+        {
+            probed_tag = fallback_tag;
+            resolved_fallback = true;
+            let fallback_path = build_delay_path(&probed_tag, timeout_ms);
+            match core.clash_request("GET", &fallback_path, None).await {
+                Ok(val) => Ok(val),
+                Err(fallback_err) => {
+                    if primary_res.is_ok() {
+                        primary_res
+                    } else {
+                        Err(fallback_err)
+                    }
+                }
+            }
+        } else {
+            primary_res
+        }
+    } else {
+        primary_res
+    };
+
+    if is_transient_delay_probe_failure(&final_res) {
+        if proxies_cache.is_none() {
+            proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
+        }
+        let tag_exists = proxies_cache
+            .as_ref()
+            .and_then(|v| v.get("proxies"))
+            .and_then(Value::as_object)
+            .is_some_and(|pm| pm.contains_key(&probed_tag));
+        if tag_exists {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            let retry_timeout_ms = timeout_ms.clamp(8000, 15_000);
+            let retry_path = build_delay_path(&probed_tag, retry_timeout_ms);
+            if let Ok(val) = core.clash_request("GET", &retry_path, None).await
+                && (has_positive_delay_response(&val) || final_res.is_err())
+            {
+                final_res = Ok(val);
+            }
+        }
+    }
+
+    if let Ok(ref val) = final_res
+        && let Some(ms) = val.get("delay").and_then(Value::as_u64)
+        && ms > 0
+    {
+        let mut live = state.live.write().await;
+        if live.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
+            live.node_latencies_ms.insert(
+                if resolved_fallback || !probed_tag.is_empty() {
+                    probed_tag.clone()
+                } else {
+                    tag.to_string()
+                },
+                ms as u32,
+            );
+        }
+    }
+
+    match final_res {
+        Ok(val) => {
+            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+            Some((0, format!("{s}\n"), String::new()))
+        }
+        Err(e) => {
+            let out = json!({
+                "delay": 0,
+                "success": false,
+                "error": format!("{e:#}")
+            });
+            Some((
+                1,
+                format!("{}\n", serde_json::to_string(&out).unwrap_or_default()),
+                String::new(),
+            ))
+        }
+    }
+}
+
+async fn handle_clash_get_proxy_latencies(
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    let arg = rest.get(1).map(String::as_str).unwrap_or("Main").trim();
+    let mut delays = Map::new();
+    let mut probe_error: Option<String> = None;
+
+    if arg.starts_with('[')
+        && let Ok(tags) = serde_json::from_str::<Vec<String>>(arg)
+    {
+        let mut join_set = tokio::task::JoinSet::new();
+        let sem = Arc::new(tokio::sync::Semaphore::new(8));
+        for tag in tags.into_iter().filter(|t| !t.trim().is_empty()) {
+            let core_c = Arc::clone(core);
+            let permit_sem = Arc::clone(&sem);
+            join_set.spawn(async move {
+                let _permit = permit_sem.acquire().await.ok();
+                let encoded = url_encode_component(&tag);
+                let path = format!(
+                    "/proxies/{encoded}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000"
+                );
+                let ms = core_c
+                    .clash_request("GET", &path, None)
+                    .await
+                    .ok()
+                    .and_then(|v| v.get("delay").and_then(Value::as_u64));
+                (tag, ms)
+            });
+        }
+        let mut l = state.live.write().await;
+        while let Some(Ok((tag, ms_opt))) = join_set.join_next().await {
+            if let Some(ms) = ms_opt {
+                delays.insert(tag.clone(), json!(ms));
+                if l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
+                    l.node_latencies_ms.insert(tag, ms as u32);
+                }
+            } else {
+                delays.insert(tag, json!(0));
+            }
+        }
+    } else {
+        let d_snap = state.data.read().await.clone();
+        let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+        let proxies_map = proxies_val
+            .as_ref()
+            .and_then(|v| v.get("proxies"))
+            .and_then(Value::as_object);
+        let group_tag = resolve_clash_group_for_target(&d_snap, proxies_map, arg);
+        let encoded_tag = url_encode_component(&group_tag);
+        let path = format!(
+            "/group/{encoded_tag}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000"
+        );
+        match core.clash_request("GET", &path, None).await {
+            Ok(val) => {
+                if let Some(obj) = val.as_object() {
+                    let mut l = state.live.write().await;
+                    for (k, v) in obj {
+                        delays.insert(k.clone(), v.clone());
+                        if let Some(ms) = v.as_u64()
+                            && ms > 0
+                            && l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES
+                        {
+                            l.node_latencies_ms.insert(k.clone(), ms as u32);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                probe_error = Some(format!("{e:#}"));
+            }
+        }
+    }
+
+    let count = delays.len();
+    let failed = count == 0 && probe_error.is_some();
+    let mut out = json!({
+        "success": !failed,
+        "count": count,
+        "failed": failed,
+        "delays": delays,
+    });
+    if let Some(err) = probe_error
+        && let Some(obj) = out.as_object_mut()
+    {
+        obj.insert("error".to_string(), json!(err));
+    }
+    Some((
+        if failed { 1 } else { 0 },
+        format!("{}\n", serde_json::to_string(&out).unwrap_or_default()),
+        String::new(),
+    ))
+}
+
 async fn handle_pure_rust_clash_api(
     rest: &[String],
     state: &Arc<AppState>,
@@ -6030,394 +6662,10 @@ async fn handle_pure_rust_clash_api(
 ) -> Option<(i32, String, String)> {
     let action = rest.first().map(String::as_str).unwrap_or("");
     match action {
-        "get_switch_history" => {
-            let limit = rest
-                .get(1)
-                .and_then(|arg| arg.parse().ok())
-                .unwrap_or(crate::switch_history::LIMIT);
-            let group = rest.get(2).map(String::as_str).unwrap_or("");
-            let reason = rest.get(3).map(String::as_str).unwrap_or("");
-            match crate::switch_history::recent(
-                &crate::switch_history::path(),
-                limit,
-                group,
-                reason,
-            ) {
-                Ok(events) => {
-                    let store_snap = state.data.read().await.clone();
-                    let tag_map = build_telemetry_tag_display_map(&store_snap);
-                    let enriched: Vec<Value> = events
-                        .into_iter()
-                        .map(|ev| {
-                            let mut val = serde_json::to_value(&ev).unwrap_or(Value::Null);
-                            if let Some(obj) = val.as_object_mut() {
-                                for (raw_key, disp_key) in [
-                                    ("group", "group_display_name"),
-                                    ("from", "from_display_name"),
-                                    ("to", "to_display_name"),
-                                    ("primary", "primary_display_name"),
-                                ] {
-                                    if let Some(raw_val) = obj
-                                        .get(raw_key)
-                                        .and_then(Value::as_str)
-                                        .map(str::trim)
-                                        .filter(|s| !s.is_empty())
-                                        .map(str::to_owned)
-                                    {
-                                        obj.insert(
-                                            disp_key.to_string(),
-                                            json!(resolve_telemetry_tag_display_name(
-                                                &raw_val,
-                                                &tag_map,
-                                                &store_snap
-                                            )),
-                                        );
-                                    }
-                                }
-                            }
-                            val
-                        })
-                        .collect();
-                    Some((
-                        0,
-                        format!(
-                            "{}\n",
-                            json!({ "events": enriched, "stats": core.switch_history_stats() })
-                        ),
-                        String::new(),
-                    ))
-                }
-                Err(_) => Some((1, String::new(), "Switch history unavailable\n".to_owned())),
-            }
-        }
-        "get_proxies" => {
-            if let Some(body_with_nl) = fetch_clash_proxies_cached_raw(core).await {
-                return Some((0, body_with_nl.to_string(), String::new()));
-            }
-            let cached_proxies_path = crate::store::runtime_state_dir()
-                .join("ui-state")
-                .join("clash-proxies.json");
-            if let Some(cached) = read_cached_clash_proxies(&cached_proxies_path) {
-                return Some((0, cached, String::new()));
-            }
-            Some((0, "{\"proxies\":{}}\n".to_string(), String::new()))
-        }
-        "get_connections" => {
-            state.touch_telemetry_access();
-            let conntrack_only = rest.get(1).map(String::as_str) == Some("conntrack");
-            if !conntrack_only {
-                let cache_path = crate::store::runtime_state_dir()
-                    .join("ui-state")
-                    .join("clash-connections.json");
-                if let Ok(meta) = std::fs::metadata(&cache_path)
-                    && let Ok(mtime) = meta.modified()
-                    && mtime.elapsed().is_ok_and(|age| age.as_secs() < 2)
-                    && let Ok(cached) = std::fs::read_to_string(cache_path)
-                    && !cached.trim().is_empty()
-                    && serde_json::from_str::<Value>(&cached).is_ok()
-                {
-                    let body = if cached.ends_with('\n') {
-                        cached
-                    } else {
-                        format!("{cached}\n")
-                    };
-                    return Some((0, body, String::new()));
-                }
-            }
-            let mut ip_host_map: std::collections::HashMap<String, String> =
-                std::collections::HashMap::new();
-            if let Ok(raw_hosts) = std::fs::read_to_string("/tmp/tachyon_dns_hosts.json")
-                && let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw_hosts)
-            {
-                for (ip, dom) in map {
-                    if let Some(d) = dom.as_str()
-                        && !ip.is_empty()
-                        && !d.is_empty()
-                    {
-                        ip_host_map.insert(ip, d.to_string());
-                    }
-                }
-            }
-            let fakeip_cidr_owned = state.data.read().await.settings.fakeip_inet4_range.clone();
-            let fakeip_cidr =
-                (!fakeip_cidr_owned.trim().is_empty()).then_some(fakeip_cidr_owned.trim());
-            if conntrack_only {
-                let ct_conns = read_pure_rust_conntrack_connections(
-                    &ip_host_map,
-                    &std::collections::HashSet::new(),
-                    &std::collections::HashSet::new(),
-                    fakeip_cidr,
-                    150,
-                );
-                let out = json!({ "connections": ct_conns });
-                let raw = serde_json::to_string(&out)
-                    .unwrap_or_else(|_| "{\"connections\":[]}".to_string());
-                return Some((0, format!("{raw}\n"), String::new()));
-            }
-            if let Ok(mut val) = core.clash_request("GET", "/connections", None).await {
-                if let Some(rev) = val
-                    .as_object_mut()
-                    .and_then(|o| o.remove("reverseDns"))
-                    .and_then(|v| v.as_object().cloned())
-                {
-                    for (ip, dom) in rev {
-                        if let Some(d) = dom.as_str()
-                            && !ip.is_empty()
-                            && !d.is_empty()
-                        {
-                            ip_host_map.insert(ip, d.to_string());
-                        }
-                    }
-                }
-                let mut seen_tuples: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
-                let mut seen_client_sockets: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
-                if let Some(conns) = val.get_mut("connections").and_then(Value::as_array_mut) {
-                    for c in conns.iter_mut() {
-                        if let Some(obj) = c.as_object_mut() {
-                            obj.entry("dataSource".to_string())
-                                .or_insert_with(|| json!("core"));
-                            if let Some(meta) =
-                                obj.get_mut("metadata").and_then(Value::as_object_mut)
-                            {
-                                let proto = meta
-                                    .get("network")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("tcp")
-                                    .to_ascii_lowercase();
-                                let src = meta
-                                    .get("sourceIP")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                                    .to_string();
-                                let sport = meta
-                                    .get("sourcePort")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                                    .to_string();
-                                let dst = meta
-                                    .get("destinationIP")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                                    .to_string();
-                                let dport = meta
-                                    .get("destinationPort")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                                    .to_string();
-                                if !src.is_empty() && !dst.is_empty() {
-                                    seen_tuples
-                                        .insert(format!("{proto}|{src}|{sport}|{dst}|{dport}"));
-                                }
-                                // Only match by 4-tuple (omitting destinationIP) when core left destinationIP empty;
-                                // symmetric/full-cone UDP flows can share (src, sport, dport) across multiple dst IPs.
-                                if dst.is_empty()
-                                    && !src.is_empty()
-                                    && !sport.is_empty()
-                                    && !dport.is_empty()
-                                {
-                                    seen_client_sockets
-                                        .insert(format!("{proto}|{src}|{sport}|{dport}"));
-                                }
-                                let cur_host =
-                                    meta.get("host").and_then(Value::as_str).unwrap_or("");
-                                if cur_host.is_empty()
-                                    && let Some(resolved) = ip_host_map.get(&dst)
-                                {
-                                    meta.insert("host".to_string(), json!(resolved));
-                                } else if !cur_host.is_empty() && !dst.is_empty() {
-                                    ip_host_map
-                                        .entry(dst)
-                                        .or_insert_with(|| cur_host.to_string());
-                                }
-                            }
-                        }
-                    }
-                    let ct_conns = read_pure_rust_conntrack_connections(
-                        &ip_host_map,
-                        &seen_tuples,
-                        &seen_client_sockets,
-                        fakeip_cidr,
-                        120,
-                    );
-                    conns.extend(ct_conns);
-                }
-                let mut raw = serde_json::to_string(&val)
-                    .unwrap_or_else(|_| "{\"connections\":[]}".to_string());
-                if raw.len() > 56_000 {
-                    if let Some(conns) = val.get_mut("connections").and_then(Value::as_array_mut) {
-                        for c in conns.iter_mut() {
-                            if let Some(obj) = c.as_object_mut()
-                                && let Some(rule_str) = obj.get("rule").and_then(Value::as_str)
-                                && rule_str.len() > 96
-                            {
-                                let short = if let Some(pos) = rule_str.rfind(" => ") {
-                                    format!("...{}", &rule_str[pos..])
-                                } else {
-                                    rule_str.chars().take(96).collect()
-                                };
-                                obj.insert("rule".to_string(), json!(short));
-                            }
-                        }
-                    }
-                    loop {
-                        let candidate = serde_json::to_string(&val).unwrap_or_default();
-                        if candidate.len() <= 56_000 {
-                            raw = candidate;
-                            break;
-                        }
-                        let Some(conns) = val.get_mut("connections").and_then(Value::as_array_mut)
-                        else {
-                            break;
-                        };
-                        if conns.len() <= 20 {
-                            raw = candidate;
-                            break;
-                        }
-                        let new_len = ((conns.len() * 3) / 4).max(20);
-                        conns.truncate(new_len);
-                    }
-                }
-                let ui_dir = crate::store::runtime_state_dir().join("ui-state");
-                let _ = std::fs::create_dir_all(&ui_dir);
-                let _ = crypto_gen::write_file_if_changed(
-                    ui_dir.join("clash-connections.json"),
-                    raw.as_bytes(),
-                );
-                return Some((0, format!("{raw}\n"), String::new()));
-            }
-            if let Ok(cached) = std::fs::read_to_string(
-                crate::store::runtime_state_dir()
-                    .join("ui-state")
-                    .join("clash-connections.json"),
-            ) && !cached.trim().is_empty()
-            {
-                return Some((0, format!("{}\n", cached.trim()), String::new()));
-            }
-            let ct_conns = read_pure_rust_conntrack_connections(
-                &ip_host_map,
-                &std::collections::HashSet::new(),
-                &std::collections::HashSet::new(),
-                fakeip_cidr,
-                120,
-            );
-            let fallback = json!({
-                "uploadTotal": 0,
-                "downloadTotal": 0,
-                "connections": ct_conns
-            });
-            let raw = serde_json::to_string(&fallback)
-                .unwrap_or_else(|_| "{\"connections\":[]}".to_string());
-            Some((0, format!("{raw}\n"), String::new()))
-        }
-        "set_group_proxy" => {
-            let group = rest.get(1).map(String::as_str).unwrap_or("");
-            let proxy = rest.get(2).map(String::as_str).unwrap_or("");
-            if group.is_empty() || proxy.is_empty() {
-                let s = serde_json::to_string(&json!({
-                    "success": false,
-                    "error": "Missing group or proxy"
-                }))
-                .unwrap_or_default();
-                return Some((1, format!("{s}\n"), String::new()));
-            }
-            let d_snap = state.data.read().await.clone();
-            let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
-            let proxies_map = proxies_val
-                .as_ref()
-                .and_then(|v| v.get("proxies"))
-                .and_then(Value::as_object);
-            let mut effective_group = resolve_clash_group_for_target(&d_snap, proxies_map, group);
-            if let Some(map) = proxies_map
-                && let Some(entry) = map.get(&effective_group)
-                && entry.get("type").and_then(Value::as_str) != Some("Selector")
-            {
-                let sec_match = d_snap.sections.iter().find(|s| {
-                    effective_group == s.id
-                        || effective_group == format!("sel-{}", s.id)
-                        || effective_group == format!("{}-out", s.id)
-                        || effective_group.starts_with(&format!("bal-{}-", s.id))
-                });
-                if let Some(sec) = sec_match {
-                    for cand in [format!("sel-{}", sec.id), format!("{}-out", sec.id)] {
-                        if map
-                            .get(&cand)
-                            .and_then(|v| v.get("type"))
-                            .and_then(Value::as_str)
-                            == Some("Selector")
-                        {
-                            effective_group = cand;
-                            break;
-                        }
-                    }
-                }
-                if map
-                    .get(&effective_group)
-                    .and_then(|v| v.get("type"))
-                    .and_then(Value::as_str)
-                    != Some("Selector")
-                {
-                    let has_member = |entry: &Value, target: &str| {
-                        entry
-                            .get("all")
-                            .and_then(Value::as_array)
-                            .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(target)))
-                    };
-                    if let Some((cand, _)) = map
-                        .iter()
-                        .find(|(_, v)| {
-                            v.get("type").and_then(Value::as_str) == Some("Selector")
-                                && has_member(v, &effective_group)
-                                && has_member(v, proxy)
-                        })
-                        .or_else(|| {
-                            map.iter().find(|(_, v)| {
-                                v.get("type").and_then(Value::as_str) == Some("Selector")
-                                    && has_member(v, proxy)
-                            })
-                        })
-                    {
-                        effective_group = cand.clone();
-                    }
-                }
-            }
-            let encoded = url_encode_component(&effective_group);
-            let body = serde_json::to_string(&json!({ "name": proxy })).unwrap_or_default();
-            if let Err(e) = core
-                .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&body))
-                .await
-            {
-                let s = serde_json::to_string(&json!({
-                    "success": false,
-                    "group": effective_group,
-                    "error": format!("{e:#}")
-                }))
-                .unwrap_or_default();
-                return Some((1, format!("{s}\n"), String::new()));
-            }
-            invalidate_clash_proxies_mem_cache();
-            CoreManager::save_selector_choice(&effective_group, proxy);
-            {
-                let mut d = state.data.write().await;
-                let base_id = group
-                    .strip_prefix("sel-")
-                    .or_else(|| group.strip_suffix("-out"))
-                    .unwrap_or(group);
-                if let Some(sec) = d.sections.iter_mut().find(|s| {
-                    s.id == group
-                        || s.id == base_id
-                        || format!("sel-{}", s.id) == effective_group
-                        || effective_group.starts_with(&format!("bal-{}-", s.id))
-                }) {
-                    sec.active_selected_tag = proxy.to_string();
-                }
-            }
-            let _ = state.save().await;
-            let d_updated = state.data.read().await.clone();
-            sync_from_store_to_json_and_cache(&d_updated);
-            Some((0, "{\"success\":true}\n".to_string(), String::new()))
-        }
+        "get_switch_history" => Box::pin(handle_clash_get_switch_history(rest, state, core)).await,
+        "get_proxies" => Box::pin(handle_clash_get_proxies(core)).await,
+        "get_connections" => Box::pin(handle_clash_get_connections(rest, state, core)).await,
+        "set_group_proxy" => Box::pin(handle_clash_set_group_proxy(rest, state, core)).await,
         "close_connection" => {
             if let Some(id) = rest.get(1) {
                 let encoded = url_encode_component(id);
@@ -6432,234 +6680,10 @@ async fn handle_pure_rust_clash_api(
             Some((0, "{\"success\":true}\n".to_string(), String::new()))
         }
         "get_proxy_latency" | "get_group_latency" => {
-            let tag = rest.get(1).map(String::as_str).unwrap_or("");
-            let timeout = rest.get(2).map(String::as_str).unwrap_or("8000");
-            let url = rest
-                .get(3)
-                .map(String::as_str)
-                .unwrap_or("https://www.gstatic.com/generate_204");
-            if tag.is_empty() {
-                return Some((
-                    1,
-                    "{\"success\":false,\"delay\":0,\"error\":\"Missing tag\"}\n".to_string(),
-                    String::new(),
-                ));
-            }
-            let is_group = action == "get_group_latency";
-            let timeout_ms = timeout
-                .trim()
-                .parse::<u64>()
-                .unwrap_or(8000)
-                .clamp(1000, 20_000);
-            let encoded_url = url_encode_component(url);
-            let build_delay_path = |probe_tag: &str, t_ms: u64| {
-                let enc = url_encode_component(probe_tag);
-                if is_group {
-                    format!("/group/{enc}/delay?url={encoded_url}&timeout={t_ms}")
-                } else {
-                    format!("/proxies/{enc}/delay?url={encoded_url}&timeout={t_ms}")
-                }
-            };
-
-            let mut proxies_cache: Option<Value> = None;
-            let mut probed_tag = if is_group {
-                let d_snap = state.data.read().await.clone();
-                proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
-                let proxies_map = proxies_cache
-                    .as_ref()
-                    .and_then(|v| v.get("proxies"))
-                    .and_then(Value::as_object);
-                resolve_clash_group_for_target(&d_snap, proxies_map, tag)
-            } else {
-                tag.to_string()
-            };
-
-            let primary_path = build_delay_path(&probed_tag, timeout_ms);
-            let primary_res = core.clash_request("GET", &primary_path, None).await;
-            let mut resolved_fallback = false;
-
-            let mut final_res = if !is_group
-                && match &primary_res {
-                    Err(_) => true,
-                    Ok(val) => !has_positive_delay_response(val),
-                } {
-                let d_snap = state.data.read().await.clone();
-                if proxies_cache.is_none() {
-                    proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
-                }
-                let proxies_map = proxies_cache
-                    .as_ref()
-                    .and_then(|v| v.get("proxies"))
-                    .and_then(Value::as_object);
-                if let Some(fallback_tag) =
-                    proxies_map.and_then(|pm| resolve_clash_proxy_for_target(&d_snap, pm, tag))
-                {
-                    probed_tag = fallback_tag;
-                    resolved_fallback = true;
-                    let fallback_path = build_delay_path(&probed_tag, timeout_ms);
-                    match core.clash_request("GET", &fallback_path, None).await {
-                        Ok(val) => Ok(val),
-                        Err(fallback_err) => {
-                            if primary_res.is_ok() {
-                                primary_res
-                            } else {
-                                Err(fallback_err)
-                            }
-                        }
-                    }
-                } else {
-                    primary_res
-                }
-            } else {
-                primary_res
-            };
-
-            if is_transient_delay_probe_failure(&final_res) {
-                if proxies_cache.is_none() {
-                    proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
-                }
-                let tag_exists = proxies_cache
-                    .as_ref()
-                    .and_then(|v| v.get("proxies"))
-                    .and_then(Value::as_object)
-                    .is_some_and(|pm| pm.contains_key(&probed_tag));
-                if tag_exists {
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    let retry_timeout_ms = timeout_ms.clamp(8000, 15_000);
-                    let retry_path = build_delay_path(&probed_tag, retry_timeout_ms);
-                    if let Ok(val) = core.clash_request("GET", &retry_path, None).await
-                        && (has_positive_delay_response(&val) || final_res.is_err())
-                    {
-                        final_res = Ok(val);
-                    }
-                }
-            }
-
-            if let Ok(ref val) = final_res
-                && let Some(ms) = val.get("delay").and_then(Value::as_u64)
-                && ms > 0
-            {
-                let mut live = state.live.write().await;
-                if live.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
-                    live.node_latencies_ms.insert(
-                        if resolved_fallback || !probed_tag.is_empty() {
-                            probed_tag.clone()
-                        } else {
-                            tag.to_string()
-                        },
-                        ms as u32,
-                    );
-                }
-            }
-
-            match final_res {
-                Ok(val) => {
-                    let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
-                    Some((0, format!("{s}\n"), String::new()))
-                }
-                Err(e) => {
-                    let out = json!({
-                        "delay": 0,
-                        "success": false,
-                        "error": format!("{e:#}")
-                    });
-                    Some((
-                        1,
-                        format!("{}\n", serde_json::to_string(&out).unwrap_or_default()),
-                        String::new(),
-                    ))
-                }
-            }
+            Box::pin(handle_clash_get_latency(action, rest, state, core)).await
         }
         "get_proxy_latencies" => {
-            let arg = rest.get(1).map(String::as_str).unwrap_or("Main").trim();
-            let mut delays = Map::new();
-            let mut probe_error: Option<String> = None;
-
-            if arg.starts_with('[')
-                && let Ok(tags) = serde_json::from_str::<Vec<String>>(arg)
-            {
-                let mut join_set = tokio::task::JoinSet::new();
-                let sem = Arc::new(tokio::sync::Semaphore::new(8));
-                for tag in tags.into_iter().filter(|t| !t.trim().is_empty()) {
-                    let core_c = Arc::clone(core);
-                    let permit_sem = Arc::clone(&sem);
-                    join_set.spawn(async move {
-                        let _permit = permit_sem.acquire().await.ok();
-                        let encoded = url_encode_component(&tag);
-                        let path = format!(
-                            "/proxies/{encoded}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000"
-                        );
-                        let ms = core_c
-                            .clash_request("GET", &path, None)
-                            .await
-                            .ok()
-                            .and_then(|v| v.get("delay").and_then(Value::as_u64));
-                        (tag, ms)
-                    });
-                }
-                let mut l = state.live.write().await;
-                while let Some(Ok((tag, ms_opt))) = join_set.join_next().await {
-                    if let Some(ms) = ms_opt {
-                        delays.insert(tag.clone(), json!(ms));
-                        if l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
-                            l.node_latencies_ms.insert(tag, ms as u32);
-                        }
-                    } else {
-                        delays.insert(tag, json!(0));
-                    }
-                }
-            } else {
-                let d_snap = state.data.read().await.clone();
-                let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
-                let proxies_map = proxies_val
-                    .as_ref()
-                    .and_then(|v| v.get("proxies"))
-                    .and_then(Value::as_object);
-                let group_tag = resolve_clash_group_for_target(&d_snap, proxies_map, arg);
-                let encoded_tag = url_encode_component(&group_tag);
-                let path = format!(
-                    "/group/{encoded_tag}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000"
-                );
-                match core.clash_request("GET", &path, None).await {
-                    Ok(val) => {
-                        if let Some(obj) = val.as_object() {
-                            let mut l = state.live.write().await;
-                            for (k, v) in obj {
-                                delays.insert(k.clone(), v.clone());
-                                if let Some(ms) = v.as_u64()
-                                    && ms > 0
-                                    && l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES
-                                {
-                                    l.node_latencies_ms.insert(k.clone(), ms as u32);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        probe_error = Some(format!("{e:#}"));
-                    }
-                }
-            }
-
-            let count = delays.len();
-            let failed = count == 0 && probe_error.is_some();
-            let mut out = json!({
-                "success": !failed,
-                "count": count,
-                "failed": failed,
-                "delays": delays,
-            });
-            if let Some(err) = probe_error
-                && let Some(obj) = out.as_object_mut()
-            {
-                obj.insert("error".to_string(), json!(err));
-            }
-            Some((
-                if failed { 1 } else { 0 },
-                format!("{}\n", serde_json::to_string(&out).unwrap_or_default()),
-                String::new(),
-            ))
+            Box::pin(handle_clash_get_proxy_latencies(rest, state, core)).await
         }
         _ => None,
     }
