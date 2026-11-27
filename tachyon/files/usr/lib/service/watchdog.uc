@@ -1532,6 +1532,19 @@ function safe_proxy_restart(reason, force_level) {
     let level = (force_level != null && force_level != "") ? force_level : next_escalation(reason);
     let lock_path = shell_quote(PROXY_RESTART_LOCK);
 
+    if (events && events.publish) {
+        try {
+            events.publish("watchdog_restart", {
+                reason: as_string(reason),
+                level: as_string(level)
+            }, {
+                source: "watchdog",
+                severity: "warning",
+                message: "Watchdog restart (" + as_string(level) + "): " + as_string(reason)
+            });
+        } catch (e) {}
+    }
+
     if (level == ESCALATION_LIGHT) {
         let active_engine = active_engine_name();
 

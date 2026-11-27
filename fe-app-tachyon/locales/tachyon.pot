@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 16:33+0300\n"
-"PO-Revision-Date: 2026-11-27 16:33+0300\n"
+"POT-Creation-Date: 2026-11-27 20:57+0300\n"
+"PO-Revision-Date: 2026-11-27 20:57+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -73,7 +73,7 @@ msgstr ""
 msgid "-- Add tier from this section --"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1759
+#: src/helpers/searchableCheckboxMultiSelect.ts:1778
 #: src/helpers/searchableCheckboxMultiSelect.ts:643
 #: src/helpers/searchableCheckboxMultiSelect.ts:820
 #: src/views/section.ts:16054
@@ -585,7 +585,7 @@ msgstr ""
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1066
+#: src/helpers/searchableCheckboxMultiSelect.ts:1078
 msgid "Add"
 msgstr ""
 
@@ -1908,7 +1908,7 @@ msgstr ""
 msgid "Block"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:4028
+#: src/tachyon/methods/custom/getDashboardSections.ts:4089
 #: src/tachyon/studioDeck.ts:3678
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1945
 msgid "Block (Reject)"
@@ -3075,7 +3075,7 @@ msgstr ""
 msgid "Configured detour"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3990
+#: src/tachyon/methods/custom/getDashboardSections.ts:4051
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1697
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:226
 msgid "Conflict"
@@ -3777,7 +3777,7 @@ msgstr ""
 msgid "DNS server"
 msgstr ""
 
-#: src/validators/validateDns.ts:8
+#: src/validators/validateDns.ts:11
 msgid "DNS server address cannot be empty"
 msgstr ""
 
@@ -4252,7 +4252,7 @@ msgstr ""
 msgid "Direct (Default)"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:4049
+#: src/tachyon/methods/custom/getDashboardSections.ts:4110
 #: src/tachyon/studioDeck.ts:3683
 #: src/tachyon/tabs/dashboard/inboundServers.ts:398
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1952
@@ -7646,11 +7646,13 @@ msgstr ""
 msgid "Invalid CSQTT URL: missing host/addr or credentials"
 msgstr ""
 
-#: src/validators/validateDns.ts:34
+#: src/validators/validateDns.ts:20
+#: src/validators/validateDns.ts:29
+#: src/validators/validateDns.ts:59
 msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH"
 msgstr ""
 
-#: src/validators/validateDns.ts:21
+#: src/validators/validateDns.ts:46
 msgid "Invalid DNS server port"
 msgstr ""
 
@@ -8084,8 +8086,8 @@ msgstr ""
 msgid "Invalid transfer code"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1195
-#: src/helpers/searchableCheckboxMultiSelect.ts:1405
+#: src/helpers/searchableCheckboxMultiSelect.ts:1207
+#: src/helpers/searchableCheckboxMultiSelect.ts:1417
 #: src/views/conditions.ts:858
 msgid "Invalid value"
 msgstr ""
@@ -9577,7 +9579,7 @@ msgstr ""
 msgid "No matchers set"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1099
+#: src/helpers/searchableCheckboxMultiSelect.ts:1111
 msgid "No matches found"
 msgstr ""
 
@@ -9589,7 +9591,7 @@ msgstr ""
 msgid "No more versions found"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1100
+#: src/helpers/searchableCheckboxMultiSelect.ts:1112
 msgid "No options available"
 msgstr ""
 
@@ -9743,7 +9745,7 @@ msgstr ""
 msgid "Not available in demo mode — enter WARP private key manually"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3993
+#: src/tachyon/methods/custom/getDashboardSections.ts:4054
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1700
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:47
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:201
@@ -12446,9 +12448,9 @@ msgstr ""
 msgid "Run the DNS speed test to see results."
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3608
-#: src/tachyon/methods/custom/getDashboardSections.ts:3625
-#: src/tachyon/methods/custom/getDashboardSections.ts:3988
+#: src/tachyon/methods/custom/getDashboardSections.ts:3668
+#: src/tachyon/methods/custom/getDashboardSections.ts:3685
+#: src/tachyon/methods/custom/getDashboardSections.ts:4049
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1419
 #: src/tachyon/tabs/dashboard/initController.ts:6422
 #: src/tachyon/tabs/dashboard/initController.ts:6525
@@ -13568,7 +13570,7 @@ msgstr ""
 msgid "Show metadata on dashboard"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1023
+#: src/helpers/searchableCheckboxMultiSelect.ts:1035
 #: src/tachyon/studioDeck.ts:4606
 #: src/tachyon/studioDeck.ts:4632
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:972
@@ -14060,8 +14062,8 @@ msgstr ""
 msgid "Stop checking when URLTest group is not used. Use duration format like 1d, 12h or 30m."
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3608
-#: src/tachyon/methods/custom/getDashboardSections.ts:3992
+#: src/tachyon/methods/custom/getDashboardSections.ts:3668
+#: src/tachyon/methods/custom/getDashboardSections.ts:4053
 #: src/tachyon/studioDeck.ts:5735
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1394
 #: src/tachyon/tabs/dashboard/initController.ts:6423
@@ -15785,7 +15787,7 @@ msgstr ""
 msgid "United States (us)"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3994
+#: src/tachyon/methods/custom/getDashboardSections.ts:4055
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1701
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:242
 #: src/views/settings.ts:6814
@@ -16301,8 +16303,8 @@ msgstr ""
 msgid "VPN client flavor the inbound emulates"
 msgstr ""
 
-#: src/validators/validateDns.ts:25
-#: src/validators/validateDns.ts:29
+#: src/validators/validateDns.ts:50
+#: src/validators/validateDns.ts:54
 #: src/validators/validateDomain.ts:57
 #: src/validators/validateDomain.ts:76
 #: src/validators/validateFptnUrl.ts:30
@@ -17249,7 +17251,7 @@ msgstr ""
 msgid "quarantine"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1023
+#: src/helpers/searchableCheckboxMultiSelect.ts:1035
 msgid "remaining"
 msgstr ""
 

@@ -3325,6 +3325,8 @@ const OUTBOUND_METADATA_FIELDS: Array<keyof Tachyon.GetOutboundMetadata> = [
   'sources',
   'source_ids',
   'source_names',
+  'hidden',
+  'internal_hidden',
 ];
 
 function hasNonEmptyOutboundMetadata(
@@ -3341,23 +3343,30 @@ function hasNonEmptyOutboundMetadata(
   });
 }
 
-function hasAnyTagInOutboundMetadata(
+function filterOutboundMetadataByTags(
   meta: Tachyon.GetOutboundMetadata | undefined,
-  tags: Set<string>,
-): boolean {
-  if (!meta || tags.size === 0) {
-    return false;
+  allowedTags: Set<string>,
+): Tachyon.GetOutboundMetadata | undefined {
+  if (!meta || typeof meta !== 'object' || allowedTags.size === 0) {
+    return undefined;
   }
+  const filtered: Tachyon.GetOutboundMetadata = {};
+  let hasEntries = false;
   for (const field of OUTBOUND_METADATA_FIELDS) {
-    const rec = meta[field];
+    const rec = meta[field] as Record<string, unknown> | undefined;
     if (!rec || typeof rec !== 'object') continue;
-    for (const tag of tags) {
-      if (Object.prototype.hasOwnProperty.call(rec, tag)) {
-        return true;
+    const nextRec: Record<string, unknown> = {};
+    for (const [tag, value] of Object.entries(rec)) {
+      if (allowedTags.has(tag)) {
+        nextRec[tag] = value;
+        hasEntries = true;
       }
     }
+    if (Object.keys(nextRec).length > 0) {
+      (filtered as Record<string, unknown>)[field] = nextRec;
+    }
   }
-  return false;
+  return hasEntries ? filtered : undefined;
 }
 
 function mergeOutboundMetaRecords(
@@ -3377,6 +3386,17 @@ function mergeOutboundMetaRecords(
     sources: { ...base?.sources, ...extra?.sources },
     source_ids: { ...base?.source_ids, ...extra?.source_ids },
     source_names: { ...base?.source_names, ...extra?.source_names },
+    ...(base?.hidden || extra?.hidden
+      ? { hidden: { ...base?.hidden, ...extra?.hidden } }
+      : {}),
+    ...(base?.internal_hidden || extra?.internal_hidden
+      ? {
+          internal_hidden: {
+            ...base?.internal_hidden,
+            ...extra?.internal_hidden,
+          },
+        }
+      : {}),
   };
 }
 
@@ -3394,9 +3414,12 @@ function collectSectionProxyTags(
   proxyByCode: Map<string, ClashProxyEntry>,
   fileCache?: DashboardSectionCache,
   memberSections: Tachyon.ConfigSection[] = [],
+  section?: Tachyon.ConfigSection,
+  bulkOutMeta?: Tachyon.GetOutboundMetadata,
 ): Set<string> {
   const tags = new Set<string>();
   const visitedGroups = new Set<string>();
+  const allowedSourceIds = new Set<string>();
 
   const walkEntry = (code: string) => {
     if (!code || visitedGroups.has(code)) {
@@ -3412,20 +3435,46 @@ function collectSectionProxyTags(
     }
   };
 
-  const addSectionSelector = (secName: string) => {
-    const selector = proxyByCode.get(getOutboundTagBySection(secName));
-    if (selector) {
-      walkEntry(selector.code);
+  const addSectionSelector = (secName: string, sec?: Tachyon.ConfigSection) => {
+    if (sec) {
+      for (const srcId of getListValues(sec.outbound_source_refs)) {
+        allowedSourceIds.add(srcId);
+        for (const cand of [
+          srcId,
+          `wg-${srcId}`,
+          `awg-${srcId}`,
+          `iface-${srcId}`,
+        ]) {
+          if (proxyByCode.has(cand)) {
+            walkEntry(cand);
+          }
+        }
+      }
+    }
+    for (const selKey of [
+      getOutboundTagBySection(secName),
+      secName,
+      `sel-${secName}`,
+    ]) {
+      const selector = proxyByCode.get(selKey);
+      if (selector) {
+        walkEntry(selector.code);
+      }
     }
   };
 
-  addSectionSelector(sectionName);
+  addSectionSelector(sectionName, section);
   for (const m of memberSections) {
     if (m['.name']) {
-      addSectionSelector(m['.name']);
+      addSectionSelector(m['.name'], m);
     }
   }
 
+  if (fileCache?.outboundMetadata?.names) {
+    for (const key of Object.keys(fileCache.outboundMetadata.names)) {
+      tags.add(key);
+    }
+  }
   if (fileCache?.links) {
     for (const key of Object.keys(fileCache.links)) {
       tags.add(key);
@@ -3450,6 +3499,13 @@ function collectSectionProxyTags(
       }
     }
   }
+  if (allowedSourceIds.size > 0 && bulkOutMeta?.source_ids) {
+    for (const [tag, srcId] of Object.entries(bulkOutMeta.source_ids)) {
+      if (typeof srcId === 'string' && allowedSourceIds.has(srcId)) {
+        tags.add(tag);
+      }
+    }
+  }
 
   return tags;
 }
@@ -3463,6 +3519,7 @@ async function loadDashboardSectionCacheWithRpc(
     name: string,
   ) => Promise<DashboardSectionCache | undefined>,
   bulkOutMeta?: Tachyon.GetOutboundMetadata,
+  section?: Tachyon.ConfigSection,
 ): Promise<DashboardSectionCache | undefined> {
   const fileCache = await readSectionCacheMemo(sectionName);
   const sectionTags = collectSectionProxyTags(
@@ -3470,11 +3527,14 @@ async function loadDashboardSectionCacheWithRpc(
     proxyByCode,
     fileCache,
     memberSections,
+    section,
+    bulkOutMeta,
   );
-  const hasBulkOut =
-    hasNonEmptyOutboundMetadata(bulkOutMeta) &&
-    (sectionTags.size === 0 ||
-      hasAnyTagInOutboundMetadata(bulkOutMeta, sectionTags));
+  const filteredBulkOut =
+    sectionTags.size > 0
+      ? filterOutboundMetadataByTags(bulkOutMeta, sectionTags)
+      : undefined;
+  const hasBulkOut = hasNonEmptyOutboundMetadata(filteredBulkOut);
   const hasCacheOut = hasNonEmptyOutboundMetadata(fileCache?.outboundMetadata);
   const fileSubList = normalizeSubscriptionMetaList(
     fileCache?.subscriptionMetadata,
@@ -3502,7 +3562,7 @@ async function loadDashboardSectionCacheWithRpc(
       : Promise.resolve(undefined),
   ]);
 
-  const effectiveRpcOrBulkOut = hasBulkOut ? bulkOutMeta : rpcOutMeta;
+  const effectiveRpcOrBulkOut = hasBulkOut ? filteredBulkOut : rpcOutMeta;
   const mergedOutMeta = mergeOutboundMetaRecords(
     fileCache?.outboundMetadata,
     effectiveRpcOrBulkOut,
@@ -3719,6 +3779,7 @@ export async function getDashboardSections(
             memberSections,
             readSectionCacheMemo,
             bulkOutMeta,
+            section,
           );
           let outboundMetadata = getOutboundMetadata(dashboardCache);
           const subscriptionMetadata = subscriptionEnabled
