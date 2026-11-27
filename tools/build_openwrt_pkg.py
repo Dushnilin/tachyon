@@ -699,7 +699,7 @@ def _read_uleb128(data: bytes, offset: int, end: int) -> tuple[int, int]:
     raise ValueError("Malformed ARM attribute ULEB128")
 
 
-def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], list[int], bool]:
+def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], list[int], list[int], bool]:
     """Read CPU architecture and VFP calling-convention attributes from ELF32."""
     if len(binary) < 52 or binary[4] != 1:
         raise ValueError("ARM target must use ELF32")
@@ -756,6 +756,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
     if attributes[0] != ord("A"):
         raise ValueError("Unsupported ARM attributes format")
     cpu_arch: list[int] = []
+    cpu_profiles: list[int] = []
     vfp_args: list[int] = []
     no_defaults = False
     cursor = 1
@@ -818,6 +819,8 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                             no_defaults = True
                         elif tag == 6:
                             cpu_arch.append(value)
+                        elif tag == 7:
+                            cpu_profiles.append(value)
                         elif tag == 28:
                             vfp_args.append(value)
                     elif tag >= 64:
@@ -830,7 +833,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                 pos = sub_end
         cursor = vendor_end
 
-    return cpu_arch, vfp_args, no_defaults
+    return cpu_arch, cpu_profiles, vfp_args, no_defaults
 
 
 def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None:
@@ -849,12 +852,16 @@ def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None
         expected_arch = 6
         allowed_vfp_args = {0, 3}
 
-    cpu_arch, vfp_args, no_defaults = _read_arm_attributes(binary, byte_order)
+    cpu_arch, cpu_profiles, vfp_args, no_defaults = _read_arm_attributes(binary, byte_order)
     if not cpu_arch:
         raise ValueError("ARM binary has no file/section CPU architecture attribute")
     if max(cpu_arch) > expected_arch:
         raise ValueError(
             f"ARM CPU architecture attribute {max(cpu_arch)} exceeds {target_family} target"
+        )
+    if any(profile not in {0, 65, 83} for profile in cpu_profiles):
+        raise ValueError(
+            f"ARM CPU architecture profile {cpu_profiles} is not compatible with Linux target"
         )
     if no_defaults:
         raise ValueError("ARM attribute defaults are undefined under Tag_nodefaults")
