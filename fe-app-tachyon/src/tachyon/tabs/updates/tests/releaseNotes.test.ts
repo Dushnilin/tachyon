@@ -53,6 +53,17 @@ describe('release notes lookup', () => {
     ]);
   });
 
+  it('finds selected releases beyond the first ten picker pages', async () => {
+    const { getReleaseForNotes } = await import('../releaseNotes');
+    listReleases.mockImplementation(async (_component, _count, pageNumber) => ({
+      success: true,
+      data: pageNumber === 11 ? [selected] : page(`older-${pageNumber}`),
+    }));
+
+    expect(await getReleaseForNotes('tachyon', '2.0')).toEqual(selected);
+    expect(listReleases).toHaveBeenCalledTimes(11);
+  });
+
   it('stops at the first empty page', async () => {
     const { getReleaseForNotes } = await import('../releaseNotes');
     listReleases
@@ -119,6 +130,6 @@ describe('release notes lookup', () => {
     expect(
       await getReleaseForNotes('tachyon', 'older-than-search-window'),
     ).toBeUndefined();
-    expect(listReleases).toHaveBeenCalledTimes(10);
+    expect(listReleases).toHaveBeenCalledTimes(60);
   });
 });
