@@ -761,7 +761,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
     cursor = 1
     known_numeric_tags = {6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
                           17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
-                          30, 31, 34, 36, 38, 42, 44, 46, 48, 50, 52, 64, 66,
+                          30, 31, 34, 36, 38, 42, 44, 46, 48, 50, 52, 66,
                           68, 70, 72, 74, 76}
 
     def skip_string(data: bytes, pos: int, limit: int) -> int:
@@ -809,6 +809,8 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                     tag, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
                     if tag in (4, 5, 65, 67):
                         attr_pos = skip_string(attributes, attr_pos, sub_end)
+                    elif tag == 64:
+                        no_defaults = True
                     elif tag == 32:
                         _, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
                         attr_pos = skip_string(attributes, attr_pos, sub_end)
