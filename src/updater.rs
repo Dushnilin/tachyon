@@ -1438,7 +1438,7 @@ fn final_partial_release_page(
     pending: Vec<Value>,
 ) -> Option<Value> {
     if requested_page == next_page && !pending.is_empty() {
-        Some(Value::Array(pending.clone()))
+        Some(Value::Array(pending))
     } else {
         None
     }
@@ -1513,7 +1513,7 @@ mod release_catalog_pagination_tests {
         assert_eq!(pending.len(), 4);
         assert_eq!(
             final_partial_release_page(60, next_page, pending.clone()),
-            Some(Value::Array(pending))
+            Some(Value::Array(pending.clone()))
         );
         assert_eq!(
             final_partial_release_page(61, next_page, pending.clone()),
