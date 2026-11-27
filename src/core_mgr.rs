@@ -1252,7 +1252,7 @@ impl CoreManager {
                     "tag": "dns-remote",
                     "mode": "stable",
                     "error_ttl": "30s",
-                    "timeout": "4s",
+                    "timeout": "8s",
                     "servers": ["dns-remote-1", "dns-bootstrap"]
                 }
             ],

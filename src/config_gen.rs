@@ -13222,6 +13222,50 @@ fn sanitize_dialer_fragments(items: &mut [Value]) {
     }
 }
 
+fn sanitize_tewfai_outbounds(outbounds: &mut [Value]) {
+    for ob in outbounds {
+        let Some(obj) = ob.as_object_mut() else {
+            continue;
+        };
+        if !obj
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.eq_ignore_ascii_case("tewfai"))
+        {
+            continue;
+        }
+        let Some(Value::Bool(enabled)) = obj.get("quic").cloned() else {
+            continue;
+        };
+        obj.remove("quic");
+        if !enabled {
+            continue;
+        }
+        match obj.get_mut("transport") {
+            None | Some(Value::Null) => {
+                obj.insert("transport".into(), json!(["quic", "tcp"]));
+            }
+            Some(Value::String(s)) => {
+                let cur = s.trim().to_string();
+                if cur.is_empty() {
+                    obj.insert("transport".into(), json!(["quic", "tcp"]));
+                } else if !cur.eq_ignore_ascii_case("quic") {
+                    obj.insert("transport".into(), json!([cur, "quic"]));
+                }
+            }
+            Some(Value::Array(arr)) => {
+                let has_quic = arr
+                    .iter()
+                    .any(|v| v.as_str().is_some_and(|s| s.eq_ignore_ascii_case("quic")));
+                if !has_quic {
+                    arr.push(json!("quic"));
+                }
+            }
+            Some(_) => {}
+        }
+    }
+}
+
 /// Move client definitions into the native endpoint schema before deduplication.
 fn move_wireguard_outbounds_to_endpoints(outbounds: &mut Vec<Value>, endpoints: &mut Vec<Value>) {
     for mut outbound in std::mem::take(outbounds) {
@@ -15249,6 +15293,7 @@ fn compile_core_config_with_rt_dir(
     sanitize_incompatible_snell_and_mtproto_outbounds(&mut outbounds, &mut rules);
     sanitize_dialer_fragments(&mut outbounds);
     sanitize_dialer_fragments(&mut endpoints);
+    sanitize_tewfai_outbounds(&mut outbounds);
     apply_settings_tcp_profile(&mut outbounds, &mut endpoints, &store.settings.tcp_profile);
 
     if !lan_accessible_inbounds.is_empty() {
@@ -15693,7 +15738,7 @@ fn compile_core_config_with_rt_dir(
         "tag": "dns-remote",
         "mode": "stable",
         "error_ttl": "30s",
-        "timeout": "4s",
+        "timeout": "8s",
         "servers": remote_group_members
     }));
 
@@ -15945,7 +15990,7 @@ fn compile_core_config_with_rt_dir(
                                 "tag": base_tag,
                                 "mode": "stable",
                                 "error_ttl": "30s",
-                                "timeout": "4s",
+                                "timeout": "8s",
                                 "servers": server_tags
                             }));
                             base_tag
@@ -16022,7 +16067,7 @@ fn compile_core_config_with_rt_dir(
                             "tag": base_tag,
                             "mode": "stable",
                             "error_ttl": "30s",
-                            "timeout": "4s",
+                            "timeout": "8s",
                             "servers": server_tags
                         }));
                         base_tag
@@ -16616,7 +16661,7 @@ pub fn compile_safe_minimal_core_config_with_wan6(
         "tag": "dns-remote",
         "mode": "stable",
         "error_ttl": "30s",
-        "timeout": "4s",
+        "timeout": "8s",
         "servers": remote_group_members
     }));
 
@@ -25516,6 +25561,7 @@ config timeserver 'ntp'
             .expect("dns-remote");
         assert_eq!(rem["type"], "group");
         assert_eq!(rem["mode"], "stable");
+        assert_eq!(rem["timeout"], "8s");
         assert_eq!(rem["servers"][0], "dns-remote-1");
         assert_eq!(
             rem["servers"].as_array().and_then(|a| a.last()),
@@ -26678,6 +26724,60 @@ config timeserver 'ntp'
             .expect("compiled outbound");
         assert!(ob["fragment"].get("max_split").is_none());
         assert_eq!(ob["fragment"]["packets"], "tlshello");
+    }
+
+    #[test]
+    fn test_sanitize_tewfai_bool_quic() {
+        let mut outbounds = vec![
+            json!({
+                "type": "tewfai",
+                "tag": "tf-bool-only",
+                "quic": true
+            }),
+            json!({
+                "type": "tewfai",
+                "tag": "tf-bool-str-tr",
+                "transport": "tcp",
+                "quic": true
+            }),
+            json!({
+                "type": "tewfai",
+                "tag": "tf-bool-arr-dup",
+                "transport": ["quic", "tcp"],
+                "quic": true
+            }),
+            json!({
+                "type": "tewfai",
+                "tag": "tf-bool-false",
+                "transport": ["tcp"],
+                "quic": false
+            }),
+            json!({
+                "type": "tewfai",
+                "tag": "tf-obj-quic",
+                "transport": ["quic", "tcp"],
+                "quic": { "obfs": { "type": "salamander", "password": "pw" } }
+            }),
+        ];
+
+        sanitize_tewfai_outbounds(&mut outbounds);
+
+        assert!(outbounds[0].get("quic").is_none());
+        assert_eq!(outbounds[0]["transport"], json!(["quic", "tcp"]));
+
+        assert!(outbounds[1].get("quic").is_none());
+        assert_eq!(outbounds[1]["transport"], json!(["tcp", "quic"]));
+
+        assert!(outbounds[2].get("quic").is_none());
+        assert_eq!(outbounds[2]["transport"], json!(["quic", "tcp"]));
+
+        assert!(outbounds[3].get("quic").is_none());
+        assert_eq!(outbounds[3]["transport"], json!(["tcp"]));
+
+        assert_eq!(
+            outbounds[4]["quic"],
+            json!({ "obfs": { "type": "salamander", "password": "pw" } })
+        );
     }
 
     #[test]
