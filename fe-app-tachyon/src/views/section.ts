@@ -2797,6 +2797,7 @@ function configureLiveDynamicListChoices(option, getChoices, options = {}) {
       disabled: this.readonly != null ? this.readonly : this.map.readonly,
     });
     const node = widget.render();
+    let msHandle = null;
     const refreshChoices = () => {
       if (!node.isConnected) {
         return false;
@@ -2841,11 +2842,28 @@ function configureLiveDynamicListChoices(option, getChoices, options = {}) {
           );
         } catch (_err) {}
       }
+      if (msHandle) {
+        msHandle.refreshChoices(currentChoices);
+      }
       return true;
     };
     const refreshBeforeOpening = () => {
       refreshChoices();
     };
+    if (
+      typeof main !== 'undefined' &&
+      main &&
+      typeof main.attachSearchableCheckboxMultiSelect === 'function'
+    ) {
+      msHandle = main.attachSearchableCheckboxMultiSelect(widget, node, {
+        choices,
+        allowCustom: Boolean(options?.allowCustom || this.custom),
+        placeholder: this.placeholder,
+        option: this,
+        sectionId: section_id,
+        onBeforeOpen: refreshBeforeOpening,
+      });
+    }
     node.addEventListener('mousedown', refreshBeforeOpening, true);
     node.addEventListener('focusin', refreshBeforeOpening, true);
     node.addEventListener('pointerdown', refreshBeforeOpening, true);
@@ -3676,6 +3694,36 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
 
   renderWidget(section_id, option_index, cfgvalue) {
     refreshNetworkInterfaceOptionValues(this);
+    const node = SettingsDynamicList.prototype.renderWidget.call(
+      this,
+      section_id,
+      option_index,
+      cfgvalue,
+    );
+    let msHandle = null;
+    if (
+      typeof main !== 'undefined' &&
+      main &&
+      typeof main.attachSearchableCheckboxMultiSelect === 'function' &&
+      node &&
+      typeof node.querySelector === 'function'
+    ) {
+      let uiEl = null;
+      try {
+        uiEl =
+          typeof this.getUIElement === 'function'
+            ? this.getUIElement(section_id)
+            : null;
+      } catch (_e) {}
+      msHandle = main.attachSearchableCheckboxMultiSelect(uiEl, node, {
+        showChips: false,
+        allowCustom: true,
+        placeholder: this.placeholder,
+        option: this,
+        sectionId: section_id,
+        validateItem: (val) => this.validate(section_id, val),
+      });
+    }
     if (
       (!this.devices || !this.devices.length) &&
       network &&
@@ -3685,15 +3733,18 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
         .then((devices) => {
           this.devices = devices || [];
           refreshNetworkInterfaceOptionValues(this);
+          if (msHandle && Array.isArray(this.keylist)) {
+            msHandle.refreshChoices(
+              this.keylist.map((val, idx) => ({
+                value: val,
+                label: (this.vallist && this.vallist[idx]) || val,
+              })),
+            );
+          }
         })
         .catch(() => {});
     }
-    return SettingsDynamicList.prototype.renderWidget.call(
-      this,
-      section_id,
-      option_index,
-      cfgvalue,
-    );
+    return node;
   },
 
   validate(section_id, value) {
@@ -3905,6 +3956,16 @@ function addProxyParameterFilterOptions(itemSection, options) {
       };
     }
     list.placeholder = _('-- Select or type port/range --');
+    if (
+      choices &&
+      typeof main !== 'undefined' &&
+      main &&
+      typeof main.attachSearchableMultiSelectToOption === 'function'
+    ) {
+      main.attachSearchableMultiSelectToOption(list, {
+        allowCustom: suffix === 'ports',
+      });
+    }
   });
 }
 
@@ -5376,6 +5437,13 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     if (choices) {
       choices.forEach((choice) => list.value(choice.value, choice.label));
       list.placeholder = _('-- Select --');
+      if (
+        typeof main !== 'undefined' &&
+        main &&
+        typeof main.attachSearchableMultiSelectToOption === 'function'
+      ) {
+        main.attachSearchableMultiSelectToOption(list, { allowCustom: true });
+      }
     }
     if (key.endsWith('_outbounds')) {
       list.load = function (itemId) {
@@ -5610,6 +5678,13 @@ function addPriorityLevelItemOptions(itemSection, options = {}) {
     if (choices) {
       choices.forEach((choice) => list.value(choice.value, choice.label));
       list.placeholder = _('-- Select --');
+      if (
+        typeof main !== 'undefined' &&
+        main &&
+        typeof main.attachSearchableMultiSelectToOption === 'function'
+      ) {
+        main.attachSearchableMultiSelectToOption(list, { allowCustom: true });
+      }
     }
     if (key === 'server_name' || key.endsWith('_outbounds')) {
       list.load = function (itemId) {
@@ -6057,6 +6132,13 @@ function addDashboardServerFilterOptions(section) {
     if (choices) {
       choices.forEach((choice) => list.value(choice.value, choice.label));
       list.placeholder = _('-- Select --');
+      if (
+        typeof main !== 'undefined' &&
+        main &&
+        typeof main.attachSearchableMultiSelectToOption === 'function'
+      ) {
+        main.attachSearchableMultiSelectToOption(list, { allowCustom: true });
+      }
     }
     if (key.endsWith('_outbounds')) {
       list.load = function (section_id) {
@@ -11004,15 +11086,20 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.placeholder = _('Optional when WAN DNS is enabled');
   o.modalonly = true;
-  configureLiveDynamicListChoices(o, (section_id) => {
-    const dnsType = perRuleDnsTypeState.get(section_id) || 'udp';
-    const servers =
-      main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
-    return Object.entries(servers).map(([value, label]) => ({
-      value,
-      label: _(label),
-    }));
-  });
+  configureLiveDynamicListChoices(
+    o,
+    (section_id) => {
+      const dnsType = perRuleDnsTypeState.get(section_id) || 'udp';
+      const servers =
+        main.DNS_SERVERS_BY_PROTOCOL[dnsType] ||
+        main.DNS_SERVERS_BY_PROTOCOL.udp;
+      return Object.entries(servers).map(([value, label]) => ({
+        value,
+        label: _(label),
+      }));
+    },
+    { allowCustom: true },
+  );
   perRuleDnsTypeOption.onchange = function (_ev, section_id, value) {
     const newType = value || 'udp';
     const oldType = perRuleDnsTypeState.get(section_id) || 'udp';
@@ -14449,6 +14536,13 @@ function createSectionContent(section) {
   o.value('ws', 'WebSocket');
   o.value('raw_tls', 'Raw TLS');
   o.depends('action', 'tewfai');
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption(
     'settings',
@@ -15890,6 +15984,15 @@ function createSectionContent(section) {
                 list.value(choice.value, choice.label),
               );
               list.placeholder = _('-- Select --');
+              if (
+                typeof main !== 'undefined' &&
+                main &&
+                typeof main.attachSearchableMultiSelectToOption === 'function'
+              ) {
+                main.attachSearchableMultiSelectToOption(list, {
+                  allowCustom: true,
+                });
+              }
             }
             if (key.endsWith('_prefixes')) {
               list.load = function (itemId) {
@@ -16072,13 +16175,37 @@ function createSectionContent(section) {
   };
   const _origBalancerRefsRenderWidget = o.renderWidget;
   o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
-    refreshOptionChoices(this, getAvailableBalancerChoices());
-    return _origBalancerRefsRenderWidget.call(
+    const choices = getAvailableBalancerChoices();
+    refreshOptionChoices(this, choices);
+    const node = _origBalancerRefsRenderWidget.call(
       this,
       sectionId,
       optionIndex,
       cfgvalue,
     );
+    if (
+      typeof main !== 'undefined' &&
+      main &&
+      typeof main.attachSearchableCheckboxMultiSelect === 'function' &&
+      node &&
+      typeof node.querySelector === 'function'
+    ) {
+      let uiEl = null;
+      try {
+        uiEl =
+          typeof this.getUIElement === 'function'
+            ? this.getUIElement(sectionId)
+            : null;
+      } catch (_e) {}
+      main.attachSearchableCheckboxMultiSelect(uiEl, node, {
+        choices,
+        showChips: false,
+        placeholder: this.placeholder,
+        option: this,
+        sectionId,
+      });
+    }
+    return node;
   };
   o.onchange = function (_event, section_id) {
     refreshDashboardFilterChoiceWidgets(section_id);
@@ -16239,6 +16366,13 @@ function createSectionContent(section) {
   o.modalonly = true;
   countryChoices().forEach((choice) => o.value(choice.value, choice.label));
   o.depends('action', '__legacy_inline__');
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 
   o = section.taboption(
     'settings',
@@ -16249,6 +16383,13 @@ function createSectionContent(section) {
   o.modalonly = true;
   countryChoices().forEach((choice) => o.value(choice.value, choice.label));
   o.depends('action', '__legacy_inline__');
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 
   o = section.taboption(
     'settings',
@@ -17280,10 +17421,14 @@ function createSectionContent(section) {
     value,
     label: (o.vallist && o.vallist[index]) || value,
   }));
-  configureLiveDynamicListChoices(o, (section_id) => {
-    const blocked = foreignGlobalValues('geoip_country', section_id);
-    return geoipCountryChoices.filter((choice) => !blocked.has(choice.value));
-  });
+  configureLiveDynamicListChoices(
+    o,
+    (section_id) => {
+      const blocked = foreignGlobalValues('geoip_country', section_id);
+      return geoipCountryChoices.filter((choice) => !blocked.has(choice.value));
+    },
+    { allowCustom: true },
+  );
 
   const domainConditionOption = addTextConditionField(section, {
     key: 'domain_suffix',
@@ -18048,6 +18193,15 @@ function createSectionContent(section) {
     unsetIfPresent(section_id, 'source_inbounds');
     syncLinkedConditionOption(section_id, 'source_inbounds', null);
   };
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(sourceInboundsOption, {
+      allowCustom: true,
+    });
+  }
 
   const serverDomainRulesOption = section.taboption(
     'conditions',
