@@ -1048,6 +1048,16 @@ function stopActionStateWatcher() {
 
 async function connectToClashSockets(dataUpdatesId: number) {
   const mountId = dashboardMountId;
+
+  if (!canUseDirectClashApi()) {
+    directSocketsFailed = true;
+    logger.info(
+      '[DASHBOARD]',
+      'direct Clash API websocket unavailable, relying on polling fallback',
+    );
+    return;
+  }
+
   const [clashApiSecret, directExposed] = await Promise.all([
     getClashApiSecret(),
     isDirectClashApiExposed(),
@@ -1062,7 +1072,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
-  if (!canUseDirectClashApi() || !directExposed) {
+  if (!directExposed) {
     directSocketsFailed = true;
     logger.info(
       '[DASHBOARD]',
@@ -1260,7 +1270,7 @@ function syncDashboardServiceAvailability() {
     stopped,
   );
 
-  if (stopped || availability === 'loading') {
+  if (stopped) {
     stopDashboardDataUpdates();
     void renderSystemServicesWidget();
     return;
@@ -7098,6 +7108,64 @@ export function renderServiceRowItem(
   };
 }
 
+function isStructurallyEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (
+    a === null ||
+    b === null ||
+    typeof a !== 'object' ||
+    typeof b !== 'object'
+  ) {
+    return false;
+  }
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i += 1) {
+      if (!isStructurallyEqual(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (Array.isArray(b)) {
+    return false;
+  }
+  const recA = a as Record<string, unknown>;
+  const recB = b as Record<string, unknown>;
+  const keysA = Object.keys(recA);
+  const keysB = Object.keys(recB);
+  let definedA = 0;
+  for (let i = 0; i < keysA.length; i += 1) {
+    const key = keysA[i];
+    const valA = recA[key];
+    if (valA === undefined) {
+      continue;
+    }
+    definedA += 1;
+    if (!isStructurallyEqual(valA, recB[key])) {
+      return false;
+    }
+  }
+  let definedB = 0;
+  for (let i = 0; i < keysB.length; i += 1) {
+    if (recB[keysB[i]] !== undefined) {
+      definedB += 1;
+    }
+  }
+  return definedA === definedB;
+}
+
+export function areOutboundGroupsEqual(
+  prev: Tachyon.OutboundGroup[],
+  next: Tachyon.OutboundGroup[],
+): boolean {
+  return isStructurallyEqual(prev, next);
+}
+
 export async function onStoreUpdate(
   next: StoreType,
   prev: StoreType,
@@ -7114,9 +7182,10 @@ export async function onStoreUpdate(
       const dataChanged =
         prev.sectionsWidget.loading !== next.sectionsWidget.loading ||
         prev.sectionsWidget.failed !== next.sectionsWidget.failed ||
-        (prev.sectionsWidget.data !== next.sectionsWidget.data &&
-          JSON.stringify(prev.sectionsWidget.data) !==
-            JSON.stringify(next.sectionsWidget.data));
+        !areOutboundGroupsEqual(
+          prev.sectionsWidget.data,
+          next.sectionsWidget.data,
+        );
 
       const actionStateChanged =
         !shallowRecordEqual(
@@ -7157,7 +7226,7 @@ export async function onStoreUpdate(
   }
 }
 
-async function onPageMount() {
+export async function onPageMount() {
   onPageUnmount();
   expandedRoutingSections.clear();
 
@@ -7205,7 +7274,7 @@ async function onPageMount() {
   });
 }
 
-function onPageUnmount() {
+export function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
   dashboardVisibilityPaused = false;

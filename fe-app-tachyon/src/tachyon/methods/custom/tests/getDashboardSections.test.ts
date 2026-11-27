@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getConfigSections: vi.fn(),
   getClashApiProxies: vi.fn(),
+  getOutboundMetadata: vi.fn(),
+  getSubscriptionMetadata: vi.fn(),
   canUseDirectClashApi: vi.fn(),
   fsRead: vi.fn(),
 }));
@@ -14,6 +16,8 @@ vi.mock('../getConfigSections', () => ({
 vi.mock('../../shell', () => ({
   TachyonShellMethods: {
     getClashApiProxies: mocks.getClashApiProxies,
+    getOutboundMetadata: mocks.getOutboundMetadata,
+    getSubscriptionMetadata: mocks.getSubscriptionMetadata,
   },
 }));
 
@@ -144,9 +148,13 @@ describe('getDashboardSections', () => {
     resetDirectClashApiState();
     mocks.getConfigSections.mockReset();
     mocks.getClashApiProxies.mockReset();
+    mocks.getOutboundMetadata.mockReset();
+    mocks.getSubscriptionMetadata.mockReset();
     mocks.canUseDirectClashApi.mockReset();
     mocks.fsRead.mockReset();
     mocks.fsRead.mockRejectedValue(new Error('cache miss'));
+    mocks.getOutboundMetadata.mockResolvedValue({ success: false });
+    mocks.getSubscriptionMetadata.mockResolvedValue({ success: false });
     vi.stubGlobal('fs', { read: mocks.fsRead });
     vi.stubGlobal('window', undefined);
     vi.stubGlobal('fetch', undefined);
@@ -2745,5 +2753,233 @@ describe('getDashboardSections', () => {
       { code: 'main-2-out', levelIndex: 0, levelName: 'Tier 1' },
       { code: 'main-1-out', levelIndex: 1, levelName: 'Tier 2' },
     ]);
+  });
+
+  it('runs config, section errors, clash proxies, and bulk outbound metadata in parallel without calling getSubscriptionMetadata("all")', async () => {
+    let resolveConfig!: (val: Tachyon.ConfigSection[]) => void;
+    mocks.getConfigSections.mockImplementation(
+      () =>
+        new Promise<Tachyon.ConfigSection[]>((resolve) => {
+          resolveConfig = resolve;
+        }),
+    );
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'sec_a-out': proxy('Selector', {
+            name: 'sec_a-out',
+            now: 'a-1',
+            all: ['a-1'],
+          }),
+          'a-1': proxy('VLESS', {
+            name: 'a-1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 42 }],
+          }),
+          'sec_b-out': proxy('Selector', {
+            name: 'sec_b-out',
+            now: 'b-1',
+            all: ['b-1'],
+          }),
+          'b-1': proxy('VLESS', {
+            name: 'b-1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 84 }],
+          }),
+        },
+      },
+    });
+
+    mocks.getOutboundMetadata.mockImplementation(async (section: string) => {
+      if (section === 'all') {
+        return {
+          success: true,
+          data: {
+            names: { 'a-1': 'Alpha Node', 'b-1': 'Beta Node' },
+            transports: { 'a-1': 'ws', 'b-1': 'grpc' },
+          },
+        };
+      }
+      throw new Error(
+        `unexpected per-section outbound metadata RPC: ${section}`,
+      );
+    });
+
+    mocks.fsRead.mockImplementation(async (path: string) => {
+      if (path === '/var/run/tachyon/section-cache/sec_a.json') {
+        return JSON.stringify({
+          subscriptionMetadata: [
+            {
+              sourceSection: 'sec_a-subscription-1',
+              sourceIndex: 1,
+              title: 'Alpha Sub',
+              nodeCount: 1,
+            },
+          ],
+        });
+      }
+      if (path === '/var/run/tachyon/section-cache/sec_b.json') {
+        return JSON.stringify({
+          subscriptionMetadata: [
+            {
+              sourceSection: 'sec_b-subscription-1',
+              sourceIndex: 1,
+              title: 'Beta Sub',
+              nodeCount: 1,
+            },
+          ],
+        });
+      }
+      throw new Error('cache miss');
+    });
+
+    const pendingResult = getDashboardSections();
+
+    await Promise.resolve();
+    expect(mocks.getClashApiProxies).toHaveBeenCalledTimes(1);
+    expect(mocks.getOutboundMetadata).toHaveBeenCalledTimes(1);
+    expect(mocks.getOutboundMetadata).toHaveBeenCalledWith('all');
+    expect(mocks.getSubscriptionMetadata).not.toHaveBeenCalledWith('all');
+    expect(mocks.fsRead).toHaveBeenCalledWith(
+      '/var/run/tachyon/section-errors.json',
+    );
+
+    resolveConfig([
+      proxySection({
+        '.name': 'sec_a',
+        urltests: [],
+        urltest_settings: undefined,
+        subscription_urls: ['https://a.example/sub'],
+      }),
+      proxySection({
+        '.name': 'sec_b',
+        urltests: [],
+        urltest_settings: undefined,
+        subscription_urls: ['https://b.example/sub'],
+      }),
+    ]);
+
+    const result = await pendingResult;
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(2);
+    expect(mocks.getOutboundMetadata).toHaveBeenCalledTimes(1);
+    expect(mocks.getSubscriptionMetadata).not.toHaveBeenCalled();
+    expect(result.data[0].outbounds[0]).toMatchObject({
+      code: 'a-1',
+      displayName: 'Alpha Node',
+      transport: 'ws',
+    });
+    expect(result.data[0].subscriptionMetadata?.[0]?.title).toBe('Alpha Sub');
+    expect(result.data[1].outbounds[0]).toMatchObject({
+      code: 'b-1',
+      displayName: 'Beta Node',
+      transport: 'grpc',
+    });
+    expect(result.data[1].subscriptionMetadata?.[0]?.title).toBe('Beta Sub');
+  });
+
+  it('falls back to per-section metadata RPCs only for sections absent from bulk outboundMetadata or section-cache', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'sec_bulk',
+        urltests: [],
+        urltest_settings: undefined,
+        subscription_urls: ['https://bulk.example/sub'],
+      }),
+      proxySection({
+        '.name': 'sec_fallback',
+        urltests: [],
+        urltest_settings: undefined,
+        subscription_urls: ['https://fallback.example/sub'],
+      }),
+    ]);
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'sec_bulk-out': proxy('Selector', {
+            name: 'sec_bulk-out',
+            now: 'bulk-1',
+            all: ['bulk-1'],
+          }),
+          'bulk-1': proxy('VLESS', { name: 'bulk-1' }),
+          'sec_fallback-out': proxy('Selector', {
+            name: 'sec_fallback-out',
+            now: 'fb-1',
+            all: ['fb-1'],
+          }),
+          'fb-1': proxy('VLESS', { name: 'fb-1' }),
+        },
+      },
+    });
+
+    mocks.fsRead.mockImplementation(async (path: string) => {
+      if (path === '/var/run/tachyon/section-cache/sec_bulk.json') {
+        return JSON.stringify({
+          subscriptionMetadata: [
+            {
+              sourceSection: 'sec_bulk-subscription-1',
+              sourceIndex: 1,
+              title: 'Bulk Sub',
+              nodeCount: 1,
+            },
+          ],
+        });
+      }
+      throw new Error('cache miss');
+    });
+
+    mocks.getOutboundMetadata.mockImplementation(async (section: string) => {
+      if (section === 'all') {
+        return {
+          success: true,
+          data: { names: { 'bulk-1': 'Bulk Node' } },
+        };
+      }
+      if (section === 'sec_fallback') {
+        return {
+          success: true,
+          data: { names: { 'fb-1': 'Fallback Node' } },
+        };
+      }
+      return { success: false };
+    });
+
+    mocks.getSubscriptionMetadata.mockImplementation(
+      async (section: string) => {
+        if (section === 'sec_fallback') {
+          return {
+            success: true,
+            data: [
+              {
+                sourceSection: 'sec_fallback-subscription-1',
+                sourceIndex: 1,
+                title: 'Fallback Sub',
+                nodeCount: 1,
+              },
+            ],
+          };
+        }
+        throw new Error(`unexpected getSubscriptionMetadata(${section})`);
+      },
+    );
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(mocks.getOutboundMetadata.mock.calls.map((c) => c[0])).toEqual([
+      'all',
+      'sec_fallback',
+    ]);
+    expect(mocks.getSubscriptionMetadata.mock.calls.map((c) => c[0])).toEqual([
+      'sec_fallback',
+    ]);
+    expect(result.data[0].outbounds[0].displayName).toBe('Bulk Node');
+    expect(result.data[0].subscriptionMetadata?.[0]?.title).toBe('Bulk Sub');
+    expect(result.data[1].outbounds[0].displayName).toBe('Fallback Node');
+    expect(result.data[1].subscriptionMetadata?.[0]?.title).toBe(
+      'Fallback Sub',
+    );
   });
 });
