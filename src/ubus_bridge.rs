@@ -5261,6 +5261,7 @@ fn detect_openwrt_interface_protocol(iface_name: &str) -> String {
 fn build_outbound_metadata_and_links(
     store: &crate::store::RouterStoreData,
     section: &str,
+    include_links: bool,
 ) -> (Value, Map<String, Value>, Map<String, Value>) {
     let mut names = Map::new();
     let mut countries = Map::new();
@@ -5305,30 +5306,32 @@ fn build_outbound_metadata_and_links(
 
         let mut uri_by_tag: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
-        for node in &src.cached_nodes {
-            if !node.raw_uri.trim().is_empty() {
-                uri_by_tag.insert(node.tag.clone(), node.raw_uri.clone());
-                if !src.node_prefix.trim().is_empty() {
-                    uri_by_tag.insert(
-                        format!("{}{}", src.node_prefix, node.tag),
-                        node.raw_uri.clone(),
-                    );
+        if include_links {
+            for node in &src.cached_nodes {
+                if !node.raw_uri.trim().is_empty() {
+                    uri_by_tag.insert(node.tag.clone(), node.raw_uri.clone());
+                    if !src.node_prefix.trim().is_empty() {
+                        uri_by_tag.insert(
+                            format!("{}{}", src.node_prefix, node.tag),
+                            node.raw_uri.clone(),
+                        );
+                    }
                 }
             }
-        }
-        for (idx, raw) in src.proxy_links.iter().enumerate() {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            if let Some(parsed) = crate::config_gen::parse_proxy_uri(trimmed, idx) {
-                uri_by_tag
-                    .entry(parsed.tag.clone())
-                    .or_insert_with(|| trimmed.to_string());
-                if !src.node_prefix.trim().is_empty() {
+            for (idx, raw) in src.proxy_links.iter().enumerate() {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                if let Some(parsed) = crate::config_gen::parse_proxy_uri(trimmed, idx) {
                     uri_by_tag
-                        .entry(format!("{}{}", src.node_prefix, parsed.tag))
+                        .entry(parsed.tag.clone())
                         .or_insert_with(|| trimmed.to_string());
+                    if !src.node_prefix.trim().is_empty() {
+                        uri_by_tag
+                            .entry(format!("{}{}", src.node_prefix, parsed.tag))
+                            .or_insert_with(|| trimmed.to_string());
+                    }
                 }
             }
         }
@@ -5511,7 +5514,7 @@ async fn get_subscription_metadata_cached_json(state: &AppState, section: &str) 
 }
 
 fn read_pure_rust_outbound_metadata(store: &crate::store::RouterStoreData, section: &str) -> Value {
-    let (mut meta_val, _, _) = build_outbound_metadata_and_links(store, section);
+    let (mut meta_val, _, _) = build_outbound_metadata_and_links(store, section, false);
     let has_any = meta_val
         .get("names")
         .and_then(Value::as_object)
@@ -5688,7 +5691,8 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
         }
         let fname = format!("{}.json", sec.id);
         active_files.insert(fname.clone());
-        let (outbound_meta, links, hidden) = build_outbound_metadata_and_links(store, &sec.id);
+        let (outbound_meta, links, hidden) =
+            build_outbound_metadata_and_links(store, &sec.id, true);
         let sub_meta = read_pure_rust_subscription_metadata(store, &sec.id);
         let (urltest_groups, priority_groups) = balancer_caches
             .remove(&sec.id)
@@ -5708,7 +5712,7 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
     // Aggregate all sources (including unassigned subscriptions/nodes) in `_sources.json`
     active_files.insert("_sources.json".to_string());
     let (all_outbound_meta, all_links, all_hidden) =
-        build_outbound_metadata_and_links(store, "_sources");
+        build_outbound_metadata_and_links(store, "_sources", true);
     let all_sub_meta = read_pure_rust_subscription_metadata(store, "_sources");
     let sources_payload = json!({
         "section": "_sources",
