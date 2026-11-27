@@ -89,7 +89,7 @@ jobs:
           TACHYON_TARGETS: "armv7-unknown-linux-musleabihf:armv7 arm-unknown-linux-musleabi:armv6"
           TACHYON_BUILD_STD: "0"
           SKIP_FE_BUILD: "1"
-        run: ./build.sh 2.0.0-ci /tmp/tachyon-arm-packages
+        run: bash ./build.sh 2.0.0-ci /tmp/tachyon-arm-packages
 
   frontend:
     name: Frontend CI & Locale Sync
