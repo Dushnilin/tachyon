@@ -8361,27 +8361,42 @@ mod tests {
             }
         });
         let cases = vec![
-            ("outbounds", json!({
-                "outbounds": [
-                    {"type": "direct", "tag": "direct"},
-                    {"type": "vless", "tag": "proxy", "detour": tag}
-                ]
-            })),
-            ("endpoints", json!({
-                "endpoints": [{"type": "tailscale", "tag": "ts", "detour": tag}]
-            })),
-            ("dns.servers", json!({
-                "dns": {"servers": [{"type": "udp", "tag": "dns", "detour": tag}]}
-            })),
+            (
+                "outbounds",
+                json!({
+                    "outbounds": [
+                        {"type": "direct", "tag": "direct"},
+                        {"type": "vless", "tag": "proxy", "detour": tag}
+                    ]
+                }),
+            ),
+            (
+                "endpoints",
+                json!({
+                    "endpoints": [{"type": "tailscale", "tag": "ts", "detour": tag}]
+                }),
+            ),
+            (
+                "dns.servers",
+                json!({
+                    "dns": {"servers": [{"type": "udp", "tag": "dns", "detour": tag}]}
+                }),
+            ),
             ("ntp", json!({"ntp": {"detour": tag}})),
             ("http_clients", json!({"http_clients": [{"detour": tag}]})),
-            ("cloudflared", json!({
-                "cloudflared": {
-                    "control_dialer": {"detour": tag},
-                    "tunnel_dialer": {"detour": tag}
-                }
-            })),
-            ("inbounds", json!({"inbounds": [{"type": "mixed", "tag": "in", "detour": tag}]})),
+            (
+                "cloudflared",
+                json!({
+                    "cloudflared": {
+                        "control_dialer": {"detour": tag},
+                        "tunnel_dialer": {"detour": tag}
+                    }
+                }),
+            ),
+            (
+                "inbounds",
+                json!({"inbounds": [{"type": "mixed", "tag": "in", "detour": tag}]}),
+            ),
         ];
 
         for (name, extra) in cases {
