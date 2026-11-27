@@ -28,7 +28,7 @@ describe('release notes lookup', () => {
 
     expect(await getReleaseForNotes('tachyon', 'v2.0')).toEqual(exact);
     expect(listReleases).toHaveBeenCalledTimes(1);
-    expect(listReleases).toHaveBeenCalledWith('tachyon', 30, 1);
+    expect(listReleases).toHaveBeenCalledWith('tachyon', 5, 1);
   });
 
   it('matches a tag when only the optional v prefix differs', async () => {
