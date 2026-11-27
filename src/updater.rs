@@ -1408,6 +1408,101 @@ pub fn resolve_include_prerelease(channel: &str, current_version: &str) -> bool 
     }
 }
 
+// The API pages raw releases; the picker pages eligible releases. Accumulate
+// complete picker pages across API boundaries, including after filtering.
+fn append_release_pages(
+    items: impl IntoIterator<Item = Value>,
+    per_page: usize,
+    pending: &mut Vec<Value>,
+) -> Vec<Vec<Value>> {
+    let mut pages = Vec::new();
+    for item in items {
+        pending.push(item);
+        if pending.len() == per_page {
+            pages.push(std::mem::take(pending));
+        }
+    }
+    pages
+}
+
+fn should_cache_release_page(requested: usize, current: usize, per_page: usize) -> bool {
+    current == requested || (per_page >= 5 && current > requested && current - requested <= 5)
+}
+
+fn release_catalog_matches(item: &Value, canon: &str, include_prerelease: bool) -> bool {
+    (include_prerelease
+        || !item
+            .get("prerelease")
+            .and_then(Value::as_bool)
+            .unwrap_or(false))
+        && (canon != "tachyon"
+            || is_tachyon_v2_or_newer(item.get("tag").and_then(Value::as_str).unwrap_or("")))
+}
+
+#[cfg(test)]
+mod release_catalog_pagination_tests {
+    use super::*;
+
+    fn items(start: usize, end: usize) -> impl Iterator<Item = Value> {
+        (start..end).map(|id| json!({"id": id}))
+    }
+
+    #[test]
+    fn complete_pages_from_one_response_are_reusable() {
+        let mut pending = Vec::new();
+        let pages = append_release_pages(items(0, 24), 5, &mut pending);
+        assert_eq!(pages.len(), 4);
+        assert_eq!(pages[1], items(5, 10).collect::<Vec<_>>());
+        assert_eq!(pending, items(20, 24).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn sparse_responses_do_not_skip_partial_windows() {
+        let mut pending = Vec::new();
+        assert!(append_release_pages(items(0, 2), 5, &mut pending).is_empty());
+        assert!(append_release_pages(items(2, 4), 5, &mut pending).is_empty());
+        let pages = append_release_pages(items(4, 12), 5, &mut pending);
+        assert_eq!(
+            pages,
+            vec![items(0, 5).collect::<Vec<_>>(), items(5, 10).collect()]
+        );
+        assert_eq!(pending, items(10, 12).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn cache_prefetch_is_bounded_and_skips_one_item_callers() {
+        assert!(should_cache_release_page(1, 1, 1));
+        assert!(!should_cache_release_page(1, 2, 1));
+        assert!(should_cache_release_page(1, 4, 5));
+        assert!(!should_cache_release_page(1, 7, 5));
+        assert!(!should_cache_release_page(4, 3, 5));
+    }
+
+    #[test]
+    fn filtering_applies_before_windows() {
+        let raw = [
+            json!({"tag_name":"v2.0.0-rc.5", "prerelease":true}),
+            json!({"tag_name":"1.8.8"}),
+            json!({"tag_name":"v2.0.0", "draft":true}),
+            json!({"tag_name":"v2.0.0"}),
+            json!({"tag_name":"v2.0.1"}),
+        ];
+        let mut pending = Vec::new();
+        let pages = append_release_pages(
+            raw.iter()
+                .filter(|r| !r.get("draft").and_then(Value::as_bool).unwrap_or(false))
+                .filter_map(map_github_release_to_item)
+                .filter(|item| release_catalog_matches(item, "tachyon", false)),
+            2,
+            &mut pending,
+        );
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0][0]["tag"], "v2.0.0");
+        assert_eq!(pages[0][1]["tag"], "v2.0.1");
+        assert!(pending.is_empty());
+    }
+}
+
 pub async fn list_releases(
     core: &Arc<CoreManager>,
     raw_comp: &str,
@@ -1420,6 +1515,9 @@ pub async fn list_releases(
     ensure_runtime_dirs();
     let per_page = count.clamp(1, 30);
     let page = page.max(1);
+    let Some(offset) = (page - 1).checked_mul(per_page) else {
+        return json!([]);
+    };
     let channel = {
         core.state
             .data
@@ -1436,9 +1534,14 @@ pub async fn list_releases(
     };
     let include_prerelease = resolve_include_prerelease(&channel, &cur_ver);
     let channel_norm = normalize_update_channel(&channel);
-    let cache_path = releases_cache_dir().join(format!(
-        "{canon}_{channel_norm}_{include_prerelease}_{per_page}_{page}.json"
-    ));
+    let repo = component_repo(canon);
+    let repo_key = format!("{:x}", Sha256::digest(repo.as_bytes()));
+    let page_cache_path = |n: usize| {
+        releases_cache_dir().join(format!(
+            "v3_{canon}_{repo_key}_{channel_norm}_{include_prerelease}_{per_page}_{n}.json"
+        ))
+    };
+    let cache_path = page_cache_path(page);
     let now = store::unix_now_secs();
     if let Ok(meta) = std::fs::metadata(&cache_path)
         && let Ok(mod_t) = meta.modified()
@@ -1451,76 +1554,92 @@ pub async fn list_releases(
         return val;
     }
 
-    let repo = component_repo(canon);
-    let api_per_page = if canon == "tachyon" || !include_prerelease {
-        30
-    } else {
-        per_page
-    };
-    let api_url =
-        format!("https://api.github.com/repos/{repo}/releases?per_page={api_per_page}&page={page}");
     let proxy = resolve_component_proxy(core).await;
-    if let Ok(bytes) = core
-        .curl_fetch_with_doh_fallback(&api_url, false, 10, proxy.as_deref())
-        .await
-        && let Ok(raw_list) = serde_json::from_slice::<Vec<Value>>(&bytes)
-    {
-        let mut items: Vec<Value> = raw_list
-            .iter()
-            .filter(|r| !r.get("draft").and_then(Value::as_bool).unwrap_or(false))
-            .filter_map(map_github_release_to_item)
-            .filter(|item| {
-                include_prerelease
-                    || !item
-                        .get("prerelease")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false)
-            })
-            .filter(|item| {
-                canon != "tachyon"
-                    || is_tachyon_v2_or_newer(item.get("tag").and_then(Value::as_str).unwrap_or(""))
-            })
-            .collect();
-        items.truncate(per_page);
-        if !items.is_empty() {
-            let out = Value::Array(items);
-            if let Ok(s) = serde_json::to_string(&out) {
-                let _ = std::fs::write(&cache_path, s);
+    // Keep requests bounded. Cache nearby complete picker pages from the same
+    // response, so Next need not fetch the same raw page again. Do not prefetch
+    // one-item pages used by the Telegram status checker.
+    let rest = tokio::time::timeout(Duration::from_secs(12), async {
+        const RAW_PAGE_SIZE: usize = 30;
+        const MAX_RAW_PAGES: usize = 10;
+        let mut pending = Vec::new();
+        let mut picker_page = 1;
+        for raw_page in 1..=MAX_RAW_PAGES {
+            let api_url = format!(
+                "https://api.github.com/repos/{repo}/releases?per_page={RAW_PAGE_SIZE}&page={raw_page}"
+            );
+            let bytes = core
+                .curl_fetch_with_doh_fallback(&api_url, false, 10, proxy.as_deref())
+                .await
+                .ok()?;
+            let raw_list: Vec<Value> = serde_json::from_slice(&bytes).ok()?;
+            let exhausted = raw_list.len() < RAW_PAGE_SIZE;
+            let complete = append_release_pages(
+                raw_list
+                    .iter()
+                    .filter(|r| !r.get("draft").and_then(Value::as_bool).unwrap_or(false))
+                    .filter_map(map_github_release_to_item)
+                    .filter(|item| release_catalog_matches(item, canon, include_prerelease)),
+                per_page,
+                &mut pending,
+            );
+            let mut selected = None;
+            for items in complete {
+                let out = Value::Array(items);
+                if should_cache_release_page(page, picker_page, per_page)
+                    && let Ok(raw) = serde_json::to_string(&out)
+                {
+                    let _ = std::fs::write(page_cache_path(picker_page), raw);
+                }
+                if picker_page == page {
+                    selected = Some(out);
+                }
+                picker_page += 1;
             }
-            return out;
+            if selected.is_some() {
+                return selected;
+            }
+            if exhausted {
+                let out = if picker_page == page {
+                    Value::Array(pending)
+                } else {
+                    json!([])
+                };
+                if let Ok(raw) = serde_json::to_string(&out) {
+                    let _ = std::fs::write(&cache_path, raw);
+                }
+                return Some(out);
+            }
         }
+        None
+    })
+    .await;
+    if let Ok(Some(out)) = rest {
+        return out;
     }
 
     // Fallback without GitHub REST API rate limits: Atom feed on github.com.
     let atom_url = format!("https://github.com/{repo}/releases.atom");
-    if let Ok(atom_bytes) = core
-        .curl_fetch_with_doh_fallback(&atom_url, false, 12, proxy.as_deref())
-        .await
+    if let Ok(Ok(atom_bytes)) = tokio::time::timeout(
+        Duration::from_secs(10),
+        core.curl_fetch_with_doh_fallback(&atom_url, false, 10, proxy.as_deref()),
+    )
+    .await
     {
         let xml = String::from_utf8_lossy(&atom_bytes);
         let parsed: Vec<Value> = parse_releases_atom(&xml, &repo)
             .into_iter()
-            .filter(|item| {
-                include_prerelease
-                    || !item
-                        .get("prerelease")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false)
-            })
-            .filter(|item| {
-                canon != "tachyon"
-                    || is_tachyon_v2_or_newer(item.get("tag").and_then(Value::as_str).unwrap_or(""))
-            })
-            .skip((page - 1) * per_page)
+            .filter(|item| release_catalog_matches(item, canon, include_prerelease))
+            .skip(offset)
             .take(per_page)
             .collect();
-        if !parsed.is_empty() {
-            let out = Value::Array(parsed);
-            if let Ok(s) = serde_json::to_string(&out) {
-                let _ = std::fs::write(&cache_path, s);
-            }
-            return out;
+        // An Atom feed is a limited recent history, not proof of exhaustion.
+        // Do not cache it as an authoritative REST page.
+        if parsed.len() == per_page || (page == 1 && !parsed.is_empty()) {
+            return Value::Array(parsed);
         }
+    }
+    if page > 1 {
+        return json!({"error": "release catalog page unavailable"});
     }
 
     // Fallback: return local build entry so dropdown never crashes UI when offline/private repo.
