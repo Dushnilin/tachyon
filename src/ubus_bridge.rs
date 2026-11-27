@@ -7572,7 +7572,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         .collect();
 
     // Aggregate outbounds & protocols from /connections and /tachyon/flight
-    let mut outbound_map: std::collections::HashMap<String, (u64, u64, u64, u64)> =
+    let mut outbound_map: std::collections::HashMap<&str, (u64, u64, u64, u64)> =
         std::collections::HashMap::new();
     let mut tcp_count = 0u64;
     let mut udp_count = 0u64;
@@ -7589,14 +7589,17 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                 .get("metadata")
                 .and_then(|m| m.get("network"))
                 .and_then(Value::as_str)
-                .unwrap_or("tcp")
-                .to_ascii_lowercase();
+                .unwrap_or("tcp");
             let dst_port = c
                 .get("metadata")
                 .and_then(|m| m.get("destinationPort"))
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            if net.contains("udp") {
+            if net
+                .as_bytes()
+                .windows(3)
+                .any(|part| part.eq_ignore_ascii_case(b"udp"))
+            {
                 if dst_port == "443" {
                     quic_count += 1;
                 } else {
@@ -7610,8 +7613,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                 .and_then(Value::as_array)
                 .and_then(|a| a.first())
                 .and_then(Value::as_str)
-                .unwrap_or("direct-out")
-                .to_string();
+                .unwrap_or("direct-out");
             let up = c.get("upload").and_then(Value::as_u64).unwrap_or(0);
             let down = c.get("download").and_then(Value::as_u64).unwrap_or(0);
             let entry = outbound_map.entry(chain).or_insert((0, 0, 0, 0));
@@ -7630,11 +7632,10 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                 let outbound = e
                     .get("outbound")
                     .and_then(Value::as_str)
-                    .unwrap_or("direct-out")
-                    .to_string();
+                    .unwrap_or("direct-out");
                 let up = e.get("upload").and_then(Value::as_u64).unwrap_or(0);
                 let down = e.get("download").and_then(Value::as_u64).unwrap_or(0);
-                let entry = outbound_map.entry(outbound.clone()).or_insert((0, 0, 0, 0));
+                let entry = outbound_map.entry(outbound).or_insert((0, 0, 0, 0));
                 entry.1 = entry.1.saturating_add(up);
                 entry.2 = entry.2.saturating_add(down);
                 entry.3 += 1;
@@ -7654,7 +7655,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                     "host": e.get("host").and_then(Value::as_str).unwrap_or(""),
                     "destination": e.get("destination").and_then(Value::as_str).unwrap_or(""),
                     "outbound": outbound,
-                    "outbound_display_name": resolve_telemetry_tag_display_name(&outbound, &tag_display_map, &store_snap),
+                    "outbound_display_name": resolve_telemetry_tag_display_name(outbound, &tag_display_map, &store_snap),
                     "rule": short_rule,
                     "upload": up,
                     "download": down,
@@ -7665,7 +7666,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         }
     }
 
-    let mut outbounds_vec: Vec<(String, u64, u64, u64, u64)> = outbound_map
+    let mut outbounds_vec: Vec<(&str, u64, u64, u64, u64)> = outbound_map
         .into_iter()
         .map(|(k, (act, up, down, hits))| (k, act, up, down, hits))
         .collect();
@@ -7675,7 +7676,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         .take(8)
         .map(|(tag, act, up, down, hits)| {
             let display_name =
-                resolve_telemetry_tag_display_name(&tag, &tag_display_map, &store_snap);
+                resolve_telemetry_tag_display_name(tag, &tag_display_map, &store_snap);
             json!({
                 "tag": tag,
                 "display_name": display_name,
