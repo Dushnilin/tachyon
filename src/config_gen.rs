@@ -14265,6 +14265,55 @@ fn compile_core_config_with_rt_dir(
         }
     }
 
+    // Optional dedicated loopback inbound + top-priority route rule for WARP registration proxy override
+    let warp_sec_ref = store
+        .settings
+        .warp_proxy_section
+        .trim()
+        .strip_prefix("netif:")
+        .unwrap_or(store.settings.warp_proxy_section.trim())
+        .trim();
+    if !warp_sec_ref.is_empty() {
+        let warp_out = if warp_sec_ref.eq_ignore_ascii_case("direct") {
+            Some("direct".to_string())
+        } else if let Some(sec) = store.sections.iter().find(|s| {
+            s.enabled
+                && s.action != "dns"
+                && s.connection_type != "dns"
+                && (s.id == warp_sec_ref || s.label.eq_ignore_ascii_case(warp_sec_ref))
+        }) {
+            let mut visited_secs = Vec::new();
+            Some(resolve_section_outbound(
+                sec,
+                &store.outbound_sources,
+                &source_tag_map,
+                &group_tag_map,
+                &sec_map,
+                &bal_map,
+                &mut outbounds,
+                &mut endpoints,
+                &mut ts_dns_metas,
+                &mut seen_outbound_tags,
+                &mut visited_secs,
+            ))
+        } else {
+            None
+        };
+        if let Some(warp_out) = warp_out {
+            let warp_reg_port = allocate_loopback_port(4536, &mut used_ports);
+            inbounds.push(json!({
+                "type": "mixed",
+                "tag": "warp-reg-in",
+                "listen": "127.0.0.1",
+                "listen_port": warp_reg_port
+            }));
+            rules.push(json!({
+                "inbound": ["warp-reg-in"],
+                "outbound": warp_out
+            }));
+        }
+    }
+
     // Parental control (7 categories, SafeSearch, pause/quota, DoH block) & Schedule rules
     let now_unix = unix_now_secs();
     let mut safe_search_ips: Vec<String> = Vec::new();
@@ -24545,6 +24594,61 @@ config timeserver 'ntp'
             .expect("tg-bot-in");
         assert_eq!(svc_in["listen_port"], 4536);
         assert_eq!(tg_in["listen_port"], 4537);
+
+        let mut ports: Vec<u64> = inbounds
+            .iter()
+            .filter_map(|i| i.get("listen_port").and_then(Value::as_u64))
+            .collect();
+        let total_ports = ports.len();
+        ports.sort_unstable();
+        ports.dedup();
+        assert_eq!(ports.len(), total_ports, "all inbound ports must be unique");
+    }
+
+    #[test]
+    fn test_warp_reg_inbound_for_section_and_port_allocation() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "src_warp_proxy".to_string(),
+            enabled: true,
+            name: "Proxy Source".to_string(),
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@203.0.113.10:443?type=tcp#WarpRegProxy"
+                    .to_string(),
+            ],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec_vpn".to_string(),
+            enabled: true,
+            label: "VPN Section".to_string(),
+            action: "proxy".to_string(),
+            outbound_source_refs: vec!["src_warp_proxy".to_string()],
+            mixed_proxy_enabled: true,
+            mixed_proxy_port: 4536,
+            ..Default::default()
+        });
+        store.telegram.bot_proxy_section = "sec_vpn".to_string();
+        store.settings.warp_proxy_section = "sec_vpn".to_string();
+
+        let cfg = compile_core_config(&store).expect("compile config with warp_proxy_section");
+        let inbounds = cfg["inbounds"].as_array().unwrap();
+        let warp_in = inbounds
+            .iter()
+            .find(|i| i["tag"] == "warp-reg-in")
+            .expect("warp-reg-in must be emitted");
+        assert_eq!(warp_in["type"], "mixed");
+        assert_eq!(warp_in["listen"], "127.0.0.1");
+        assert_eq!(warp_in["listen_port"], 4537);
+
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(rules.iter().any(|r| {
+            r.get("inbound")
+                .and_then(Value::as_array)
+                .is_some_and(|arr| arr.iter().any(|x| x == "warp-reg-in"))
+                && r.get("outbound").and_then(Value::as_str).is_some()
+        }));
 
         let mut ports: Vec<u64> = inbounds
             .iter()
