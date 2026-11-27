@@ -15106,7 +15106,9 @@ mod service_probe_integration_tests {
             let stdout = child.stdout.take().expect("fixture stdout is piped");
             let mut reader = BufReader::new(stdout);
             let mut line = String::new();
-            reader.read_line(&mut line).expect("fixture must publish its ports");
+            reader
+                .read_line(&mut line)
+                .expect("fixture must publish its ports");
             let metadata: Value =
                 serde_json::from_str(&line).expect("fixture must publish valid JSON");
             Self {
@@ -15125,7 +15127,9 @@ mod service_probe_integration_tests {
             command
                 .args(&args)
                 .env("HTTPS_PROXY", "http://127.0.0.1:1")
+                .env("https_proxy", "http://127.0.0.1:1")
                 .env("ALL_PROXY", "http://127.0.0.1:1")
+                .env("all_proxy", "http://127.0.0.1:1")
                 .env("NO_PROXY", "localhost")
                 .env("no_proxy", "localhost")
                 .env_remove("CURL_CA_BUNDLE")
@@ -15134,7 +15138,9 @@ mod service_probe_integration_tests {
             if trust_certificate {
                 command.env("CURL_CA_BUNDLE", &self.cert_path);
             }
-            command.output().expect("curl must be installed for integration tests")
+            command
+                .output()
+                .expect("curl must be installed for integration tests")
         }
 
         fn outcome(output: &Output) -> (u16, bool, String) {
@@ -15151,7 +15157,9 @@ mod service_probe_integration_tests {
         }
 
         fn socks_hits(&self) -> usize {
-            std::fs::read(&self.hits_path).map(|data| data.len()).unwrap_or(0)
+            std::fs::read(&self.hits_path)
+                .map(|data| data.len())
+                .unwrap_or(0)
         }
 
         fn socks_url(&self) -> String {
@@ -15171,7 +15179,12 @@ mod service_probe_integration_tests {
         let fixture = Fixture::start();
         let output = fixture.curl("/ok", None, true);
         let (code, success, reason) = Fixture::outcome(&output);
-        assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         assert_eq!(code, 200);
         assert!(success, "{reason}");
     }
@@ -15213,7 +15226,10 @@ mod service_probe_integration_tests {
         let (code, success, _) = Fixture::outcome(&output);
         assert_eq!(code, 200);
         assert_ne!(output.status.code(), Some(0));
-        assert!(!success, "curl's incomplete-transfer exit code must be honored");
+        assert!(
+            !success,
+            "curl's incomplete-transfer exit code must be honored"
+        );
     }
 
     #[test]
@@ -15225,7 +15241,10 @@ mod service_probe_integration_tests {
         assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
         assert_eq!(code, 200);
         assert!(success, "{reason}");
-        assert!(fixture.socks_hits() > 0, "the local SOCKS5 proxy must receive the request");
+        assert!(
+            fixture.socks_hits() > 0,
+            "the local SOCKS5 proxy must receive the request"
+        );
     }
 
     #[test]
@@ -15233,7 +15252,10 @@ mod service_probe_integration_tests {
         let fixture = Fixture::start();
         let output = fixture.curl("/ok", Some("socks5h://127.0.0.1:1"), true);
         let (_, success, _) = Fixture::outcome(&output);
-        assert!(!success, "NO_PROXY must not bypass the selected SOCKS proxy");
+        assert!(
+            !success,
+            "NO_PROXY must not bypass the selected SOCKS proxy"
+        );
         assert_ne!(output.status.code(), Some(0));
     }
 }
