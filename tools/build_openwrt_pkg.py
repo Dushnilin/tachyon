@@ -685,6 +685,182 @@ def _target_triple_family(target_triple: str) -> str:
     return family
 
 
+
+def _read_uleb128(data: bytes, offset: int, end: int) -> tuple[int, int]:
+    value = 0
+    shift = 0
+    while offset < end and shift <= 63:
+        byte = data[offset]
+        offset += 1
+        value |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return value, offset
+        shift += 7
+    raise ValueError("Malformed ARM attribute ULEB128")
+
+
+def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], list[int]]:
+    """Read CPU architecture and VFP calling-convention attributes from ELF32."""
+    if len(binary) < 52 or binary[4] != 1:
+        raise ValueError("ARM target must use ELF32")
+    shoff = int.from_bytes(binary[32:36], byte_order)
+    shentsize = int.from_bytes(binary[46:48], byte_order)
+    shnum = int.from_bytes(binary[48:50], byte_order)
+    shstrndx = int.from_bytes(binary[50:52], byte_order)
+    if shoff == 0 or shentsize < 40 or shoff + 40 > len(binary):
+        raise ValueError("ARM ELF section table is missing or malformed")
+
+    def section(index: int) -> tuple[int, int, int, int]:
+        start = shoff + index * shentsize
+        if start + 40 > len(binary):
+            raise ValueError("Truncated ARM ELF section header")
+        name = int.from_bytes(binary[start:start + 4], byte_order)
+        kind = int.from_bytes(binary[start + 4:start + 8], byte_order)
+        offset = int.from_bytes(binary[start + 16:start + 20], byte_order)
+        size = int.from_bytes(binary[start + 20:start + 24], byte_order)
+        link = int.from_bytes(binary[start + 24:start + 28], byte_order)
+        return name, kind, offset, size, link
+
+    zero = section(0)
+    if shnum == 0:
+        shnum = zero[3]
+    if shstrndx == 0xFFFF:
+        shstrndx = zero[4]
+    if shnum < 2 or shnum > 65536 or shstrndx >= shnum:
+        raise ValueError("Invalid ARM ELF section indexes")
+    _, shstr_type, shstr_off, shstr_size, _ = section(shstrndx)
+    if shstr_type != 3 or shstr_off + shstr_size > len(binary):
+        raise ValueError("Invalid ARM ELF section-name string table")
+    names = binary[shstr_off:shstr_off + shstr_size]
+
+    attributes = None
+    for index in range(1, shnum):
+        name_off, kind, offset, size, _ = section(index)
+        if name_off >= len(names):
+            raise ValueError("Invalid ARM ELF section name")
+        name_end = names.find(b"\\0", name_off)
+        if name_end < 0:
+            raise ValueError("Unterminated ARM ELF section name")
+        name = names[name_off:name_end]
+        if name == b".ARM.attributes" or kind == 0x70000003:
+            if name != b".ARM.attributes" or kind != 0x70000003:
+                raise ValueError("Malformed ARM attributes section identity")
+            if attributes is not None:
+                raise ValueError("Duplicate ARM attributes sections")
+            if offset + size > len(binary) or size == 0:
+                raise ValueError("Truncated ARM attributes section")
+            attributes = binary[offset:offset + size]
+    if attributes is None:
+        raise ValueError("ARM binary is missing .ARM.attributes")
+
+    if attributes[0] != ord("A"):
+        raise ValueError("Unsupported ARM attributes format")
+    cpu_arch: list[int] = []
+    vfp_args: list[int] = []
+    cursor = 1
+    known_numeric_tags = {1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                          17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+                          30, 31, 34, 36, 38, 42, 44, 46, 48, 50, 52, 64, 66,
+                          68, 70, 72, 74, 76}
+    known_string_tags = {4, 5, 65, 67}
+
+    def skip_string(data: bytes, pos: int, limit: int) -> int:
+        end = data.find(b"\\0", pos, limit)
+        if end < 0:
+            raise ValueError("Unterminated ARM attribute string")
+        return end + 1
+
+    while cursor < len(attributes):
+        vendor_start = cursor
+        if cursor + 4 > len(attributes):
+            raise ValueError("Truncated ARM attribute vendor header")
+        vendor_size = int.from_bytes(attributes[cursor:cursor + 4], byte_order)
+        vendor_end = vendor_start + vendor_size
+        if vendor_size < 5 or vendor_end > len(attributes):
+            raise ValueError("Invalid ARM attribute vendor length")
+        vendor_name_start = cursor + 4
+        vendor_name_end = attributes.find(b"\\0", vendor_name_start, vendor_end)
+        if vendor_name_end < 0:
+            raise ValueError("Unterminated ARM attribute vendor name")
+        vendor = attributes[vendor_name_start:vendor_name_end]
+        pos = vendor_name_end + 1
+        if vendor == b"aeabi":
+            while pos < vendor_end:
+                sub_start = pos
+                sub_tag, pos = _read_uleb128(attributes, pos, vendor_end)
+                if pos + 4 > vendor_end:
+                    raise ValueError("Truncated ARM attribute subsection")
+                sub_size = int.from_bytes(attributes[pos:pos + 4], byte_order)
+                sub_end = sub_start + sub_size
+                if sub_size < pos + 4 - sub_start or sub_end > vendor_end:
+                    raise ValueError("Invalid ARM attribute subsection length")
+                attr_pos = pos + 4
+                if sub_tag in (2, 3):
+                    while attr_pos < sub_end:
+                        index, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
+                        if index == 0:
+                            break
+                    else:
+                        raise ValueError("Unterminated ARM section/symbol attribute indexes")
+                elif sub_tag != 1:
+                    raise ValueError(f"Unknown ARM attribute subsection tag: {sub_tag}")
+
+                while attr_pos < sub_end:
+                    tag, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
+                    if tag in (4, 5, 65, 67):
+                        attr_pos = skip_string(attributes, attr_pos, sub_end)
+                    elif tag == 32:
+                        _, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
+                        attr_pos = skip_string(attributes, attr_pos, sub_end)
+                    elif tag in known_numeric_tags:
+                        value, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
+                        if tag == 6:
+                            cpu_arch.append(value)
+                        elif tag == 28:
+                            vfp_args.append(value)
+                    elif tag >= 128:
+                        if tag % 128 % 2 == 0:
+                            _, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
+                        else:
+                            attr_pos = skip_string(attributes, attr_pos, sub_end)
+                    else:
+                        raise ValueError(f"Unknown mandatory ARM attribute tag: {tag}")
+                pos = sub_end
+        cursor = vendor_end
+
+    return cpu_arch, vfp_args
+
+
+def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None:
+    flags = int.from_bytes(binary[36:40], byte_order)
+    if flags & 0xFF000000 != 0x05000000:
+        raise ValueError("ARM binary must use EABI version 5")
+    float_abi = flags & 0x600
+    if target_family == "armv7":
+        if float_abi != 0x400:
+            raise ValueError("ARMv7 target requires the hard-float ELF ABI")
+        expected_arch = 10
+        allowed_vfp_args = {1, 3}
+    else:
+        if float_abi == 0x400 or float_abi == 0x600:
+            raise ValueError("ARMv6 target requires the base/soft-float ELF ABI")
+        expected_arch = 6
+        allowed_vfp_args = {0, 3}
+
+    cpu_arch, vfp_args = _read_arm_attributes(binary, byte_order)
+    if not cpu_arch:
+        raise ValueError("ARM binary has no file/section CPU architecture attribute")
+    if max(cpu_arch) > expected_arch:
+        raise ValueError(
+            f"ARM CPU architecture attribute {max(cpu_arch)} exceeds {target_family} target"
+        )
+    effective_vfp_args = vfp_args or [0]
+    if any(value not in allowed_vfp_args for value in effective_vfp_args):
+        raise ValueError(
+            f"ARM VFP argument ABI {effective_vfp_args} does not match {target_family} target"
+        )
+
+
 def validate_binary_arch(
     binary: bytes, arch: str, target_triple: str | None = None
 ) -> None:
@@ -719,6 +895,8 @@ def validate_binary_arch(
         expected_family = package_family
 
     expected = ELF_TARGETS[expected_family]
+    if expected_family in ("armv6", "armv7"):
+        validate_arm_abi(binary, expected_family, order)
     if (elf_class, endian, machine) != expected:
         raise ValueError(
             f"ELF architecture does not match release target {arch}"
