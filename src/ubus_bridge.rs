@@ -11706,7 +11706,7 @@ async fn execute_cli_part_dns_fuzzer(
                             let start = std::time::Instant::now();
                             tokio::time::timeout(
                                 Duration::from_millis(800),
-                                tokio::net::TcpStream::connect(&target),
+                                crate::net_stack::connect_tcp_bypass_host(&target),
                             )
                             .await
                             .ok()
@@ -11916,23 +11916,28 @@ async fn execute_cli_part_dns_fuzzer(
                         let mut samples = Vec::with_capacity(doms.len());
                         let mut vals = Vec::with_capacity(doms.len());
                         for dom in &doms {
-                            let res: Result<f64, String> = if proto == "udp" {
-                                probe_udp_dns_rtt_ms(&target, dom).await
+                            let res: Result<f64, Value> = if proto == "udp" {
+                                probe_udp_dns_rtt_ms(&target, dom)
+                                    .await
+                                    .map_err(|err_msg| dns_speed_test_error_json(None, &err_msg))
                             } else {
                                 let t0 = std::time::Instant::now();
                                 let connect_fut = async {
                                     if let Some(sock) = resolved_sock {
-                                        tokio::net::TcpStream::connect(sock).await
+                                        crate::net_stack::connect_tcp_bypass(sock).await
                                     } else {
-                                        tokio::net::TcpStream::connect(&target).await
+                                        crate::net_stack::connect_tcp_bypass_host(&target).await
                                     }
                                 };
                                 match tokio::time::timeout(Duration::from_millis(1500), connect_fut)
                                     .await
                                 {
                                     Ok(Ok(_)) => Ok((t0.elapsed().as_secs_f64() * 1000.0).max(0.5)),
-                                    Ok(Err(e)) => Err(e.to_string()),
-                                    Err(_) => Err("timeout".to_string()),
+                                    Ok(Err(e)) => Err(dns_speed_test_error_json(
+                                        e.raw_os_error(),
+                                        &e.to_string(),
+                                    )),
+                                    Err(_) => Err(dns_speed_test_error_json(None, "timeout")),
                                 }
                             };
                             match res {
@@ -11946,12 +11951,12 @@ async fn execute_cli_part_dns_fuzzer(
                                         "error": null
                                     }));
                                 }
-                                Err(err_msg) => {
+                                Err(err_val) => {
                                     samples.push(json!({
                                         "domain": dom,
                                         "ok": false,
                                         "ms": null,
-                                        "error": err_msg
+                                        "error": err_val
                                     }));
                                 }
                             }
@@ -16106,6 +16111,28 @@ pub fn sync_from_store_to_json_and_cache(store: &crate::store::RouterStoreData) 
     sync_section_cache(store);
 }
 
+fn dns_speed_test_error_json(raw_os_error: Option<i32>, message: &str) -> Value {
+    if message == "timeout" {
+        return json!({
+            "kind": "transport",
+            "code": 28,
+            "message": message
+        });
+    }
+    if message == "invalid DNS response" {
+        return json!({
+            "kind": "dns",
+            "code": 0,
+            "message": message
+        });
+    }
+    json!({
+        "kind": "transport",
+        "code": raw_os_error.unwrap_or(0),
+        "message": message
+    })
+}
+
 async fn probe_udp_dns_rtt_ms(target: &str, domain: &str) -> Result<f64, String> {
     let mut pkt = Vec::with_capacity(64);
     let tx_id: u16 = 0x5441;
@@ -16133,6 +16160,7 @@ async fn probe_udp_dns_rtt_ms(target: &str, domain: &str) -> Result<f64, String>
     let sock = tokio::net::UdpSocket::bind(bind_addr)
         .await
         .map_err(|e| e.to_string())?;
+    let _ = crate::net_stack::set_bypass_fwmark(&sock);
     sock.connect(target).await.map_err(|e| e.to_string())?;
     let t0 = std::time::Instant::now();
     sock.send(&pkt).await.map_err(|e| e.to_string())?;
@@ -17640,6 +17668,21 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         let ok = build_dns_bench_stats_json(&mut ok_vals, 3);
         assert_eq!(ok.get("status").and_then(Value::as_str), Some("healthy"));
         assert_eq!(ok.get("median").and_then(Value::as_f64), Some(27.16));
+    }
+
+    #[test]
+    fn test_dns_speed_test_error_json_matches_frontend_failure_label_schema() {
+        let timeout = dns_speed_test_error_json(None, "timeout");
+        assert_eq!(timeout["kind"], "transport");
+        assert_eq!(timeout["code"], 28);
+
+        let refused = dns_speed_test_error_json(Some(111), "Connection refused (os error 111)");
+        assert_eq!(refused["kind"], "transport");
+        assert_eq!(refused["code"], 111);
+
+        let invalid_dns = dns_speed_test_error_json(None, "invalid DNS response");
+        assert_eq!(invalid_dns["kind"], "dns");
+        assert_eq!(invalid_dns["code"], 0);
     }
 
     #[test]

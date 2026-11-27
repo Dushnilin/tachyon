@@ -20,6 +20,7 @@ pub const TPROXY_PORT: u16 = 1602;
 pub const TPROXY_FWMARK: &str = "0x04000000";
 pub const ROUTER_TPROXY_FWMARK: &str = "0x10000000";
 pub const BYPASS_FWMARK: &str = "0x40000000";
+pub const BYPASS_FWMARK_U32: u32 = 0x4000_0000;
 pub const DIRECT_PROBE_SKGID: u32 = 65533;
 pub const TPROXY_ROUTE_TABLE: &str = "100";
 pub const TAILSCALE_TUNNEL_BYPASS_MARK_MASK: &str = "0x00340000";
@@ -46,6 +47,95 @@ static LAST_APPLIED_NFT_SKELETON: std::sync::OnceLock<tokio::sync::Mutex<Option<
 
 fn nft_skeleton_lock() -> &'static tokio::sync::Mutex<Option<String>> {
     LAST_APPLIED_NFT_SKELETON.get_or_init(|| tokio::sync::Mutex::new(None))
+}
+
+/// Apply `SO_MARK = BYPASS_FWMARK_U32` (`0x40000000`) to a Linux socket so router-originated
+/// probes bypass `TachyonTable` `mangle_output` rules (`block_doh`, `dns_intercept_all`, TProxy).
+#[cfg(target_os = "linux")]
+pub fn set_bypass_fwmark<F: std::os::fd::AsRawFd>(fd: &F) -> std::io::Result<()> {
+    #[cfg(any(
+        target_arch = "mips",
+        target_arch = "mips32r6",
+        target_arch = "mips64",
+        target_arch = "mips64r6"
+    ))]
+    const SOL_SOCKET: i32 = 0xffff;
+    #[cfg(not(any(
+        target_arch = "mips",
+        target_arch = "mips32r6",
+        target_arch = "mips64",
+        target_arch = "mips64r6"
+    )))]
+    const SOL_SOCKET: i32 = 1;
+    const SO_MARK: i32 = 36;
+
+    unsafe extern "C" {
+        fn setsockopt(
+            sockfd: i32,
+            level: i32,
+            optname: i32,
+            optval: *const core::ffi::c_void,
+            optlen: u32,
+        ) -> i32;
+    }
+
+    let mark: u32 = BYPASS_FWMARK_U32;
+    let rc = unsafe {
+        setsockopt(
+            fd.as_raw_fd(),
+            SOL_SOCKET,
+            SO_MARK,
+            (&raw const mark).cast::<core::ffi::c_void>(),
+            core::mem::size_of::<u32>() as u32,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+/// No-op on non-Linux hosts where `SO_MARK` is unavailable.
+#[cfg(not(target_os = "linux"))]
+pub fn set_bypass_fwmark<F>(_fd: &F) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Connect a TCP socket to `addr` after marking it with `BYPASS_FWMARK_U32` (`0x40000000`)
+/// before `connect()` so the initial SYN packet bypasses `mangle_output` (`block_doh`, etc.).
+/// Unprivileged environments returning `EPERM` on `SO_MARK` are tolerated gracefully.
+pub async fn connect_tcp_bypass(
+    addr: std::net::SocketAddr,
+) -> std::io::Result<tokio::net::TcpStream> {
+    let socket = if addr.is_ipv4() {
+        tokio::net::TcpSocket::new_v4()?
+    } else {
+        tokio::net::TcpSocket::new_v6()?
+    };
+    let _ = set_bypass_fwmark(&socket);
+    socket.connect(addr).await
+}
+
+/// Resolve `target` (`ip:port` or `host:port`) and connect with `connect_tcp_bypass`.
+pub async fn connect_tcp_bypass_host(target: &str) -> std::io::Result<tokio::net::TcpStream> {
+    if let Ok(sock) = target.parse::<std::net::SocketAddr>() {
+        return connect_tcp_bypass(sock).await;
+    }
+    let addrs = tokio::net::lookup_host(target).await?;
+    let mut last_err = None;
+    for addr in addrs {
+        match connect_tcp_bypass(addr).await {
+            Ok(stream) => return Ok(stream),
+            Err(err) => last_err = Some(err),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "could not resolve any socket address",
+        )
+    }))
 }
 
 #[derive(Default, Clone, Debug)]
@@ -9568,5 +9658,39 @@ table inet TachyonTable {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_bypass_fwmark_u32_matches_hex_constant() {
+        let parsed = u32::from_str_radix(BYPASS_FWMARK.trim_start_matches("0x"), 16)
+            .expect("BYPASS_FWMARK must be valid hex");
+        assert_eq!(BYPASS_FWMARK_U32, parsed);
+        assert_eq!(BYPASS_FWMARK_U32, 0x4000_0000);
+    }
+
+    #[tokio::test]
+    async fn test_connect_tcp_bypass_connects_to_loopback_and_tolerates_unprivileged_so_mark() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind loopback listener");
+        let addr = listener.local_addr().expect("listener local_addr");
+
+        let accept_task = tokio::spawn(async move { listener.accept().await });
+        let client = connect_tcp_bypass(addr)
+            .await
+            .expect("connect_tcp_bypass should succeed even without CAP_NET_ADMIN");
+        assert_eq!(client.peer_addr().expect("peer_addr"), addr);
+        let (_srv_stream, _) = accept_task.await.expect("accept task").expect("accept");
+
+        let listener2 = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind second loopback listener");
+        let addr2 = listener2.local_addr().expect("listener2 local_addr");
+        let accept_task2 = tokio::spawn(async move { listener2.accept().await });
+        let client2 = connect_tcp_bypass_host(&addr2.to_string())
+            .await
+            .expect("connect_tcp_bypass_host should connect to ip:port");
+        assert_eq!(client2.peer_addr().expect("peer_addr2"), addr2);
+        let _ = accept_task2.await.expect("accept task2").expect("accept2");
     }
 }

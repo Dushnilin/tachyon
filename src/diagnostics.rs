@@ -5223,9 +5223,12 @@ pub async fn run_dns_speed_test() -> Vec<DnsBenchmarkEntry> {
     for (addr, label) in candidates {
         handles.push(tokio::spawn(async move {
             let start = Instant::now();
-            let ok = tokio::time::timeout(Duration::from_millis(1500), TcpStream::connect(addr))
-                .await
-                .is_ok_and(|r| r.is_ok());
+            let ok = tokio::time::timeout(
+                Duration::from_millis(1500),
+                crate::net_stack::connect_tcp_bypass_host(addr),
+            )
+            .await
+            .is_ok_and(|r| r.is_ok());
             let latency_ms = if ok {
                 start.elapsed().as_millis() as u32
             } else {
