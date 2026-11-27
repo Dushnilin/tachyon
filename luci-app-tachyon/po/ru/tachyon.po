@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 08:05+0300\n"
-"PO-Revision-Date: 2026-11-27 08:05+0300\n"
+"POT-Creation-Date: 2026-11-27 15:48+0300\n"
+"PO-Revision-Date: 2026-11-27 15:48+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -457,6 +457,9 @@ msgstr "Автоподбор Adaptive 2.0 (auto_tune)"
 
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "Адаптивный умный перебор (Genetic / Prior Seeds)"
+
+msgid "Add"
+msgstr "Добавить"
 
 msgid "Add Balancer"
 msgstr "Добавить балансировщик"
@@ -1957,6 +1960,9 @@ msgstr "Очистить историю"
 
 msgid "Clear all"
 msgstr "Сбросить все"
+
+msgid "Clear search"
+msgstr "Очистить поиск"
 
 msgid "Click \"Save login settings\" below to apply — the general router save button does not apply panel login settings."
 msgstr "Нажмите кнопку «Сохранить настройки входа» ниже — общая кнопка сохранения настроек роутера не применяет параметры входа."
@@ -7184,6 +7190,9 @@ msgstr "Проблем не обнаружено"
 msgid "No matchers set"
 msgstr "Критерии не заданы"
 
+msgid "No matches found"
+msgstr "Ничего не найдено"
+
 msgid "No matching entries found"
 msgstr "Записи не найдены"
 
@@ -7192,6 +7201,9 @@ msgstr "По запросу ничего не найдено"
 
 msgid "No more versions found"
 msgstr "Других версий не найдено"
+
+msgid "No options available"
+msgstr "Нет доступных вариантов"
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"
@@ -9542,11 +9554,11 @@ msgstr "Поиск домена или сервиса..."
 msgid "Search domain, IP, rule or client..."
 msgstr "Поиск домена, IP, правила или клиента..."
 
-msgid "Search servers in pool..."
-msgstr "Поиск серверов в пуле..."
-
 msgid "Search tabs, nodes, settings, themes or actions..."
 msgstr "Поиск разделов, узлов, настроек, тем или команд..."
+
+msgid "Search..."
+msgstr "Поиск..."
 
 msgid "Secret"
 msgstr "Секрет"
@@ -9802,6 +9814,9 @@ msgstr "Выберите секцию маршрутизации, через к�
 
 msgid "Select the section to route router's own traffic through."
 msgstr "Выберите секцию для маршрутизации трафика роутера."
+
+msgid "Select visible"
+msgstr "Выбрать видимые"
 
 msgid "Select whether to disable the target during the schedule or enable it ONLY during the schedule."
 msgstr "Выберите, отключать ли цель в период расписания или включать ТОЛЬКО в период расписания."
@@ -10156,6 +10171,9 @@ msgstr "Показать скрытые"
 
 msgid "Show hidden sections, subscriptions, and servers"
 msgstr "Показать скрытые секции, подписки и серверы"
+
+msgid "Show less"
+msgstr "Свернуть"
 
 msgid "Show matching servers"
 msgstr "Показать подходящие серверы"
@@ -12728,6 +12746,9 @@ msgstr "midsld-2 (за 2 байта до середины домена MidSLD)"
 msgid "min/day"
 msgstr "мин/день"
 
+msgid "more"
+msgstr "ещё"
+
 msgid "ms"
 msgstr "мс"
 
@@ -12781,6 +12802,9 @@ msgstr "пре-релиз"
 
 msgid "quarantine"
 msgstr "карантин"
+
+msgid "remaining"
+msgstr "осталось"
 
 msgid "removed"
 msgstr "удалено"
@@ -13084,6 +13108,9 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Search servers in pool..."
+msgstr "Поиск серверов в пуле..."
 
 msgid "AmneziaWG / WireGuard .conf Content"
 msgstr "Содержимое .conf файла (AmneziaWG / WireGuard)"
@@ -16111,9 +16138,6 @@ msgstr "Внимание: сейчас выбрана DNS-стратегия «�
 
 msgid "Dismiss"
 msgstr "Закрыть"
-
-msgid "Add"
-msgstr "Добавить"
 
 msgid "Confirm"
 msgstr "Подтвердить"
