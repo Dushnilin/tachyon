@@ -738,7 +738,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
         name_off, kind, offset, size, _ = section(index)
         if name_off >= len(names):
             raise ValueError("Invalid ARM ELF section name")
-        name_end = names.find(b"\\0", name_off)
+        name_end = names.find(b"\0", name_off)
         if name_end < 0:
             raise ValueError("Unterminated ARM ELF section name")
         name = names[name_off:name_end]
@@ -764,7 +764,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                           68, 70, 72, 74, 76}
 
     def skip_string(data: bytes, pos: int, limit: int) -> int:
-        end = data.find(b"\\0", pos, limit)
+        end = data.find(b"\0", pos, limit)
         if end < 0:
             raise ValueError("Unterminated ARM attribute string")
         return end + 1
@@ -778,7 +778,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
         if vendor_size < 5 or vendor_end > len(attributes):
             raise ValueError("Invalid ARM attribute vendor length")
         vendor_name_start = cursor + 4
-        vendor_name_end = attributes.find(b"\\0", vendor_name_start, vendor_end)
+        vendor_name_end = attributes.find(b"\0", vendor_name_start, vendor_end)
         if vendor_name_end < 0:
             raise ValueError("Unterminated ARM attribute vendor name")
         vendor = attributes[vendor_name_start:vendor_name_end]
