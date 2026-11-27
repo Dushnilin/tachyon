@@ -699,7 +699,7 @@ def _read_uleb128(data: bytes, offset: int, end: int) -> tuple[int, int]:
     raise ValueError("Malformed ARM attribute ULEB128")
 
 
-def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], list[int], list[int], bool]:
+def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], list[int], list[int], list[int], list[int], bool]:
     """Read CPU architecture and VFP calling-convention attributes from ELF32."""
     if len(binary) < 52 or binary[4] != 1:
         raise ValueError("ARM target must use ELF32")
@@ -757,6 +757,8 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
         raise ValueError("Unsupported ARM attributes format")
     cpu_arch: list[int] = []
     cpu_profiles: list[int] = []
+    fp_arch: list[int] = []
+    simd_arch: list[int] = []
     vfp_args: list[int] = []
     no_defaults = False
     cursor = 1
@@ -821,6 +823,10 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                             cpu_arch.append(value)
                         elif tag == 7:
                             cpu_profiles.append(value)
+                        elif tag == 10:
+                            fp_arch.append(value)
+                        elif tag == 12:
+                            simd_arch.append(value)
                         elif tag == 28:
                             vfp_args.append(value)
                     elif tag >= 64:
@@ -833,7 +839,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                 pos = sub_end
         cursor = vendor_end
 
-    return cpu_arch, cpu_profiles, vfp_args, no_defaults
+    return cpu_arch, cpu_profiles, fp_arch, simd_arch, vfp_args, no_defaults
 
 
 def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None:
@@ -852,7 +858,7 @@ def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None
         expected_arch = 6
         allowed_vfp_args = {0, 3}
 
-    cpu_arch, cpu_profiles, vfp_args, no_defaults = _read_arm_attributes(binary, byte_order)
+    cpu_arch, cpu_profiles, fp_arch, simd_arch, vfp_args, no_defaults = _read_arm_attributes(binary, byte_order)
     if not cpu_arch:
         raise ValueError("ARM binary has no file/section CPU architecture attribute")
     if max(cpu_arch) > expected_arch:
@@ -863,6 +869,13 @@ def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None
         raise ValueError(
             f"ARM CPU architecture profile {cpu_profiles} is not compatible with Linux target"
         )
+    max_fp_arch = max(fp_arch or [0])
+    max_simd_arch = max(simd_arch or [0])
+    if target_family == "armv6":
+        if max_fp_arch > 0 or max_simd_arch > 0:
+            raise ValueError("ARMv6 soft-float target cannot require VFP or Advanced SIMD")
+    elif max_fp_arch > 4 or max_simd_arch > 0:
+        raise ValueError("ARMv7 target exceeds VFPv3-D16 or requires Advanced SIMD")
     if no_defaults:
         raise ValueError("ARM attribute defaults are undefined under Tag_nodefaults")
     effective_vfp_args = vfp_args or [0]
