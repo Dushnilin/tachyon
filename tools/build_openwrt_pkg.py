@@ -856,8 +856,8 @@ def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None
         raise ValueError(
             f"ARM CPU architecture attribute {max(cpu_arch)} exceeds {target_family} target"
         )
-    if not vfp_args and no_defaults:
-        raise ValueError("ARM VFP argument ABI is undefined by Tag_nodefaults")
+    if no_defaults:
+        raise ValueError("ARM attribute defaults are undefined under Tag_nodefaults")
     effective_vfp_args = vfp_args or [0]
     if any(value not in allowed_vfp_args for value in effective_vfp_args):
         raise ValueError(
