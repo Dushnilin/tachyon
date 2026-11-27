@@ -695,7 +695,7 @@ function append_resilient_dns_group(result, settings, bootstrap, main) {
         tag: runtime_constants.DNS_RESILIENT_SERVER_TAG,
         mode: "stable",
         error_ttl: "30s",
-        timeout: "4s",
+        timeout: "8s",
         servers: group_members
     });
 }
@@ -710,7 +710,7 @@ function config(settings, override_state) {
             tag: runtime_constants.DNS_RESILIENT_SERVER_TAG,
             mode: "stable",
             error_ttl: "30s",
-            timeout: "4s",
+            timeout: "8s",
             servers: [ runtime_constants.DNS_SERVER_TAG, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG ]
         };
         return {

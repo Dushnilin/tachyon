@@ -85,8 +85,8 @@ assert(c1.route.default_domain_resolver == "dns-resilient",
 assert(c1.dns.final == "dns-resilient",
   "dns.final must target dns-resilient, got " + sprintf("%J", c1.dns.final));
 let g1 = find_tag(c1.dns.servers, "dns-resilient");
-assert(g1 && g1.type == "group" && g1.mode == "stable" && g1.error_ttl == "30s",
-  "c1 must include stable dns-resilient group: " + sprintf("%J", g1));
+assert(g1 && g1.type == "group" && g1.mode == "stable" && g1.error_ttl == "30s" && g1.timeout == "8s",
+  "c1 must include stable dns-resilient group with 8s timeout: " + sprintf("%J", g1));
 assert(length(g1.servers) == 1 && g1.servers[0] == "dns-server",
   "c1 DoH dns-resilient must contain only encrypted servers (no plain UDP bootstrap leak): " + sprintf("%J", g1));
 

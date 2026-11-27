@@ -1919,7 +1919,7 @@ function build_safe_minimal_config(settings, listen_addr) {
                     tag: "dns-resilient",
                     mode: "stable",
                     error_ttl: "30s",
-                    timeout: "4s",
+                    timeout: "8s",
                     servers: [ "dns-fallback-1", "bootstrap-dns-server" ]
                 }
             ],

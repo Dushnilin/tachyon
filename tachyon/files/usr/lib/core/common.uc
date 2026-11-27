@@ -1414,6 +1414,48 @@ function sanitize_config_dialer_fragments(config) {
     return config;
 }
 
+function sanitize_tewfai_outbound_quic(outbound) {
+    if (type(outbound) != "object")
+        return outbound;
+    let otype = lc(trim(as_string(outbound.type || "")));
+    if (otype != "tewfai" || type(outbound.quic) != "bool")
+        return outbound;
+    let enabled = outbound.quic === true;
+    delete outbound.quic;
+    if (!enabled)
+        return outbound;
+    if (outbound.transport == null) {
+        outbound.transport = [ "quic", "tcp" ];
+    } else if (type(outbound.transport) == "string") {
+        let cur = trim(outbound.transport);
+        if (cur == "")
+            outbound.transport = [ "quic", "tcp" ];
+        else if (lc(cur) != "quic")
+            outbound.transport = [ cur, "quic" ];
+    } else if (type(outbound.transport) == "array") {
+        let has_quic = false;
+        for (let item in outbound.transport) {
+            if (lc(trim(as_string(item || ""))) == "quic") {
+                has_quic = true;
+                break;
+            }
+        }
+        if (!has_quic)
+            push(outbound.transport, "quic");
+    }
+    return outbound;
+}
+
+function sanitize_config_tewfai_outbounds(config) {
+    if (type(config) != "object")
+        return config;
+    if (type(config.outbounds) == "array") {
+        for (let ob in config.outbounds)
+            sanitize_tewfai_outbound_quic(ob);
+    }
+    return config;
+}
+
 function log_message(message, level, tag) {
     // Delegate to unified structured logging module.
     // Maintains backward-compatible signature: log_message(message, level, tag)
@@ -1464,6 +1506,8 @@ return {
     sanitize_dialer_fragment_object,
     sanitize_outbound_dialer_fragments,
     sanitize_config_dialer_fragments,
+    sanitize_tewfai_outbound_quic,
+    sanitize_config_tewfai_outbounds,
     mtproto_secret_canonical,
     shell_quote,
     command_from_args,

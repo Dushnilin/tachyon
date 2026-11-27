@@ -1741,7 +1741,7 @@ function add_routed_dns_server_for_section(config, section) {
                 tag: tag_name,
                 mode: "stable",
                 error_ttl: "30s",
-                timeout: "4s",
+                timeout: "8s",
                 servers: member_tags
             });
         }

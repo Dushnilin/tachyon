@@ -2646,6 +2646,7 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     strip_certificate_pins_if_unsupported(config);
     normalize_hysteria2_server_ports(config);
     common.sanitize_config_dialer_fragments(config);
+    common.sanitize_config_tewfai_outbounds(config);
     apply_settings_tcp_profile(config, settings);
     apply_bootstrap_domain_resolver_to_transports(config);
     finalize_config_owners(config, owners, output_path);
