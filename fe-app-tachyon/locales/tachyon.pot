@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 18:42+0300\n"
-"PO-Revision-Date: 2026-11-27 18:42+0300\n"
+"POT-Creation-Date: 2026-11-27 20:41+0300\n"
+"PO-Revision-Date: 2026-11-27 20:41+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -81,7 +81,7 @@ msgstr ""
 msgid "-- Add tier from this section --"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1759
+#: src/helpers/searchableCheckboxMultiSelect.ts:1778
 #: src/helpers/searchableCheckboxMultiSelect.ts:643
 #: src/helpers/searchableCheckboxMultiSelect.ts:820
 #: src/views/section.ts:16001
@@ -661,7 +661,7 @@ msgstr ""
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1066
+#: src/helpers/searchableCheckboxMultiSelect.ts:1078
 msgid "Add"
 msgstr ""
 
@@ -2116,7 +2116,7 @@ msgstr ""
 msgid "Block"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:4569
+#: src/tachyon/methods/custom/getDashboardSections.ts:4628
 #: src/tachyon/studioDeck.ts:3898
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2328
 msgid "Block (Reject)"
@@ -3445,7 +3445,7 @@ msgstr ""
 msgid "Confirm?"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:4531
+#: src/tachyon/methods/custom/getDashboardSections.ts:4590
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1701
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:306
 msgid "Conflict"
@@ -4713,7 +4713,7 @@ msgstr ""
 msgid "Direct (Default)"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:4590
+#: src/tachyon/methods/custom/getDashboardSections.ts:4649
 #: src/tachyon/studioDeck.ts:3903
 #: src/tachyon/tabs/dashboard/inboundServers.ts:396
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2335
@@ -8842,8 +8842,8 @@ msgstr ""
 msgid "Invalid transfer code"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1195
-#: src/helpers/searchableCheckboxMultiSelect.ts:1405
+#: src/helpers/searchableCheckboxMultiSelect.ts:1207
+#: src/helpers/searchableCheckboxMultiSelect.ts:1417
 #: src/views/conditions.ts:861
 msgid "Invalid value"
 msgstr ""
@@ -10456,7 +10456,7 @@ msgstr ""
 msgid "No matchers set"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1099
+#: src/helpers/searchableCheckboxMultiSelect.ts:1111
 msgid "No matches found"
 msgstr ""
 
@@ -10472,7 +10472,7 @@ msgstr ""
 msgid "No more versions found"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1100
+#: src/helpers/searchableCheckboxMultiSelect.ts:1112
 msgid "No options available"
 msgstr ""
 
@@ -10642,7 +10642,7 @@ msgstr ""
 msgid "Not available in demo mode — enter WARP private key manually"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:4534
+#: src/tachyon/methods/custom/getDashboardSections.ts:4593
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1704
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:47
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:281
@@ -13646,9 +13646,9 @@ msgstr ""
 
 #: src/tachyon/appShell.ts:2480
 #: src/tachyon/appShell.ts:3721
-#: src/tachyon/methods/custom/getDashboardSections.ts:4102
-#: src/tachyon/methods/custom/getDashboardSections.ts:4119
-#: src/tachyon/methods/custom/getDashboardSections.ts:4529
+#: src/tachyon/methods/custom/getDashboardSections.ts:4159
+#: src/tachyon/methods/custom/getDashboardSections.ts:4176
+#: src/tachyon/methods/custom/getDashboardSections.ts:4588
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1432
 #: src/tachyon/tabs/dashboard/initController.ts:6670
 #: src/tachyon/tabs/dashboard/initController.ts:6773
@@ -14833,7 +14833,7 @@ msgstr ""
 msgid "Show metadata on dashboard"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1023
+#: src/helpers/searchableCheckboxMultiSelect.ts:1035
 #: src/tachyon/studioDeck.ts:4928
 #: src/tachyon/studioDeck.ts:4954
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:976
@@ -15378,8 +15378,8 @@ msgstr ""
 
 #: src/tachyon/appShell.ts:2483
 #: src/tachyon/appShell.ts:3724
-#: src/tachyon/methods/custom/getDashboardSections.ts:4102
-#: src/tachyon/methods/custom/getDashboardSections.ts:4533
+#: src/tachyon/methods/custom/getDashboardSections.ts:4159
+#: src/tachyon/methods/custom/getDashboardSections.ts:4592
 #: src/tachyon/studioDeck.ts:6083
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1407
 #: src/tachyon/tabs/dashboard/initController.ts:6671
@@ -17251,7 +17251,7 @@ msgstr ""
 msgid "United States (us)"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:4535
+#: src/tachyon/methods/custom/getDashboardSections.ts:4594
 #: src/tachyon/switchHistory.ts:100
 #: src/tachyon/switchHistory.ts:96
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1705
@@ -18790,7 +18790,7 @@ msgstr ""
 msgid "quarantine"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1023
+#: src/helpers/searchableCheckboxMultiSelect.ts:1035
 msgid "remaining"
 msgstr ""
 
