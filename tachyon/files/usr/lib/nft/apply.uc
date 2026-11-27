@@ -5048,6 +5048,54 @@ function canonicalize_ipv4_intervals(intervals) {
     return join(",", merged);
 }
 
+function u32_to_ipv4(u) {
+    let b0 = int(u / 16777216) % 256;
+    let b1 = int(u / 65536) % 256;
+    let b2 = int(u / 256) % 256;
+    let b3 = u % 256;
+    return sprintf("%d.%d.%d.%d", b0, b1, b2, b3);
+}
+
+function merge_ipv4_batch_entries(entries) {
+    if (type(entries) != "array" || length(entries) <= 1)
+        return entries;
+
+    let intervals = [];
+    for (let entry in entries) {
+        let iv = ipv4_entry_to_interval(entry);
+        if (iv == null)
+            return entries;
+        push(intervals, iv);
+    }
+
+    let sorted = sort(intervals, function(a, b) {
+        if (a[0] != b[0])
+            return a[0] < b[0] ? -1 : 1;
+        return a[1] < b[1] ? -1 : (a[1] > b[1] ? 1 : 0);
+    });
+
+    let out = [];
+    let cur_s = sorted[0][0];
+    let cur_e = sorted[0][1];
+    let had_overlap = false;
+    for (let i = 1; i < length(sorted); i++) {
+        let nxt = sorted[i];
+        if (nxt[0] <= cur_e) {
+            had_overlap = true;
+            if (nxt[1] > cur_e)
+                cur_e = nxt[1];
+        } else {
+            push(out, cur_s == cur_e ? u32_to_ipv4(cur_s) : (u32_to_ipv4(cur_s) + "-" + u32_to_ipv4(cur_e)));
+            cur_s = nxt[0];
+            cur_e = nxt[1];
+        }
+    }
+    if (!had_overlap)
+        return entries;
+    push(out, cur_s == cur_e ? u32_to_ipv4(cur_s) : (u32_to_ipv4(cur_s) + "-" + u32_to_ipv4(cur_e)));
+    return out;
+}
+
 function current_nft_ipv4_set_signature(table, set_name) {
     let raw = as_string(command_output_quiet_from_args([ "nft", "-j", "list", "set", "inet", table, set_name ]) || "");
     if (trim(raw) == "")
@@ -5190,16 +5238,21 @@ function apply_memory_batch_lines(lines, coalesce) {
         let entries = g.entries;
         if (length(entries) == 0)
             continue;
+        if (!is_ipv6_set_name(g.set))
+            entries = merge_ipv4_batch_entries(entries);
         if (!is_ipv6_set_name(g.set) && length(entries) > chunk_size) {
-            for (let chunk in split_array_chunks(entries, chunk_size)) {
+            let chunks = split_array_chunks(entries, chunk_size);
+            let total_chunks = length(chunks);
+            for (let i = 0; i < total_chunks; i++) {
+                let chunk = chunks[i];
                 if (!apply_single_nft_batch_file([ "add element inet " + g.table + " " + g.set + " { " + join(", ", chunk) + " }" ])) {
-                    log_warn("Batch apply failed for set inet " + g.table + " " + g.set);
+                    log_warn(sprintf("Batch apply failed for set inet %s %s (chunk %d/%d, chunk_entries=%d, total_entries=%d)", g.table, g.set, i + 1, total_chunks, length(chunk), length(entries)));
                     return false;
                 }
             }
         } else {
             if (!apply_single_nft_batch_file([ "add element inet " + g.table + " " + g.set + " { " + join(", ", entries) + " }" ])) {
-                log_warn("Batch apply failed for set inet " + g.table + " " + g.set);
+                log_warn(sprintf("Batch apply failed for set inet %s %s (entries=%d)", g.table, g.set, length(entries)));
                 return false;
             }
         }
@@ -5634,7 +5687,8 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
     let ip_values = section_rule_condition_csv(section, "ip_cidr", "subnets");
     let sets = section_priority_sets(section);
 
-    if (section_needs_priority_sets(section) && !nft_add_section_source_matchers(section, table, 5000))
+    if (section_needs_priority_sets(section) &&
+        (!nft_create_priority_sets(table, sets) || !nft_add_section_source_matchers(section, table, 5000)))
         return false;
 
     let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
@@ -6161,6 +6215,9 @@ function nft_add_source_aware_dns_sources(sections, deferred_sections, table) {
     if (length(values) == 0)
         return true;
 
+    if (!nft_create_ipv4_set(table, DNS_SOURCE_SET) || !nft_create_ipv6_set(table, DNS_SOURCE6_SET))
+        return false;
+
     return nft_add_csv_chunks_to_family_sets(
         join(",", values),
         table,
@@ -6335,6 +6392,9 @@ function nft_commit_list_refresh(prefix, additions) {
             continue;
         }
 
+        if (!is_ipv6_set_name(t.set))
+            entries = merge_ipv4_batch_entries(entries);
+
         if (!is_ipv6_set_name(t.set) && length(entries) > chunk_size) {
             let chunks = split_array_chunks(entries, chunk_size);
             for (let i = 0; i < length(chunks); i++) {
@@ -6395,8 +6455,7 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
     if (!arg_bool(populate_enabled))
         return true;
 
-    if (!nft_table_present(table)) {
-        log_warn("nft_populate_runtime_sets_from_uci: Table " + table + " does not exist. Rebuilding firewall rules dynamically.");
+    let rebuild_table = function() {
         let rt_table = getenv("RT_TABLE_NAME") || "tachyon";
         let localv4 = default_arg(localv4_set, "localv4");
         let common_set_eff = default_arg(common_set, "tachyon_subnets");
@@ -6414,7 +6473,13 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
         let ip_port6 = default_arg(ip_port6_set, "tachyon_ip6_ports");
         let frange6 = trim(option(settings, "fakeip_inet6_range", "")) || "fc00::/18";
         let taddr6 = eff_v6.ipv6_active ? as_string(runtime_constants.TPROXY_INBOUND6_ADDRESS || "::1") : "off";
-        nft_rebuild_runtime_from_uci(rt_table, table, localv4, common_set_eff, port, ip_port, iface, fmark, omark, frange4, tport, localv6, common6, ip_port6, frange6, taddr6);
+        return nft_rebuild_runtime_from_uci(rt_table, table, localv4, common_set_eff, port, ip_port, iface, fmark, omark, frange4, tport, localv6, common6, ip_port6, frange6, taddr6);
+    };
+
+    let table_existed = nft_table_present(table);
+    if (!table_existed) {
+        log_warn("nft_populate_runtime_sets_from_uci: Table " + table + " does not exist. Rebuilding firewall rules dynamically.");
+        rebuild_table();
     }
 
     let sections = uci_sections("section");
@@ -6429,13 +6494,37 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
             log_warn("nft_populate_runtime_sets_from_uci: failed preparing runtime sets; aborting batch apply");
             return false;
         }
-        if (!apply_memory_batch_lines(captured, true)) {
+        if (apply_memory_batch_lines(captured, true))
+            return true;
+        if (!table_existed) {
             log_warn("nft_populate_runtime_sets_from_uci: failed applying batched runtime sets");
+            return false;
+        }
+        log_warn("nft_populate_runtime_sets_from_uci: batched set update failed on existing table " + table + "; rebuilding table and retrying once");
+        NFT_BATCH_SET_METADATA = {};
+        if (!rebuild_table())
+            return false;
+        memory_batch_lines = [];
+        memory_batch_mode = "populate";
+        let retry_ok = nft_populate_runtime_sets_from_sections(sections, populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set);
+        let captured_retry = memory_batch_lines;
+        memory_batch_lines = null;
+        memory_batch_mode = "";
+        if (!retry_ok || !apply_memory_batch_lines(captured_retry, true)) {
+            log_warn("nft_populate_runtime_sets_from_uci: failed applying batched runtime sets after table rebuild");
             return false;
         }
         return true;
     }
 
+    if (nft_populate_runtime_sets_from_sections(sections, populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set))
+        return true;
+    if (!table_existed)
+        return false;
+    log_warn("nft_populate_runtime_sets_from_uci: set update failed on existing table " + table + "; rebuilding table and retrying once");
+    NFT_BATCH_SET_METADATA = {};
+    if (!rebuild_table())
+        return false;
     return nft_populate_runtime_sets_from_sections(sections, populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set);
 }
 
