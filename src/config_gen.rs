@@ -19028,7 +19028,6 @@ fn apply_server_filter_spec(
             }
         }
     }
-    let outbound_meta = build_outbound_filter_meta_map(outbounds);
 
     let inc_countries_upper: Vec<String> = spec
         .include_countries
@@ -19068,6 +19067,15 @@ fn apply_server_filter_spec(
         ports: &spec.exclude_ports,
     };
 
+    let needs_outbound_meta = [&inc_criteria, &exc_criteria].into_iter().any(|criteria| {
+        criteria.proxy_params_enabled
+            && !(criteria.protocols.is_empty()
+                && criteria.transports.is_empty()
+                && criteria.securities.is_empty()
+                && criteria.ports.is_empty())
+    });
+    let outbound_meta = needs_outbound_meta.then(|| build_outbound_filter_meta_map(outbounds));
+    let needs_country = !inc_countries_upper.is_empty() || !exc_countries_upper.is_empty();
     let has_inc = spec.has_include_rules();
     let detect_mode_lc = spec.detect_server_country.trim().to_ascii_lowercase();
     let disable_country_detect = matches!(
@@ -19088,7 +19096,7 @@ fn apply_server_filter_spec(
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
             let display_name = display_name_for_filter(tag, tag_srcs, &known_prefixes);
-            let cc = if disable_country_detect {
+            let cc = if !needs_country || disable_country_detect {
                 String::new()
             } else if use_flag_only {
                 extract_flag_emoji_country_code(display_name)
@@ -19097,7 +19105,9 @@ fn apply_server_filter_spec(
                 detect_country_code(tag)
             }
             .to_ascii_uppercase();
-            let ob_meta = outbound_meta.get(tag.as_str());
+            let ob_meta = outbound_meta
+                .as_ref()
+                .and_then(|meta| meta.get(tag.as_str()));
 
             let is_included = candidate_matches_criteria(
                 tag,
