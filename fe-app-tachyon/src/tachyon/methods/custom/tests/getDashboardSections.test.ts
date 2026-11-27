@@ -3731,4 +3731,137 @@ describe('getDashboardSections', () => {
       '/var/run/tachyon/ui-state/clash-proxies.json',
     );
   });
+
+  it('does not leak unrelated nodes from getOutboundMetadata("all") into a single-node section without sel-<Section>', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'Main',
+        outbound_source_refs: ['src_1cent'],
+        selector_proxy_links: ['mieru://example#1cent'],
+        urltests: undefined,
+        urltest_settings: undefined,
+        ...({ active_selected_tag: '1cent' } as Partial<Tachyon.ConfigSection>),
+      }),
+      proxySection({
+        '.name': 'Youtube',
+        outbound_source_refs: ['sub_akonit'],
+        selector_proxy_links: ['vless://example#akonit'],
+        urltests: undefined,
+        urltest_settings: undefined,
+      }),
+    ]);
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          '1cent': proxy('Mieru', {
+            name: '1cent',
+            history: [{ time: '2026-01-01T00:00:00Z', delay: 59 }],
+          }),
+          'akonit-node-1': proxy('VLESS', {
+            name: 'akonit-node-1',
+            history: [{ time: '2026-01-01T00:00:00Z', delay: 88 }],
+          }),
+          'akonit-node-2': proxy('Hysteria2', {
+            name: 'akonit-node-2',
+            history: [{ time: '2026-01-01T00:00:00Z', delay: 73 }],
+          }),
+          'sel-Youtube': proxy('Selector', {
+            name: 'sel-Youtube',
+            now: 'akonit-node-1',
+            all: ['akonit-node-1', 'akonit-node-2'],
+          }),
+        },
+      },
+    });
+
+    mocks.getOutboundMetadata.mockImplementation(async (target: string) => {
+      if (target === 'all') {
+        return {
+          success: true,
+          data: {
+            names: {
+              '1cent': '1cent',
+              'akonit-node-1': 'Akonit 1',
+              'akonit-node-2': 'Akonit 2',
+            },
+            protocols: {
+              '1cent': 'Mieru',
+              'akonit-node-1': 'VLESS',
+              'akonit-node-2': 'Hysteria2',
+            },
+          },
+        };
+      }
+      return {
+        success: true,
+        data: {
+          names: { '1cent': '1cent' },
+          protocols: { '1cent': 'Mieru' },
+        },
+      };
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const main = result.data.find((s) => s.sectionName === 'Main');
+    expect(main).toBeDefined();
+    expect(main?.outbounds.map((o) => o.code)).toEqual(['1cent']);
+    expect(main?.outbounds[0].selected).toBe(true);
+    expect(main?.outbounds[0].latency).toBe(59);
+  });
+
+  it('falls back to /tmp/tachyon-rs/section-cache/<section>.json when /var/run/tachyon/section-cache/<section>.json is missing', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'Main',
+        outbound_source_refs: ['src_1cent'],
+        selector_proxy_links: ['mieru://example#1cent'],
+        urltests: undefined,
+        urltest_settings: undefined,
+      }),
+    ]);
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          '1cent': proxy('Mieru', {
+            name: '1cent',
+            history: [{ time: '2026-01-01T00:00:00Z', delay: 42 }],
+          }),
+          'akonit-node-1': proxy('VLESS', {
+            name: 'akonit-node-1',
+          }),
+        },
+      },
+    });
+
+    mocks.fsRead.mockImplementation(async (path: string) => {
+      if (path === '/tmp/tachyon-rs/section-cache/Main.json') {
+        return JSON.stringify({
+          outboundMetadata: {
+            names: { '1cent': '1cent' },
+            protocols: { '1cent': 'Mieru' },
+          },
+        });
+      }
+      throw new Error('ENOENT');
+    });
+
+    mocks.getOutboundMetadata.mockResolvedValue({
+      success: true,
+      data: {
+        names: { '1cent': '1cent', 'akonit-node-1': 'Akonit 1' },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const main = result.data.find((s) => s.sectionName === 'Main');
+    expect(main?.outbounds.map((o) => o.code)).toEqual(['1cent']);
+    expect(main?.outbounds[0].selected).toBe(true);
+    expect(main?.outbounds[0].latency).toBe(42);
+  });
 });

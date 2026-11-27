@@ -143,7 +143,10 @@ type ChildType =
   | 'outbound_group'
   | 'balancer';
 
-const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
+const DASHBOARD_SECTION_CACHE_DIRS = [
+  '/var/run/tachyon/section-cache',
+  '/tmp/tachyon-rs/section-cache',
+];
 // Written by tachyon_core/runtime.uc when it quarantines a section that
 // tachyon-core refused to load; absent (or stale-empty) when every section
 // loaded fine.
@@ -2257,40 +2260,47 @@ async function readDashboardSectionCache(
     return undefined;
   }
 
-  const path = `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`;
+  const directFs = fs as unknown as {
+    read_direct?: (p: string, type?: string) => Promise<string>;
+    exec_direct?: (
+      cmd: string,
+      args?: string[],
+      type?: string,
+    ) => Promise<string>;
+  };
 
-  try {
-    const raw = await fs.read(path).catch(async (err: unknown) => {
-      if (isFsNotFoundError(err)) {
-        return '';
+  for (const cacheDir of DASHBOARD_SECTION_CACHE_DIRS) {
+    const path = `${cacheDir}/${sectionName}.json`;
+    try {
+      const raw = await fs.read(path).catch(async (err: unknown) => {
+        if (isFsNotFoundError(err)) {
+          return '';
+        }
+        if (typeof directFs.read_direct === 'function') {
+          return directFs.read_direct(path, 'text');
+        }
+        if (typeof directFs.exec_direct === 'function') {
+          return directFs.exec_direct('/bin/cat', [path], 'text');
+        }
+        const res = await fs.exec('/bin/cat', [path]);
+        return res?.stdout || '';
+      });
+      if (!raw) {
+        continue;
       }
-      const directFs = fs as unknown as {
-        read_direct?: (p: string, type?: string) => Promise<string>;
-        exec_direct?: (
-          cmd: string,
-          args?: string[],
-          type?: string,
-        ) => Promise<string>;
-      };
-      if (typeof directFs.read_direct === 'function') {
-        return directFs.read_direct(path, 'text');
-      }
-      if (typeof directFs.exec_direct === 'function') {
-        return directFs.exec_direct('/bin/cat', [path], 'text');
-      }
-      const res = await fs.exec('/bin/cat', [path]);
-      return res?.stdout || '';
-    });
-    const parsed = JSON.parse(raw) as DashboardSectionCache;
+      const parsed = JSON.parse(raw) as DashboardSectionCache;
 
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return undefined;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        continue;
+      }
+
+      return parsed;
+    } catch (_error) {
+      continue;
     }
-
-    return parsed;
-  } catch (_error) {
-    return undefined;
   }
+
+  return undefined;
 }
 
 // One flat map { section: reason } from the runtime's quarantine record.
@@ -3813,6 +3823,30 @@ function hasAnyTagInOutboundMetadata(
   return false;
 }
 
+function filterOutboundMetadataByTags(
+  meta: Tachyon.GetOutboundMetadata | undefined,
+  tags: Set<string>,
+): Tachyon.GetOutboundMetadata | undefined {
+  if (!meta || tags.size === 0) {
+    return undefined;
+  }
+  const filtered: Tachyon.GetOutboundMetadata = {};
+  for (const field of OUTBOUND_METADATA_FIELDS) {
+    const rec = meta[field];
+    if (!rec || typeof rec !== 'object') continue;
+    const nextRec: Record<string, string> = {};
+    for (const tag of tags) {
+      if (Object.prototype.hasOwnProperty.call(rec, tag)) {
+        nextRec[tag] = rec[tag];
+      }
+    }
+    if (Object.keys(nextRec).length > 0) {
+      filtered[field] = nextRec;
+    }
+  }
+  return hasNonEmptyOutboundMetadata(filtered) ? filtered : undefined;
+}
+
 function normalizeSubscriptionMetaList(
   subMeta?: Tachyon.SubscriptionMetadata | Tachyon.SubscriptionMetadata[],
 ): Tachyon.SubscriptionMetadata[] {
@@ -3878,6 +3912,13 @@ function collectSectionProxyTags(
     const selector = resolveSectionRuntimeSelector(proxyByCode, secName, sec);
     if (selector) {
       walkEntry(selector.code);
+    } else {
+      const activeTag = (
+        sec as Tachyon.ConfigSection & { active_selected_tag?: unknown }
+      ).active_selected_tag;
+      if (typeof activeTag === 'string' && proxyByCode.has(activeTag)) {
+        walkEntry(activeTag);
+      }
     }
   };
 
@@ -3939,8 +3980,7 @@ async function loadDashboardSectionCacheWithRpc(
   );
   const hasBulkOut =
     hasNonEmptyOutboundMetadata(bulkOutMeta) &&
-    (sectionTags.size === 0 ||
-      hasAnyTagInOutboundMetadata(bulkOutMeta, sectionTags));
+    hasAnyTagInOutboundMetadata(bulkOutMeta, sectionTags);
   const hasCacheOut = hasNonEmptyOutboundMetadata(fileCache?.outboundMetadata);
 
   const bulkSubList = includeSubMeta
@@ -3977,7 +4017,9 @@ async function loadDashboardSectionCacheWithRpc(
       : Promise.resolve(undefined),
   ]);
 
-  const effectiveRpcOrBulkOut = hasBulkOut ? bulkOutMeta : rpcOutMeta;
+  const effectiveRpcOrBulkOut = hasBulkOut
+    ? filterOutboundMetadataByTags(bulkOutMeta, sectionTags)
+    : rpcOutMeta;
   const mergedOutMeta = mergeOutboundMetaRecords(
     fileCache?.outboundMetadata,
     effectiveRpcOrBulkOut,

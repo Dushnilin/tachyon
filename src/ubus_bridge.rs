@@ -6732,10 +6732,21 @@ fn resolve_clash_group_for_target(
                     return cand.clone();
                 }
             }
+            let active = sec.active_selected_tag.trim();
+            if !active.is_empty() && map.contains_key(active) {
+                return active.to_string();
+            }
+            let store_tags = collect_store_section_leaf_tags(store, &sec.id);
+            if let Some(single_tag) = store_tags.into_iter().find(|t| map.contains_key(t)) {
+                return single_tag;
+            }
         }
-        if let Some(first) = candidates.into_iter().next() {
+        if !sec.balancer_refs.is_empty()
+            && let Some(first) = candidates.into_iter().next()
+        {
             return first;
         }
+        return format!("sel-{}", sec.id);
     }
     req.to_string()
 }
@@ -6994,9 +7005,34 @@ fn resolve_latency_targets(
             trimmed_tag
         };
         let eff_group = resolve_clash_group_for_target(store, proxies_map, req);
-        let tags = proxies_map
+        let mut tags = proxies_map
             .map(|pm| collect_clash_leaf_members(pm, &eff_group))
             .unwrap_or_default();
+        if tags.is_empty() {
+            if let Some(pm) = proxies_map
+                && pm.contains_key(&eff_group)
+                && !matches!(
+                    eff_group.as_str(),
+                    "direct" | "block" | "GLOBAL" | "reject" | "dns-out"
+                )
+            {
+                tags.push(eff_group.clone());
+            } else {
+                let sec_base = req
+                    .strip_prefix("sel-")
+                    .or_else(|| req.strip_suffix("-out"))
+                    .unwrap_or(req);
+                let store_tags = collect_store_section_leaf_tags(store, sec_base);
+                if let Some(pm) = proxies_map {
+                    tags = store_tags
+                        .into_iter()
+                        .filter(|t| pm.contains_key(t))
+                        .collect();
+                } else {
+                    tags = store_tags;
+                }
+            }
+        }
         return (tags, eff_group);
     }
 
@@ -17088,6 +17124,43 @@ mod tests {
             "[\"Alpha\",\"Beta\",\"Alpha\"]",
         );
         assert_eq!(json_tags, vec!["Alpha".to_string(), "Beta".to_string()]);
+    }
+
+    #[test]
+    fn resolve_latency_targets_handles_single_node_section_without_selector_or_own_balancer() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "src_1cent".to_string(),
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443#1cent".to_string(),
+            ],
+            ..Default::default()
+        });
+        store.balancers.push(crate::store::BalancerConfig {
+            id: "akonit_url_test".to_string(),
+            enabled: true,
+            ..Default::default()
+        });
+        store.sections.clear();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Main".to_string(),
+            outbound_source_refs: vec!["src_1cent".to_string()],
+            ..Default::default()
+        });
+
+        let mut proxies = Map::new();
+        proxies.insert(
+            "1cent".to_string(),
+            json!({
+                "type": "Mieru",
+                "name": "1cent"
+            }),
+        );
+
+        let (tags, eff) = resolve_latency_targets(&store, Some(&proxies), "group", "Main", "Main");
+        assert_eq!(eff, "1cent");
+        assert_eq!(tags, vec!["1cent".to_string()]);
     }
 
     #[test]
