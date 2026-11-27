@@ -1,7 +1,9 @@
 import { TachyonShellMethods } from '../../methods';
 import type { Tachyon } from '../../types';
 
-const RELEASES_PER_PAGE = 30;
+// Match the backend's 5-item picker pages so one 30-item REST response can
+// populate and cache several UI pages at once.
+const RELEASES_PER_PAGE = 5;
 const MAX_RELEASE_PAGES = 10;
 
 function normalizeTag(tag: string): string {

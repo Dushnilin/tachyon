@@ -14,7 +14,7 @@ describe('release notes lookup', () => {
   const latest = { tag: 'v2.1', body: 'Latest changes' };
   const selected = { tag: 'v2.0', body: 'Earlier changes' };
   const release = (tag: string) => ({ tag, body: `Notes for ${tag}` });
-  const page = (prefix: string, count = 30) =>
+  const page = (prefix: string, count = 5) =>
     Array.from({ length: count }, (_, index) => release(`${prefix}-${index}`));
 
   it('prefers an exact tag before the optional v-prefix fallback', async () => {
@@ -48,8 +48,8 @@ describe('release notes lookup', () => {
 
     expect(await getReleaseForNotes('tachyon', '2.0')).toEqual(selected);
     expect(listReleases.mock.calls).toEqual([
-      ['tachyon', 30, 1],
-      ['tachyon', 30, 2],
+      ['tachyon', 5, 1],
+      ['tachyon', 5, 2],
     ]);
   });
 
