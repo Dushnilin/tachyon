@@ -3715,6 +3715,16 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
             ? this.getUIElement(section_id)
             : null;
       } catch (_e) {}
+      if (
+        !uiEl &&
+        typeof dom !== 'undefined' &&
+        dom &&
+        typeof dom.findClassInstance === 'function'
+      ) {
+        try {
+          uiEl = dom.findClassInstance(node);
+        } catch (_e) {}
+      }
       msHandle = main.attachSearchableCheckboxMultiSelect(uiEl, node, {
         showChips: false,
         allowCustom: true,
@@ -16197,6 +16207,16 @@ function createSectionContent(section) {
             ? this.getUIElement(sectionId)
             : null;
       } catch (_e) {}
+      if (
+        !uiEl &&
+        typeof dom !== 'undefined' &&
+        dom &&
+        typeof dom.findClassInstance === 'function'
+      ) {
+        try {
+          uiEl = dom.findClassInstance(node);
+        } catch (_e) {}
+      }
       main.attachSearchableCheckboxMultiSelect(uiEl, node, {
         choices,
         showChips: false,

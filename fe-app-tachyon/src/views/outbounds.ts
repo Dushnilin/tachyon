@@ -1022,9 +1022,21 @@ function createServerChecklistPicker(inputEl) {
   });
 
   let allServers = [];
+  let lastPoolCount = 0;
   let isListOpen = true;
   let visibleLimit = BATCH_SIZE;
   let lastFiltered = [];
+
+  const updatePickerStats = (renderedCount, filteredCount, totalCount) => {
+    const q = searchInput.value.trim();
+    if (q) {
+      statsLabel.textContent = `${filteredCount} / ${totalCount}`;
+    } else if (renderedCount < filteredCount) {
+      statsLabel.textContent = `${renderedCount} / ${filteredCount}`;
+    } else {
+      statsLabel.textContent = `${filteredCount}`;
+    }
+  };
 
   const setSelectedValues = (arr) => {
     inputEl.value = arr.join(', ');
@@ -1163,7 +1175,7 @@ function createServerChecklistPicker(inputEl) {
           }
           listBox.appendChild(frag);
           appendMoreFooter(lastFiltered, nextEnd, curSelected);
-          statsLabel.textContent = `${nextEnd} / ${lastFiltered.length}`;
+          updatePickerStats(nextEnd, lastFiltered.length, lastPoolCount);
         },
       },
       `${_tr('Показать ещё', 'Show more')} ${nextStep} (${_tr('осталось', 'remaining')}: ${remaining})`,
@@ -1182,6 +1194,7 @@ function createServerChecklistPicker(inputEl) {
       click: () => {
         const q = searchInput.value.trim().toLowerCase();
         const merged = getMergedServers();
+        lastPoolCount = merged.length;
         const filtered = q
           ? merged.filter(
               (s) =>
@@ -1202,6 +1215,7 @@ function createServerChecklistPicker(inputEl) {
     const selectedArr = serverNameList(inputEl.value);
     const selected = new Set(selectedArr);
     const merged = getMergedServers();
+    lastPoolCount = merged.length;
 
     summaryBar.innerHTML = '';
     const countBadge = E(
@@ -1323,11 +1337,7 @@ function createServerChecklistPicker(inputEl) {
     selectFilteredBtn.disabled = filtered.length === 0;
 
     const sliceEnd = Math.min(filtered.length, visibleLimit);
-    statsLabel.textContent = q
-      ? `${filtered.length} / ${merged.length}`
-      : sliceEnd < filtered.length
-        ? `${sliceEnd} / ${filtered.length}`
-        : `${filtered.length}`;
+    updatePickerStats(sliceEnd, filtered.length, merged.length);
 
     if (!filtered.length) {
       listBox.appendChild(
@@ -1372,7 +1382,7 @@ function createServerChecklistPicker(inputEl) {
       }
       listBox.appendChild(frag);
       appendMoreFooter(lastFiltered, nextEnd, selected);
-      statsLabel.textContent = `${nextEnd} / ${lastFiltered.length}`;
+      updatePickerStats(nextEnd, lastFiltered.length, lastPoolCount);
     }
   });
 

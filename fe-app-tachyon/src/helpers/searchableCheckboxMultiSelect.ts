@@ -1529,6 +1529,7 @@ function ensureDynListDomItems(
   values: string[],
   labelMap: Record<string, string>,
   inputName: string,
+  widget?: any,
 ): void {
   if (!node || typeof node.querySelectorAll !== 'function') return;
   const currentDom = readDomDynListHiddenValues(node);
@@ -1539,10 +1540,23 @@ function ensureDynListDomItems(
     return;
   }
 
-  const existingItems = Array.from(node.querySelectorAll('.item'));
+  const desiredSet = new Set(values);
+  const existingByValue = new Map<string, HTMLElement>();
+  const existingItems = Array.from(
+    node.querySelectorAll('.item'),
+  ) as HTMLElement[];
+
   for (const item of existingItems) {
-    if (item.parentNode === node) {
-      node.removeChild(item);
+    const hidden = item.querySelector?.(
+      'input[type="hidden"]',
+    ) as HTMLInputElement | null;
+    const itemVal = hidden ? `${hidden.value || ''}`.trim() : '';
+    if (!itemVal || !desiredSet.has(itemVal) || existingByValue.has(itemVal)) {
+      if (item.parentNode === node) {
+        node.removeChild(item);
+      }
+    } else {
+      existingByValue.set(itemVal, item);
     }
   }
 
@@ -1551,28 +1565,54 @@ function ensureDynListDomItems(
     node.querySelector?.('.add-item') ||
     null;
 
+  const insertBeforeAnchor = (el: HTMLElement) => {
+    if (anchor && typeof node.insertBefore === 'function') {
+      node.insertBefore(el, anchor);
+    } else {
+      node.appendChild(el);
+    }
+  };
+
   for (let i = 0; i < values.length; i += 1) {
     const val = values[i];
-    const hidden = createDomEl('input', {
-      type: 'hidden',
-      name: inputName,
-      value: val,
-    }) as HTMLInputElement;
-    hidden.value = val;
-    const textSpan = createDomEl('span', {}, labelMap[val] || val);
-    const item = createDomEl(
-      'div',
-      {
-        class: 'item',
-        'data-index': String(i),
-      },
-      [hidden, textSpan],
-    );
-    if (anchor && typeof node.insertBefore === 'function') {
-      node.insertBefore(item, anchor);
-    } else {
-      node.appendChild(item);
+    let itemEl = existingByValue.get(val);
+    if (!itemEl) {
+      if (widget && typeof widget.addItem === 'function') {
+        try {
+          widget.addItem(node, val, labelMap[val] || val, false);
+          const refreshedItems = Array.from(
+            node.querySelectorAll('.item'),
+          ) as HTMLElement[];
+          itemEl = refreshedItems.find((el) => {
+            const h = el.querySelector?.(
+              'input[type="hidden"]',
+            ) as HTMLInputElement | null;
+            return h && h.value === val;
+          });
+        } catch {
+          itemEl = undefined;
+        }
+      }
+      if (!itemEl) {
+        const hidden = createDomEl('input', {
+          type: 'hidden',
+          name: inputName,
+          value: val,
+        }) as HTMLInputElement;
+        hidden.value = val;
+        const textSpan = createDomEl('span', {}, labelMap[val] || val);
+        itemEl = createDomEl(
+          'div',
+          {
+            class: 'item',
+            'data-index': String(i),
+          },
+          [hidden, textSpan],
+        );
+      }
     }
+    itemEl.setAttribute?.('data-index', String(i));
+    insertBeforeAnchor(itemEl);
   }
 }
 
@@ -1583,8 +1623,10 @@ function dispatchDynListEvents(node: HTMLElement): void {
       node.dispatchEvent(
         new CustomEvent('cbi-dynlist-change', { bubbles: true }),
       );
+      node.dispatchEvent(new CustomEvent('widget-change', { bubbles: true }));
     } else if (typeof Event === 'function') {
       node.dispatchEvent(new Event('cbi-dynlist-change', { bubbles: true }));
+      node.dispatchEvent(new Event('widget-change', { bubbles: true }));
     }
     if (typeof Event === 'function') {
       node.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1613,6 +1655,9 @@ export function attachSearchableCheckboxMultiSelect(
     return existing;
   }
 
+  let activeWidget: any = widget || null;
+  let internalSync = false;
+
   const showChips = config.showChips !== false;
   node.classList.add(
     showChips
@@ -1623,7 +1668,7 @@ export function attachSearchableCheckboxMultiSelect(
   let initialChoices =
     config.choices !== undefined
       ? normalizeMultiSelectChoices(config.choices)
-      : extractWidgetChoices(widget, config.option);
+      : extractWidgetChoices(activeWidget, config.option);
 
   let currentLabelMap: Record<string, string> = {};
   for (const c of initialChoices) {
@@ -1633,16 +1678,75 @@ export function attachSearchableCheckboxMultiSelect(
   const inputName =
     config.inputName ||
     config.option?.cbid?.(config.sectionId) ||
-    widget?.options?.id ||
+    activeWidget?.options?.id ||
     node.id ||
     '';
-  const initialValues = readDynListValues(widget, node);
-  let internalSync = false;
+  const initialValues = readDynListValues(activeWidget, node);
+
+  const syncFromWidget = () => {
+    if (internalSync) return;
+    const w = activeWidget;
+    const latest = readDynListValues(w, node);
+    const cur = ms.getValues();
+    if (
+      latest.length !== cur.length ||
+      latest.some((v, idx) => v !== cur[idx])
+    ) {
+      ms.setValues(latest, { silent: true });
+    }
+  };
+
+  const wrapWidgetSetValue = (w: any) => {
+    if (
+      w &&
+      typeof w.setValue === 'function' &&
+      !w.__tachyonMsWrappedSetValue
+    ) {
+      w.__tachyonMsWrappedSetValue = true;
+      const origSetValue = w.setValue.bind(w);
+      w.setValue = function (vals: any) {
+        const res = origSetValue(vals);
+        if (!internalSync) {
+          syncFromWidget();
+        }
+        return res;
+      };
+    }
+  };
+
+  const resolveWidget = (): any => {
+    if (!activeWidget) {
+      if (
+        typeof dom !== 'undefined' &&
+        dom &&
+        typeof dom.findClassInstance === 'function'
+      ) {
+        try {
+          activeWidget = dom.findClassInstance(node) || null;
+        } catch {
+          activeWidget = null;
+        }
+      }
+      if (
+        !activeWidget &&
+        config.option &&
+        typeof config.option.getUIElement === 'function'
+      ) {
+        try {
+          activeWidget = config.option.getUIElement(config.sectionId) || null;
+        } catch {
+          activeWidget = null;
+        }
+      }
+    }
+    wrapWidgetSetValue(activeWidget);
+    return activeWidget;
+  };
 
   const validateItem =
     config.validateItem ||
-    (typeof widget?.options?.validate === 'function'
-      ? (val: string) => widget.options.validate(val)
+    (typeof activeWidget?.options?.validate === 'function'
+      ? (val: string) => activeWidget.options.validate(val)
       : undefined);
 
   const ms = createSearchableCheckboxMultiSelect({
@@ -1650,14 +1754,14 @@ export function attachSearchableCheckboxMultiSelect(
     values: initialValues,
     placeholder:
       config.placeholder ||
-      widget?.options?.placeholder ||
+      activeWidget?.options?.placeholder ||
       config.option?.placeholder ||
       tr('-- Выбрать --', '-- Select --'),
     searchPlaceholder: config.searchPlaceholder,
     disabled:
       config.disabled != null
         ? Boolean(config.disabled)
-        : Boolean(widget?.options?.disabled),
+        : Boolean(activeWidget?.options?.disabled),
     allowCustom: Boolean(config.allowCustom),
     showChips,
     batchSize: config.batchSize,
@@ -1668,13 +1772,14 @@ export function attachSearchableCheckboxMultiSelect(
       if (meta.source !== 'user') return;
       internalSync = true;
       try {
-        if (widget) {
-          widget.choices = currentLabelMap;
+        const w = resolveWidget();
+        if (w) {
+          w.choices = currentLabelMap;
         }
-        if (widget && typeof widget.setValue === 'function') {
-          widget.setValue(nextValues);
+        if (w && typeof w.setValue === 'function') {
+          w.setValue(nextValues);
         }
-        ensureDynListDomItems(node, nextValues, currentLabelMap, inputName);
+        ensureDynListDomItems(node, nextValues, currentLabelMap, inputName, w);
         dispatchDynListEvents(node);
         if (
           config.option &&
@@ -1695,35 +1800,14 @@ export function attachSearchableCheckboxMultiSelect(
     },
   });
 
+  wrapWidgetSetValue(activeWidget);
+
   const addItemEl =
     node.querySelector(':scope > .add-item') || node.querySelector('.add-item');
   if (addItemEl && typeof node.insertBefore === 'function') {
     node.insertBefore(ms.element, addItemEl);
   } else {
     node.appendChild(ms.element);
-  }
-
-  const syncFromWidget = () => {
-    if (internalSync) return;
-    const latest = readDynListValues(widget, node);
-    const cur = ms.getValues();
-    if (
-      latest.length !== cur.length ||
-      latest.some((v, idx) => v !== cur[idx])
-    ) {
-      ms.setValues(latest, { silent: true });
-    }
-  };
-
-  if (widget && typeof widget.setValue === 'function') {
-    const origSetValue = widget.setValue.bind(widget);
-    widget.setValue = function (vals: any) {
-      const res = origSetValue(vals);
-      if (!internalSync) {
-        syncFromWidget();
-      }
-      return res;
-    };
   }
 
   const origRefreshChoices = ms.refreshChoices;
@@ -1736,8 +1820,9 @@ export function attachSearchableCheckboxMultiSelect(
     for (const c of normalized) {
       currentLabelMap[c.value] = c.label;
     }
-    if (widget) {
-      widget.choices = currentLabelMap;
+    const w = resolveWidget();
+    if (w) {
+      w.choices = currentLabelMap;
     }
     origRefreshChoices(normalized);
     syncFromWidget();

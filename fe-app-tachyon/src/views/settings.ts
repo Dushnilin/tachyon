@@ -735,6 +735,16 @@ function configureDnsList(option, choices, defaultValue) {
             ? this.getUIElement(section_id)
             : null;
       } catch (_e) {}
+      if (
+        !uiEl &&
+        typeof dom !== 'undefined' &&
+        dom &&
+        typeof dom.findClassInstance === 'function'
+      ) {
+        try {
+          uiEl = dom.findClassInstance(node);
+        } catch (_e) {}
+      }
       const choiceList = Object.entries(choices || {}).map(
         ([value, label]) => ({
           value,

@@ -174,7 +174,7 @@ function createTestDom() {
         child.children = [];
         return child;
       }
-      if (child.parentNode && child.parentNode !== this) {
+      if (child.parentNode) {
         child.parentNode.removeChild(child);
       }
       child.parentNode = this;
@@ -192,7 +192,7 @@ function createTestDom() {
         newNode.children = [];
         return newNode;
       }
-      if (newNode.parentNode && newNode.parentNode !== this) {
+      if (newNode.parentNode) {
         newNode.parentNode.removeChild(newNode);
       }
       newNode.parentNode = this;
@@ -791,6 +791,129 @@ describe('searchableCheckboxMultiSelect', () => {
     const stubOpt: any = { renderWidget: () => ({ style: {} }) };
     attachSearchableMultiSelectToOption(stubOpt);
     expect(stubOpt.renderWidget('s', 0, [])).toEqual({ style: {} });
+  });
+
+  it('lazily resolves LuCI widget via getUIElement/dom.findClassInstance and preserves .fkp-dynlist-settings in showChips: false mode', () => {
+    const doc = domEnv.documentMock;
+    const dlNode = doc.createElement('div');
+    dlNode.className = 'cbi-dynlist fkp-connections-dynlist';
+    dlNode.id = 'cbid.tachyon.Main.balancer_refs';
+    const addItemEl = doc.createElement('div');
+    addItemEl.className = 'add-item';
+    dlNode.appendChild(addItemEl);
+
+    const makeSettingsItem = (val: string, label: string) => {
+      const item = doc.createElement('div');
+      item.className = 'item';
+      const hid = doc.createElement('input');
+      hid.setAttribute('type', 'hidden');
+      hid.setAttribute('name', dlNode.id);
+      hid.value = val;
+      const lbl = doc.createElement('span');
+      lbl.className = 'fkp-dynlist-label';
+      lbl.textContent = label;
+      const gear = doc.createElement('span');
+      gear.className = 'fkp-dynlist-settings';
+      gear.textContent = '⚙';
+      item.appendChild(hid);
+      item.appendChild(lbl);
+      item.appendChild(gear);
+      return item;
+    };
+
+    const existingItem = makeSettingsItem('bal1', 'Balancer 1');
+    dlNode.insertBefore(existingItem, addItemEl);
+
+    let mounted = false;
+    let currentVals = ['bal1'];
+    const lazyWidget: any = {
+      node: dlNode,
+      choices: { bal1: 'Balancer 1', bal2: 'Balancer 2' },
+      options: { id: dlNode.id },
+      getValue: () => currentVals.slice(),
+      setValue: (vals: string[]) => {
+        currentVals = vals.slice();
+        for (const el of dlNode.querySelectorAll('.item')) {
+          dlNode.removeChild(el);
+        }
+        for (const v of currentVals) {
+          dlNode.insertBefore(
+            makeSettingsItem(v, lazyWidget.choices[v] || v),
+            addItemEl,
+          );
+        }
+      },
+    };
+
+    const widgetChangeEvents: any[] = [];
+    dlNode.addEventListener('widget-change', (ev: any) =>
+      widgetChangeEvents.push(ev),
+    );
+
+    const lazyOption: any = {
+      cbid: () => dlNode.id,
+      getUIElement: () => (mounted ? lazyWidget : null),
+    };
+
+    // During renderWidget(), node is detached so getUIElement() returns null
+    const handle = attachSearchableCheckboxMultiSelect(null, dlNode, {
+      choices: [
+        { value: 'bal1', label: 'Balancer 1' },
+        { value: 'bal2', label: 'Balancer 2' },
+      ],
+      showChips: false,
+      option: lazyOption,
+      sectionId: 'Main',
+    });
+    expect(handle).toBeTruthy();
+
+    // Node gets mounted in DOM later -> lazyWidget becomes resolvable
+    doc.body.appendChild(dlNode);
+    mounted = true;
+
+    handle!.open();
+    (handle!.listElement.querySelector('[data-value="bal2"]') as any).click();
+    expect(lazyWidget.getValue()).toEqual(['bal1', 'bal2']);
+    expect(widgetChangeEvents.length).toBe(1);
+
+    const itemsAfterLazy = dlNode.querySelectorAll('.item');
+    expect(itemsAfterLazy.length).toBe(2);
+    expect(
+      itemsAfterLazy[0].querySelector('.fkp-dynlist-settings'),
+    ).toBeTruthy();
+    expect(
+      itemsAfterLazy[1].querySelector('.fkp-dynlist-settings'),
+    ).toBeTruthy();
+
+    // Fallback when widget stays null (no setValue): diff preserves existing .item and its .fkp-dynlist-settings
+    const fallbackNode = doc.createElement('div');
+    fallbackNode.className = 'cbi-dynlist';
+    const fbAdd = doc.createElement('div');
+    fbAdd.className = 'add-item';
+    const fbItem1 = makeSettingsItem('k1', 'Key 1');
+    fallbackNode.appendChild(fbItem1);
+    fallbackNode.appendChild(fbAdd);
+
+    const fbHandle = attachSearchableCheckboxMultiSelect(null, fallbackNode, {
+      choices: [
+        { value: 'k1', label: 'Key 1' },
+        { value: 'k2', label: 'Key 2' },
+      ],
+      showChips: false,
+    });
+    fbHandle!.open();
+    (fbHandle!.listElement.querySelector('[data-value="k2"]') as any).click();
+
+    const fbItems = fallbackNode.querySelectorAll('.item');
+    expect(fbItems.length).toBe(2);
+    // Original item node and its gear button were preserved, not wiped!
+    expect(fbItems[0]).toBe(fbItem1);
+    expect(fbItems[0].querySelector('.fkp-dynlist-settings')).toBeTruthy();
+    // Items remain positioned before .tachyon-ms
+    expect(
+      fallbackNode.children.indexOf(fbItems[1]) <
+        fallbackNode.children.indexOf(fbHandle!.element),
+    ).toBe(true);
   });
 
   it('wires searchable checkbox multiselect across all targeted choice-backed DynamicList views without breaking communityListPicker', () => {
