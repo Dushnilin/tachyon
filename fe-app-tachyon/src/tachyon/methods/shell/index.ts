@@ -234,6 +234,37 @@ function createTransientRpcGraceTracker(graceMs: number) {
   };
 }
 
+const UI_STATE_DIRS = ['/tmp/tachyon-rs/ui-state', '/var/run/tachyon/ui-state'];
+
+async function readFirstUiStateFile(filename: string): Promise<string> {
+  if (typeof fs === 'undefined') {
+    return '';
+  }
+  const fsWithDirect = fs as unknown as {
+    read_direct?: (path: string, type?: string) => Promise<string>;
+  };
+  const readFn =
+    typeof fsWithDirect.read_direct === 'function'
+      ? (p: string) => fsWithDirect.read_direct!(p, 'text')
+      : typeof fs.read === 'function'
+        ? (p: string) => fs.read(p)
+        : null;
+  if (!readFn) {
+    return '';
+  }
+  for (const dir of UI_STATE_DIRS) {
+    try {
+      const raw = await readFn(`${dir}/${filename}`);
+      if (typeof raw === 'string' && raw.trim()) {
+        return raw;
+      }
+    } catch (_error) {
+      // Fallback file unavailable in this directory
+    }
+  }
+  return '';
+}
+
 export const TachyonShellMethods = {
   checkDNSAvailable: async () =>
     callBaseMethod<Tachyon.DnsCheckResult>(
@@ -340,38 +371,17 @@ export const TachyonShellMethods = {
     if (res.success && res.data?.proxies) {
       return res;
     }
-    try {
-      if (typeof fs !== 'undefined') {
-        const fsWithDirect = fs as unknown as {
-          read_direct?: (path: string, type?: string) => Promise<string>;
-        };
-        const readFn =
-          typeof fsWithDirect.read_direct === 'function'
-            ? (p: string) => fsWithDirect.read_direct!(p, 'text')
-            : typeof fs.read === 'function'
-              ? (p: string) => fs.read(p)
-              : null;
-        if (readFn) {
-          const raw = await readFn(
-            '/var/run/tachyon/ui-state/clash-proxies.json',
-          );
-          const parsed = parseJsonObjectOutput<ClashAPI.Proxies>(
-            typeof raw === 'string' ? raw : '',
-          );
-          if (
-            parsed?.proxies &&
-            typeof parsed.proxies === 'object' &&
-            !Array.isArray(parsed.proxies)
-          ) {
-            return {
-              success: true as const,
-              data: { ...parsed, tachyon_cached: true },
-            };
-          }
-        }
-      }
-    } catch (_error) {
-      // Fallback file unavailable
+    const raw = await readFirstUiStateFile('clash-proxies.json');
+    const parsed = parseJsonObjectOutput<ClashAPI.Proxies>(raw);
+    if (
+      parsed?.proxies &&
+      typeof parsed.proxies === 'object' &&
+      !Array.isArray(parsed.proxies)
+    ) {
+      return {
+        success: true as const,
+        data: { ...parsed, tachyon_cached: true },
+      };
     }
     return res;
   },
@@ -388,31 +398,10 @@ export const TachyonShellMethods = {
     ) {
       return res;
     }
-    try {
-      if (typeof fs !== 'undefined') {
-        const fsWithDirect = fs as unknown as {
-          read_direct?: (path: string, type?: string) => Promise<string>;
-        };
-        const readFn =
-          typeof fsWithDirect.read_direct === 'function'
-            ? (p: string) => fsWithDirect.read_direct!(p, 'text')
-            : typeof fs.read === 'function'
-              ? (p: string) => fs.read(p)
-              : null;
-        if (readFn) {
-          const raw = await readFn(
-            '/var/run/tachyon/ui-state/clash-connections.json',
-          );
-          const parsed = parseJsonObjectOutput<{ connections?: unknown[] }>(
-            typeof raw === 'string' ? raw : '',
-          );
-          if (parsed && Array.isArray(parsed.connections)) {
-            return { success: true as const, data: parsed };
-          }
-        }
-      }
-    } catch (_error) {
-      // Fallback file unavailable
+    const raw = await readFirstUiStateFile('clash-connections.json');
+    const parsed = parseJsonObjectOutput<{ connections?: unknown[] }>(raw);
+    if (parsed && Array.isArray(parsed.connections)) {
+      return { success: true as const, data: parsed };
     }
     return res;
   },

@@ -175,10 +175,37 @@ function canFetchClashApiDirectly() {
   return canUseDirectClashApi() && typeof fetch === 'function';
 }
 
+async function readUiStateJsonFile(filename: string): Promise<string> {
+  const paths = [
+    `/tmp/tachyon-rs/ui-state/${filename}`,
+    `/var/run/tachyon/ui-state/${filename}`,
+  ];
+  const directFs = fs as unknown as {
+    read_direct?: (p: string, type?: string) => Promise<string>;
+  };
+  for (const stateFile of paths) {
+    try {
+      const raw = await fs.read(stateFile).catch(async () => {
+        if (typeof directFs.read_direct === 'function') {
+          return directFs.read_direct(stateFile, 'text');
+        }
+        return '';
+      });
+      if (raw) {
+        return raw;
+      }
+    } catch (_err) {
+      // try next fallback path
+    }
+  }
+  return '';
+}
+
 async function getClashApiProxies(
-  configSections: Tachyon.ConfigSection[],
+  configSectionsPromise: Promise<Tachyon.ConfigSection[]>,
 ): Promise<Tachyon.MethodResponse<ClashAPI.Proxies>> {
   if (canFetchClashApiDirectly()) {
+    const configSections = await configSectionsPromise;
     const secret = getClashApiSecret(configSections);
     const controller = new AbortController();
     const timeoutId = setTimeout(
@@ -214,17 +241,8 @@ async function getClashApiProxies(
   }
 
   // Fallback for large /proxies payloads (>64 KB) truncated by ubus/rpcd stdout buffer
-  const clashProxiesStateFile = '/var/run/tachyon/ui-state/clash-proxies.json';
   try {
-    const raw = await fs.read(clashProxiesStateFile).catch(async () => {
-      const directFs = fs as unknown as {
-        read_direct?: (p: string, type?: string) => Promise<string>;
-      };
-      if (typeof directFs.read_direct === 'function') {
-        return directFs.read_direct(clashProxiesStateFile, 'text');
-      }
-      return '';
-    });
+    const raw = await readUiStateJsonFile('clash-proxies.json');
     if (raw) {
       const parsed = JSON.parse(raw) as ClashAPI.Proxies;
       if (
@@ -3748,55 +3766,236 @@ function mergeOutboundMetaRecords(
   };
 }
 
+const OUTBOUND_METADATA_FIELDS: Array<keyof Tachyon.GetOutboundMetadata> = [
+  'names',
+  'countries',
+  'transports',
+  'protocols',
+  'securities',
+  'ports',
+  'details',
+  'prefixes',
+  'sources',
+  'source_ids',
+  'source_names',
+];
+
+function hasNonEmptyOutboundMetadata(
+  meta?: Tachyon.GetOutboundMetadata,
+): boolean {
+  if (!meta || typeof meta !== 'object') {
+    return false;
+  }
+  return OUTBOUND_METADATA_FIELDS.some((field) => {
+    const rec = meta[field];
+    return Boolean(
+      rec && typeof rec === 'object' && Object.keys(rec).length > 0,
+    );
+  });
+}
+
+function hasAnyTagInOutboundMetadata(
+  meta: Tachyon.GetOutboundMetadata | undefined,
+  tags: Set<string>,
+): boolean {
+  if (!meta || tags.size === 0) {
+    return false;
+  }
+  for (const field of OUTBOUND_METADATA_FIELDS) {
+    const rec = meta[field];
+    if (!rec || typeof rec !== 'object') continue;
+    for (const tag of tags) {
+      if (Object.prototype.hasOwnProperty.call(rec, tag)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function normalizeSubscriptionMetaList(
+  subMeta?: Tachyon.SubscriptionMetadata | Tachyon.SubscriptionMetadata[],
+): Tachyon.SubscriptionMetadata[] {
+  if (!subMeta) {
+    return [];
+  }
+  return Array.isArray(subMeta) ? subMeta : [subMeta];
+}
+
+function extractBulkSubscriptionMetadataForSection(
+  bulkSubMeta:
+    | Tachyon.SubscriptionMetadata
+    | Tachyon.SubscriptionMetadata[]
+    | undefined,
+  sectionName: string,
+  sourceCount: number,
+): Tachyon.SubscriptionMetadata[] {
+  const items = normalizeSubscriptionMetaList(bulkSubMeta);
+  if (items.length === 0) {
+    return [];
+  }
+  const expectedPrefix = `${sectionName}-subscription-`;
+  return items.filter((item) => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+    const legacy = item as Tachyon.SubscriptionMetadata & {
+      source_section?: string;
+    };
+    const srcSection = item.sourceSection || legacy.source_section || '';
+    if (srcSection) {
+      return srcSection.startsWith(expectedPrefix);
+    }
+    return metadataMatchesCurrentSource(sectionName, sourceCount, item);
+  });
+}
+
+function collectSectionProxyTags(
+  sectionName: string,
+  section: Tachyon.ConfigSection,
+  proxyByCode: Map<string, ClashProxyEntry>,
+  fileCache?: DashboardSectionCache,
+  memberSections: Tachyon.ConfigSection[] = [],
+): Set<string> {
+  const tags = new Set<string>();
+  const visitedGroups = new Set<string>();
+
+  const walkEntry = (code: string) => {
+    if (!code || visitedGroups.has(code)) {
+      return;
+    }
+    tags.add(code);
+    const entry = proxyByCode.get(code);
+    if (entry && Array.isArray(entry.value?.all)) {
+      visitedGroups.add(code);
+      for (const childCode of entry.value.all) {
+        walkEntry(childCode);
+      }
+    }
+  };
+
+  const addSectionSelectors = (secName: string, sec: Tachyon.ConfigSection) => {
+    const selector = resolveSectionRuntimeSelector(proxyByCode, secName, sec);
+    if (selector) {
+      walkEntry(selector.code);
+    }
+  };
+
+  addSectionSelectors(sectionName, section);
+  for (const m of memberSections) {
+    if (m['.name']) {
+      addSectionSelectors(m['.name'], m);
+    }
+  }
+
+  if (fileCache?.links) {
+    for (const key of Object.keys(fileCache.links)) {
+      tags.add(key);
+    }
+  }
+  if (fileCache?.urltestGroups) {
+    for (const grp of Object.values(fileCache.urltestGroups)) {
+      for (const tag of grp?.outbounds || []) {
+        tags.add(tag);
+      }
+    }
+  }
+  if (fileCache?.priorityGroups) {
+    for (const grp of Object.values(fileCache.priorityGroups)) {
+      for (const tag of grp?.outbounds || []) {
+        tags.add(tag);
+      }
+      for (const lvl of grp?.levels || []) {
+        for (const tag of lvl?.outbounds || []) {
+          tags.add(tag);
+        }
+      }
+    }
+  }
+
+  return tags;
+}
+
 async function loadDashboardSectionCacheWithRpc(
   sectionName: string,
+  section: Tachyon.ConfigSection,
   includeSubMeta: boolean,
+  subscriptionSourceCount: number,
+  proxyByCode: Map<string, ClashProxyEntry>,
+  memberSections: Tachyon.ConfigSection[],
+  readSectionCacheMemo: (
+    name: string,
+  ) => Promise<DashboardSectionCache | undefined>,
+  bulkOutMeta?: Tachyon.GetOutboundMetadata,
+  bulkSubMeta?: Tachyon.SubscriptionMetadata | Tachyon.SubscriptionMetadata[],
 ): Promise<DashboardSectionCache | undefined> {
-  const cachePromise = readDashboardSectionCache(sectionName);
-  const outMetaPromise =
-    typeof TachyonShellMethods.getOutboundMetadata === 'function'
+  const fileCache = await readSectionCacheMemo(sectionName);
+  const sectionTags = collectSectionProxyTags(
+    sectionName,
+    section,
+    proxyByCode,
+    fileCache,
+    memberSections,
+  );
+  const hasBulkOut =
+    hasNonEmptyOutboundMetadata(bulkOutMeta) &&
+    (sectionTags.size === 0 ||
+      hasAnyTagInOutboundMetadata(bulkOutMeta, sectionTags));
+  const hasCacheOut = hasNonEmptyOutboundMetadata(fileCache?.outboundMetadata);
+
+  const bulkSubList = includeSubMeta
+    ? extractBulkSubscriptionMetadataForSection(
+        bulkSubMeta,
+        sectionName,
+        subscriptionSourceCount,
+      )
+    : [];
+  const fileSubList = normalizeSubscriptionMetaList(
+    fileCache?.subscriptionMetadata,
+  );
+
+  const needPerSectionOutRpc =
+    !hasBulkOut &&
+    !hasCacheOut &&
+    typeof TachyonShellMethods.getOutboundMetadata === 'function';
+  const needPerSectionSubRpc =
+    includeSubMeta &&
+    bulkSubList.length === 0 &&
+    fileSubList.length === 0 &&
+    typeof TachyonShellMethods.getSubscriptionMetadata === 'function';
+
+  const [rpcOutMeta, rpcSubMeta] = await Promise.all([
+    needPerSectionOutRpc
       ? TachyonShellMethods.getOutboundMetadata(sectionName)
           .then((res) => (res?.success && res.data ? res.data : undefined))
           .catch(() => undefined)
-      : Promise.resolve(undefined);
-  const subMetaPromise =
-    includeSubMeta &&
-    typeof TachyonShellMethods.getSubscriptionMetadata === 'function'
+      : Promise.resolve(undefined),
+    needPerSectionSubRpc
       ? TachyonShellMethods.getSubscriptionMetadata(sectionName)
           .then((res) => (res?.success && res.data ? res.data : undefined))
           .catch(() => undefined)
-      : Promise.resolve(undefined);
-
-  const [fileCache, rpcOutMeta, rpcSubMeta] = await Promise.all([
-    cachePromise,
-    outMetaPromise,
-    subMetaPromise,
+      : Promise.resolve(undefined),
   ]);
 
-  if (!fileCache && !rpcOutMeta && !rpcSubMeta) {
-    return undefined;
-  }
-
+  const effectiveRpcOrBulkOut = hasBulkOut ? bulkOutMeta : rpcOutMeta;
   const mergedOutMeta = mergeOutboundMetaRecords(
     fileCache?.outboundMetadata,
-    rpcOutMeta,
+    effectiveRpcOrBulkOut,
   );
-  const rpcSubList = rpcSubMeta
-    ? Array.isArray(rpcSubMeta)
-      ? rpcSubMeta
-      : [rpcSubMeta]
-    : [];
-  const fileSubList = fileCache?.subscriptionMetadata
-    ? Array.isArray(fileCache.subscriptionMetadata)
-      ? fileCache.subscriptionMetadata
-      : [fileCache.subscriptionMetadata]
-    : [];
+
+  const rpcSubList = normalizeSubscriptionMetaList(rpcSubMeta);
   const mergedSubMeta =
-    rpcSubList.length > 0
-      ? rpcSubList
-      : fileSubList.length > 0
-        ? fileSubList
-        : undefined;
+    bulkSubList.length > 0
+      ? bulkSubList
+      : rpcSubList.length > 0
+        ? rpcSubList
+        : fileSubList.length > 0
+          ? fileSubList
+          : undefined;
+
+  if (!fileCache && !mergedOutMeta && !mergedSubMeta) {
+    return undefined;
+  }
 
   return {
     ...(fileCache || {}),
@@ -3810,9 +4009,44 @@ export async function getDashboardSections(
 ): Promise<IGetDashboardSectionsResponse> {
   const includeSubscriptionCopyState =
     options.includeSubscriptionCopyState ?? true;
-  const configSections = hydrateConfigSections(await getConfigSections());
-  const sectionErrorsPromise = readSectionErrors();
-  const clashProxies = await getClashApiProxies(configSections);
+  const configSectionsPromise = getConfigSections();
+  const bulkOutMetaPromise =
+    typeof TachyonShellMethods.getOutboundMetadata === 'function'
+      ? TachyonShellMethods.getOutboundMetadata('all')
+          .then((res) => (res?.success && res.data ? res.data : undefined))
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+  const bulkSubMetaPromise =
+    typeof TachyonShellMethods.getSubscriptionMetadata === 'function'
+      ? TachyonShellMethods.getSubscriptionMetadata('all')
+          .then((res) => (res?.success && res.data ? res.data : undefined))
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+
+  const [
+    rawConfigSections,
+    sectionErrors,
+    clashProxies,
+    bulkOutMeta,
+    bulkSubMeta,
+  ] = await Promise.all([
+    configSectionsPromise,
+    readSectionErrors(),
+    getClashApiProxies(configSectionsPromise),
+    bulkOutMetaPromise,
+    bulkSubMetaPromise,
+  ]);
+  const configSections = hydrateConfigSections(rawConfigSections);
+  const sectionCachePromises = new Map<
+    string,
+    Promise<DashboardSectionCache | undefined>
+  >();
+  const readSectionCacheMemo = (name: string) => {
+    if (!sectionCachePromises.has(name)) {
+      sectionCachePromises.set(name, readDashboardSectionCache(name));
+    }
+    return sectionCachePromises.get(name)!;
+  };
 
   if (
     (!clashProxies.success || !clashProxies.data?.proxies) &&
@@ -3895,7 +4129,6 @@ export async function getDashboardSections(
     return serviceStatusCache.get(serviceType)!;
   };
 
-  const sectionErrors = await sectionErrorsPromise;
   const settingsSection = getSettingsSection(configSections);
   const globalCountryGrouping =
     (settingsSection?.dashboard_country_grouping as
@@ -3965,9 +4198,24 @@ export async function getDashboardSections(
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
           const subscriptionEnabled = subscriptionSourceCount > 0;
+          const memberNames =
+            sectionAction === 'group'
+              ? getListValues(section.group_members).map((m) => m.trim())
+              : [];
+          const memberSections =
+            memberNames.length > 0
+              ? configSections.filter((s) => memberNames.includes(s['.name']))
+              : [];
           const dashboardCache = await loadDashboardSectionCacheWithRpc(
             sectionName,
+            section,
             subscriptionEnabled,
+            subscriptionSourceCount,
+            proxyByCode,
+            memberSections,
+            readSectionCacheMemo,
+            bulkOutMeta,
+            bulkSubMeta,
           );
           let outboundMetadata = getOutboundMetadata(dashboardCache);
           const subscriptionMetadata = subscriptionEnabled
@@ -3984,18 +4232,10 @@ export async function getDashboardSections(
           const urltestGroups = getUrlTestGroups(dashboardCache);
           const priorityGroups = getPriorityGroups(dashboardCache);
           const hiddenOutboundTags = dashboardCache?.hiddenOutboundTags ?? {};
-          const memberNames =
-            sectionAction === 'group'
-              ? getListValues(section.group_members).map((m) => m.trim())
-              : [];
-          const memberSections =
-            memberNames.length > 0
-              ? configSections.filter((s) => memberNames.includes(s['.name']))
-              : [];
 
           if (memberSections.length > 0) {
             const memberCaches = await Promise.all(
-              memberSections.map((m) => readDashboardSectionCache(m['.name'])),
+              memberSections.map((m) => readSectionCacheMemo(m['.name'])),
             );
             for (const mCache of memberCaches) {
               if (!mCache) continue;

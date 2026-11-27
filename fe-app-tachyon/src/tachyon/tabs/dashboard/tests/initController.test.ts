@@ -1602,4 +1602,182 @@ describe('dashboard initController', () => {
       expect(thirdCall[1].textContent).toBe('Invalid subscription URL');
     });
   });
+
+  describe('startup parallelism and structural store comparison', () => {
+    it('starts fetching dashboard sections in parallel with refreshRuntimeUiState while servicesInfoWidget is loading', async () => {
+      const { onPageMount, onPageUnmount } = await import('../initController');
+      const { store } = await import('../../../services/store.service');
+      const { CustomTachyonMethods, TachyonShellMethods } = await import(
+        '../../../methods'
+      );
+      const { refreshRuntimeUiState } = await import(
+        '../../../services/runtimeUiState.service'
+      );
+
+      store.reset();
+
+      let resolveUiState!: (val: any) => void;
+      vi.mocked(refreshRuntimeUiState).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveUiState = resolve;
+          }),
+      );
+
+      const getDashboardSpy = vi
+        .spyOn(CustomTachyonMethods, 'getDashboardSections')
+        .mockResolvedValue({
+          success: true,
+          data: [
+            {
+              code: 'sel-main',
+              sectionName: 'main',
+              displayName: 'Main',
+              withTagSelect: true,
+              outbounds: [
+                {
+                  code: 'n1',
+                  displayName: 'Node 1',
+                  type: 'VLESS',
+                  latency: 45,
+                  selected: true,
+                },
+              ],
+            } as any,
+          ],
+        });
+      vi.spyOn(TachyonShellMethods, 'getClashApiConnections').mockResolvedValue(
+        {
+          success: true,
+          data: { connections: [] },
+        } as any,
+      );
+      vi.spyOn(TachyonShellMethods, 'getExitCountry').mockResolvedValue({
+        success: false,
+        error: 'skip',
+      });
+
+      const statusContainer = {
+        classList: { toggle: vi.fn() },
+      };
+      const prevGetById = globalThis.document.getElementById;
+      (globalThis.document as any).getElementById = vi.fn((id: string) =>
+        id === 'dashboard-status' ? statusContainer : null,
+      );
+      (globalThis as any).uci = {
+        load: vi.fn().mockResolvedValue(undefined),
+        sections: vi.fn().mockReturnValue([]),
+      };
+
+      try {
+        await onPageMount();
+
+        // Dashboard sections fetch starts immediately while refreshRuntimeUiState is still pending
+        expect(getDashboardSpy).toHaveBeenCalledTimes(1);
+
+        // Resolving runtime UI state as running must not trigger a duplicate mount fetch
+        store.set({
+          servicesInfoWidget: {
+            loading: false,
+            failed: false,
+            data: {
+              ...store.get().servicesInfoWidget.data,
+              tachyonRunning: 1,
+              tachyonCore: 1,
+            },
+          },
+        });
+        resolveUiState({
+          service: {
+            tachyon: { running: 1, enabled: 1, status: 'running' },
+            tachyon_core: { running: 1, enabled: 1, status: 'running' },
+          },
+          capabilities: { server_inbounds_enabled_count: 0 },
+          actions: {
+            service: [],
+            latency: [],
+            component: [],
+            subscription: [],
+          },
+        });
+        await Promise.resolve();
+        expect(getDashboardSpy).toHaveBeenCalledTimes(1);
+
+        // If runtime state subsequently reports stopped, stopped class is applied
+        store.set({
+          servicesInfoWidget: {
+            loading: false,
+            failed: false,
+            data: {
+              ...store.get().servicesInfoWidget.data,
+              tachyonRunning: 0,
+              tachyonCore: 0,
+            },
+          },
+        });
+        expect(statusContainer.classList.toggle).toHaveBeenCalledWith(
+          'tachyon_dashboard-page--service-stopped',
+          true,
+        );
+      } finally {
+        onPageUnmount();
+        (globalThis.document as any).getElementById = prevGetById;
+      }
+    });
+
+    it('compares sectionsWidget.data structurally without calling JSON.stringify on store updates', async () => {
+      const { areOutboundGroupsEqual, onStoreUpdate } = await import(
+        '../initController'
+      );
+      const { store } = await import('../../../services/store.service');
+
+      const makeGroups = (latency: number) =>
+        [
+          {
+            code: 'sel-main',
+            sectionName: 'main',
+            displayName: 'Main',
+            withTagSelect: true,
+            outbounds: Array.from({ length: 300 }, (_, i) => ({
+              code: `node-${i}`,
+              displayName: `Node ${i}`,
+              type: 'VLESS',
+              latency: i === 299 ? latency : 50,
+              selected: i === 0,
+            })),
+          },
+        ] as any;
+
+      const dataA = makeGroups(50);
+      const dataAClone = makeGroups(50);
+      const dataChanged = makeGroups(99);
+
+      expect(areOutboundGroupsEqual(dataA, dataAClone)).toBe(true);
+      expect(areOutboundGroupsEqual(dataA, dataChanged)).toBe(false);
+
+      const stringifySpy = vi.spyOn(JSON, 'stringify');
+      const prevState = {
+        ...store.get(),
+        sectionsWidget: {
+          ...store.get().sectionsWidget,
+          loading: false,
+          failed: false,
+          data: dataA,
+        },
+      };
+      const nextSameState = {
+        ...prevState,
+        sectionsWidget: {
+          ...prevState.sectionsWidget,
+          data: dataAClone,
+        },
+      };
+
+      await onStoreUpdate(nextSameState, prevState, {
+        sectionsWidget: nextSameState.sectionsWidget,
+      });
+
+      expect(stringifySpy).not.toHaveBeenCalled();
+    });
+  });
 });
