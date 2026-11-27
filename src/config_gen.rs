@@ -13709,7 +13709,7 @@ pub fn resolve_section_allowed_member_tags(
     }
 
     candidate_tags = filter_section_subscription_keywords(
-        &candidate_tags,
+        candidate_tags,
         sec,
         &store.outbound_sources,
         &source_tag_map,
@@ -19384,7 +19384,7 @@ fn push_legacy_pipe_or_regex(target: &mut Vec<String>, raw: &str) {
 }
 
 fn filter_section_subscription_keywords(
-    candidate_tags: &[String],
+    candidate_tags: Vec<String>,
     sec: &RoutingSection,
     sources: &[OutboundSource],
     source_tag_map: &HashMap<String, Vec<String>>,
@@ -19393,7 +19393,7 @@ fn filter_section_subscription_keywords(
     if sec.subscription_filter_include_keywords.is_empty()
         && sec.subscription_filter_exclude_keywords.is_empty()
     {
-        return candidate_tags.to_vec();
+        return candidate_tags;
     }
     let mut sub_tags: HashSet<&str> = HashSet::new();
     for src in sources {
@@ -19414,7 +19414,7 @@ fn filter_section_subscription_keywords(
         })
         .collect();
     candidate_tags
-        .iter()
+        .into_iter()
         .filter(|tag| {
             if !sub_tags.contains(tag.as_str()) {
                 return true;
@@ -19429,7 +19429,6 @@ fn filter_section_subscription_keywords(
                 )
             }
         })
-        .cloned()
         .collect()
 }
 
@@ -19732,7 +19731,7 @@ fn resolve_section_outbound(
     visited.pop();
 
     candidate_tags = filter_section_subscription_keywords(
-        &candidate_tags,
+        candidate_tags,
         sec,
         sources,
         source_tag_map,
@@ -20583,7 +20582,7 @@ pub fn build_all_section_balancer_caches(
             }
         }
         candidate_tags = filter_section_subscription_keywords(
-            &candidate_tags,
+            candidate_tags,
             sec,
             &store.outbound_sources,
             &source_tag_map,
