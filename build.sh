@@ -80,6 +80,7 @@ for pair in $TACHYON_TARGETS; do
   python3 "$ROOT_DIR/tools/build_openwrt_pkg.py" \
     --bin "$bin_path" \
     --arch "$arch" \
+    --target-triple "$triple" \
     --version "$RELEASE_VERSION" \
     --init "$ROOT_DIR/openwrt/tachyon.init" \
     --hotplug "$ROOT_DIR/openwrt/99-tachyon-wan-monitor" \

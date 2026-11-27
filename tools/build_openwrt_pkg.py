@@ -639,10 +639,97 @@ def build_apk(
         f.write(data_tar_gz)
 
 
+# ELF class, byte order and machine for the CPU families used by build.sh.
+# ARMv6 and ARMv7 share the same ELF machine identifier; the Rust target triple
+# preserves the distinction in the build contract.
+ELF_TARGETS = {
+    "x86_64": (2, 1, 62),
+    "i386": (1, 1, 3),
+    "aarch64": (2, 1, 183),
+    "arm": (1, 1, 40),
+    "armv7": (1, 1, 40),
+    "armv6": (1, 1, 40),
+    "riscv64": (2, 1, 243),
+    "mipsel": (1, 1, 8),
+    "mips": (1, 2, 8),
+}
+
+# Rust target triple architecture prefixes used by build.sh. Package labels may
+# be custom, but the compiled target must always resolve to a known ELF family.
+RUST_TARGET_FAMILIES = {
+    "x86_64": "x86_64",
+    "i686": "i386",
+    "i386": "i386",
+    "aarch64": "aarch64",
+    "armv7": "armv7",
+    "arm": "armv6",
+    "riscv64gc": "riscv64",
+    "riscv64": "riscv64",
+    "mipsel": "mipsel",
+    "mips": "mips",
+}
+
+
+def _package_arch_family(arch: str) -> str | None:
+    for family in ELF_TARGETS:
+        if arch == family or arch.startswith(f"{family}_"):
+            return family
+    return None
+
+
+def _target_triple_family(target_triple: str) -> str:
+    prefix = target_triple.strip().lower().split("-", 1)[0]
+    family = RUST_TARGET_FAMILIES.get(prefix)
+    if family is None:
+        raise ValueError(f"Unsupported Rust target triple architecture: {target_triple}")
+    return family
+
+
+def validate_binary_arch(
+    binary: bytes, arch: str, target_triple: str | None = None
+) -> None:
+    if len(binary) < 16 or binary[:4] != b"\x7fELF":
+        raise ValueError("Tachyon binary is not ELF")
+    elf_class, endian, ident_version = binary[4:7]
+    if elf_class not in (1, 2) or endian not in (1, 2) or ident_version != 1:
+        raise ValueError("Invalid ELF identification")
+    header_size = 52 if elf_class == 1 else 64
+    if len(binary) < header_size:
+        raise ValueError("Truncated ELF header")
+    order = "little" if endian == 1 else "big"
+    kind = int.from_bytes(binary[16:18], order)
+    machine = int.from_bytes(binary[18:20], order)
+    version = int.from_bytes(binary[20:24], order)
+    if kind not in (2, 3) or version != 1:
+        raise ValueError("Expected an executable ELF binary")
+
+    package_family = _package_arch_family(arch)
+    if target_triple:
+        target_family = _target_triple_family(target_triple)
+        if package_family is not None and package_family != target_family:
+            raise ValueError(
+                f"Package architecture {arch} does not match Rust target triple {target_triple}"
+            )
+        expected_family = target_family
+    else:
+        if package_family is None:
+            raise ValueError(
+                f"Unknown package architecture {arch}; pass --target-triple to validate the build target"
+            )
+        expected_family = package_family
+
+    expected = ELF_TARGETS[expected_family]
+    if (elf_class, endian, machine) != expected:
+        raise ValueError(
+            f"ELF architecture does not match release target {arch}"
+            + (f" ({target_triple})" if target_triple else "")
+        )
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", required=True, help="Path to compiled tachyon binary")
     ap.add_argument("--arch", required=True, help="Architecture name (e.g. aarch64, x86_64)")
+    ap.add_argument("--target-triple", default="", help="Rust target triple used to build the binary")
     ap.add_argument("--version", required=True, help="Version tag (e.g. v2.0.0 or 2.0.0)")
     ap.add_argument("--init", default="openwrt/tachyon.init", help="Path to tachyon procd init script")
     ap.add_argument("--hotplug", default="", help="Path to 99-tachyon-wan-monitor hotplug script")
@@ -672,6 +759,10 @@ def main() -> None:
 
     with open(args.bin, "rb") as f:
         bin_bytes = f.read()
+    try:
+        validate_binary_arch(bin_bytes, args.arch, args.target_triple or None)
+    except ValueError as exc:
+        ap.error(str(exc))
     with open(args.init, "rb") as f:
         init_bytes = f.read().replace(b"\r\n", b"\n")
 
