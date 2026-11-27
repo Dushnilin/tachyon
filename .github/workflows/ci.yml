@@ -48,6 +48,13 @@ jobs:
           cargo test --all-targets --locked --no-run
           RUST_MIN_STACK=524288 cargo test --all-targets --locked
 
+      - name: Verify service-probe integration prerequisites
+        run: |
+          command -v python3
+          command -v openssl
+          command -v curl
+          python3 -m py_compile tests/fixtures/service_probe_tls_socks.py
+
       - name: Verify Pure-Rust dependency tree on musl targets
         run: |
           set -euo pipefail
