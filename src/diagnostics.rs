@@ -636,6 +636,51 @@ async fn build_doctor_report(
     )
 }
 
+/// Count only DNS upstream failures that are recent and have not been followed by
+/// a successful query. The Core counters are cumulative, so summing them forever
+/// leaves stale Doctor warnings after an upstream has recovered.
+fn recent_dns_upstream_error_count(servers: &[Value], now: u64) -> u64 {
+    const RECENT_ERROR_WINDOW_SECS: u64 = 10 * 60;
+
+    servers
+        .iter()
+        .map(|server| {
+            let total = server
+                .get("errors_total")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            if total == 0 {
+                return 0;
+            }
+
+            let Some(last_error) = server
+                .get("last_error_unix")
+                .and_then(Value::as_u64)
+                .filter(|timestamp| *timestamp > 0)
+            else {
+                // Older Core builds may not expose timestamps; preserve the
+                // previous cumulative-counter behavior for compatibility.
+                return total;
+            };
+
+            if last_error > now || now.saturating_sub(last_error) > RECENT_ERROR_WINDOW_SECS {
+                return 0;
+            }
+
+            if server
+                .get("last_seen_unix")
+                .and_then(Value::as_u64)
+                .is_some_and(|last_seen| last_seen > last_error)
+            {
+                // A later query succeeded, so the last recorded error recovered.
+                return 0;
+            }
+
+            total
+        })
+        .sum()
+}
+
 #[inline(never)]
 #[cfg_attr(not(test), allow(dead_code))]
 #[allow(clippy::too_many_arguments)]
@@ -1019,11 +1064,7 @@ fn assemble_doctor_report_with_platform(
         .as_ref()
         .and_then(|h| h.pointer("/dns/servers"))
         .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .map(|s| s.get("errors_total").and_then(Value::as_u64).unwrap_or(0))
-                .sum::<u64>()
-        })
+        .map(|arr| recent_dns_upstream_error_count(arr, unix_now_secs()))
         .unwrap_or(live.dns_upstream_errors);
     if dns_up_err >= 5 {
         findings.push(DoctorFinding {
@@ -1031,7 +1072,7 @@ fn assemble_doctor_report_with_platform(
             severity: "warning".to_string(),
             subsystem: "dns".to_string(),
             title: format!("Ошибки и таймауты DNS-апстримов ({dns_up_err})"),
-            detail: "Запросы к настроенным DNS-апстримам завершаются сбоем или SERVFAIL."
+            detail: "У DNS-апстримов есть недавние ошибки без последующего успешного запроса; старые накопительные счётчики не учитываются."
                 .to_string(),
             quick_fix_id: "switch_to_doh".to_string(),
             quick_fix_label: "Переключить на DoH".to_string(),
@@ -8173,6 +8214,73 @@ pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
 mod tests {
     use super::*;
     use crate::store::{RoutingSection, TrafficCondition};
+
+    #[test]
+    fn dns_upstream_errors_ignore_stale_cumulative_counters() {
+        let now = 1_000_000;
+        let servers = json!([
+            {
+                "errors_total": 9,
+                "last_error_unix": now - 2_964,
+                "last_seen_unix": now - 2_964
+            },
+            {
+                "errors_total": 2,
+                "last_error_unix": now - 110_664,
+                "last_seen_unix": now - 27
+            },
+            {
+                "errors_total": 0,
+                "last_error_unix": 0,
+                "last_seen_unix": now - 27
+            }
+        ]);
+
+        assert_eq!(
+            recent_dns_upstream_error_count(servers.as_array().unwrap(), now),
+            0
+        );
+    }
+
+    #[test]
+    fn dns_upstream_errors_count_recent_unrecovered_failure() {
+        let now = 1_000_000;
+        let servers = json!([{
+            "errors_total": 9,
+            "last_error_unix": now - 120,
+            "last_seen_unix": now - 120
+        }]);
+
+        assert_eq!(
+            recent_dns_upstream_error_count(servers.as_array().unwrap(), now),
+            9
+        );
+    }
+
+    #[test]
+    fn dns_upstream_errors_ignore_failure_followed_by_success() {
+        let now = 1_000_000;
+        let servers = json!([{
+            "errors_total": 9,
+            "last_error_unix": now - 120,
+            "last_seen_unix": now - 30
+        }]);
+
+        assert_eq!(
+            recent_dns_upstream_error_count(servers.as_array().unwrap(), now),
+            0
+        );
+    }
+
+    #[test]
+    fn dns_upstream_errors_keep_legacy_fallback_without_timestamps() {
+        let servers = json!([{"errors_total": 5}]);
+
+        assert_eq!(
+            recent_dns_upstream_error_count(servers.as_array().unwrap(), 1_000_000),
+            5
+        );
+    }
 
     #[test]
     fn route_trace_json_matches_main_telegram_and_reflects_nft_state() {
