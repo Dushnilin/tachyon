@@ -699,7 +699,7 @@ def _read_uleb128(data: bytes, offset: int, end: int) -> tuple[int, int]:
     raise ValueError("Malformed ARM attribute ULEB128")
 
 
-def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], list[int]]:
+def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], list[int], bool]:
     """Read CPU architecture and VFP calling-convention attributes from ELF32."""
     if len(binary) < 52 or binary[4] != 1:
         raise ValueError("ARM target must use ELF32")
@@ -757,6 +757,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
         raise ValueError("Unsupported ARM attributes format")
     cpu_arch: list[int] = []
     vfp_args: list[int] = []
+    no_defaults = False
     cursor = 1
     known_numeric_tags = {6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
                           17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
@@ -813,11 +814,13 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                         attr_pos = skip_string(attributes, attr_pos, sub_end)
                     elif tag in known_numeric_tags:
                         value, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
-                        if tag == 6:
+                        if tag == 64:
+                            no_defaults = True
+                        elif tag == 6:
                             cpu_arch.append(value)
                         elif tag == 28:
                             vfp_args.append(value)
-                    elif tag >= 128:
+                    elif tag >= 64:
                         if tag % 128 % 2 == 0:
                             _, attr_pos = _read_uleb128(attributes, attr_pos, sub_end)
                         else:
@@ -827,7 +830,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                 pos = sub_end
         cursor = vendor_end
 
-    return cpu_arch, vfp_args
+    return cpu_arch, vfp_args, no_defaults
 
 
 def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None:
@@ -846,13 +849,15 @@ def validate_arm_abi(binary: bytes, target_family: str, byte_order: str) -> None
         expected_arch = 6
         allowed_vfp_args = {0, 3}
 
-    cpu_arch, vfp_args = _read_arm_attributes(binary, byte_order)
+    cpu_arch, vfp_args, no_defaults = _read_arm_attributes(binary, byte_order)
     if not cpu_arch:
         raise ValueError("ARM binary has no file/section CPU architecture attribute")
     if max(cpu_arch) > expected_arch:
         raise ValueError(
             f"ARM CPU architecture attribute {max(cpu_arch)} exceeds {target_family} target"
         )
+    if not vfp_args and no_defaults:
+        raise ValueError("ARM VFP argument ABI is undefined by Tag_nodefaults")
     effective_vfp_args = vfp_args or [0]
     if any(value not in allowed_vfp_args for value in effective_vfp_args):
         raise ValueError(
