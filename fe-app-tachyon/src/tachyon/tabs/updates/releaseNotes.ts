@@ -4,7 +4,7 @@ import type { Tachyon } from '../../types';
 // Match the backend's 5-item picker pages so one 30-item REST response can
 // populate and cache several UI pages at once.
 const RELEASES_PER_PAGE = 5;
-const MAX_RELEASE_PAGES = 60; // 10 raw API pages × 30 releases ÷ 5 picker items.
+const MAX_RELEASE_PAGES = 20; // 100 entries; bounds repeated scans of raw API pages.
 
 function normalizeTag(tag: string): string {
   return tag.trim().replace(/^v/i, '').toLowerCase();

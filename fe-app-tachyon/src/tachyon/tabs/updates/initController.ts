@@ -1333,7 +1333,11 @@ async function openReleaseNotesModal(opts: {
         currentVersion = matched.tag;
         versionBadgeEl.textContent = currentVersion;
       }
-      renderFormattedReleaseNotes(notesContainerEl, currentNotes);
+      if (currentNotes) {
+        renderFormattedReleaseNotes(notesContainerEl, currentNotes);
+      } else {
+        notesContainerEl.textContent = _('Failed to load release description.');
+      }
     } catch {
       if (currentNotes) {
         renderFormattedReleaseNotes(notesContainerEl, currentNotes);

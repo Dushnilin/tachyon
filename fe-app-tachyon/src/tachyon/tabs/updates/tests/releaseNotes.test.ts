@@ -130,6 +130,6 @@ describe('release notes lookup', () => {
     expect(
       await getReleaseForNotes('tachyon', 'older-than-search-window'),
     ).toBeUndefined();
-    expect(listReleases).toHaveBeenCalledTimes(60);
+    expect(listReleases).toHaveBeenCalledTimes(20);
   });
 });
