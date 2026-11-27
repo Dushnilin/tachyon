@@ -758,7 +758,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
     cpu_arch: list[int] = []
     vfp_args: list[int] = []
     cursor = 1
-    known_numeric_tags = {1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+    known_numeric_tags = {6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
                           17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
                           30, 31, 34, 36, 38, 42, 44, 46, 48, 50, 52, 64, 66,
                           68, 70, 72, 74, 76}
