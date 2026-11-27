@@ -25,6 +25,7 @@ import {
   shouldRefreshComponentStateBeforeRender,
   shouldResetCheckResultsOnMount,
 } from './checkResultLifecycle';
+import { getReleaseForNotes } from './releaseNotes';
 import { describeSameReleaseBuild } from './sameReleaseBuild';
 import { TachyonShellMethods } from '../../methods';
 import {
@@ -1068,12 +1069,6 @@ async function handleInstallVersion(
   await handleComponentAction(button);
 }
 
-function normalizeTagForMatch(tag?: string): string {
-  return String(tag || '')
-    .trim()
-    .replace(/^v/i, '');
-}
-
 function renderInlineReleaseMarkdown(text: string): Node[] {
   const nodes: Node[] = [];
   const tokenRegex =
@@ -1332,35 +1327,21 @@ async function openReleaseNotesModal(opts: {
 
   if (!currentNotes || isTruncatedNotes) {
     try {
-      const cacheKey = `${opts.component}:1`;
-      let releases = versionPickerReleasesCache[cacheKey];
-      if (!releases || releases.length === 0) {
-        const res = await TachyonShellMethods.componentListReleases(
-          opts.component,
-          10,
-          1,
-        );
-        if (res.success && Array.isArray(res.data)) {
-          releases = res.data;
-          versionPickerReleasesCache[cacheKey] = res.data;
-        }
+      const matched = await getReleaseForNotes(
+        opts.component,
+        currentVersion,
+        opts.releaseUrl,
+      );
+      currentNotes = matched?.body?.trim() || currentNotes;
+      if (!currentVersion && matched?.tag) {
+        currentVersion = matched.tag;
+        versionBadgeEl.textContent = currentVersion;
       }
-      if (releases && releases.length > 0) {
-        const wanted = normalizeTagForMatch(currentVersion);
-        const matched =
-          (wanted
-            ? releases.find((r) => normalizeTagForMatch(r.tag) === wanted)
-            : undefined) || releases[0]!;
-        const fetchedBody = (matched.body || '').trim();
-        if (fetchedBody) {
-          currentNotes = fetchedBody;
-        }
-        if (!currentVersion && matched.tag) {
-          currentVersion = matched.tag;
-          versionBadgeEl.textContent = currentVersion;
-        }
+      if (currentNotes) {
+        renderFormattedReleaseNotes(notesContainerEl, currentNotes);
+      } else {
+        notesContainerEl.textContent = _('Failed to load release description.');
       }
-      renderFormattedReleaseNotes(notesContainerEl, currentNotes);
     } catch {
       if (currentNotes) {
         renderFormattedReleaseNotes(notesContainerEl, currentNotes);
