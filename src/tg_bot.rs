@@ -999,6 +999,30 @@ pub(crate) fn maybe_alert_route_failure_at(params: &RouteAlertParams<'_>) -> boo
     any_queued
 }
 
+pub(crate) fn format_update_available_notice_text(
+    comp: &str,
+    current: &str,
+    latest: &str,
+    ru: bool,
+) -> String {
+    let display_comp = crate::updater::public_component_name(comp);
+    if ru {
+        format!(
+            "Доступно обновление <b>{}</b>: <code>{}</code> -> <code>{}</code>",
+            escape_html(display_comp),
+            escape_html(current),
+            escape_html(latest)
+        )
+    } else {
+        format!(
+            "Update available for <b>{}</b>: <code>{}</code> -> <code>{}</code>",
+            escape_html(display_comp),
+            escape_html(current),
+            escape_html(latest)
+        )
+    }
+}
+
 pub(crate) fn submit_update_available_notice(
     d: &crate::store::RouterStoreData,
     comp: &str,
@@ -1015,22 +1039,7 @@ pub(crate) fn submit_update_available_notice(
     {
         return;
     }
-    let ru = is_ru(d);
-    let text = if ru {
-        format!(
-            "Доступно обновление <b>{}</b>: <code>{}</code> -> <code>{}</code>",
-            escape_html(comp),
-            escape_html(current),
-            escape_html(latest)
-        )
-    } else {
-        format!(
-            "Update available for <b>{}</b>: <code>{}</code> -> <code>{}</code>",
-            escape_html(comp),
-            escape_html(current),
-            escape_html(latest)
-        )
-    };
+    let text = format_update_available_notice_text(comp, current, latest, is_ru(d));
     let outbox_dir = tg_outbox_dir();
     let dedup = format!("upd_{comp}_{latest}");
     let mut queued = false;

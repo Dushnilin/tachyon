@@ -71,13 +71,14 @@ pub struct CoreManager {
     sub_refresh_lock: Mutex<()>,
     sub_last_attempt: Mutex<HashMap<String, i64>>,
     prev_totals: Mutex<Option<TrafficSampleBaseline>>,
+    last_net_stack_fingerprint: Mutex<Option<String>>,
     intentional_stop: AtomicBool,
     auto_rollback_in_flight: AtomicBool,
     last_ipv6_resync_ts: PortableAtomicU64,
     boot_recovery_attempts: AtomicU32,
     last_boot_recovery_ts: PortableAtomicU64,
     pub watchdog: Mutex<crate::watchdog::WatchdogState>,
-    switch_history: std::sync::OnceLock<SwitchRecorder>,
+    switch_history: std::sync::OnceLock<Arc<SwitchRecorder>>,
 }
 
 static CLASH_CRED_EPOCH: crate::store::PortableAtomicU64 = crate::store::PortableAtomicU64::new(0);
@@ -85,6 +86,10 @@ static CLASH_CRED_EPOCH: crate::store::PortableAtomicU64 = crate::store::Portabl
 impl CoreManager {
     pub fn invalidate_clash_cred_cache() {
         CLASH_CRED_EPOCH.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub fn clash_cred_epoch() -> u64 {
+        CLASH_CRED_EPOCH.load(Ordering::Acquire)
     }
 
     pub fn is_telemetry_active(&self) -> bool {
@@ -105,6 +110,7 @@ impl CoreManager {
             sub_refresh_lock: Mutex::new(()),
             sub_last_attempt: Mutex::new(HashMap::new()),
             prev_totals: Mutex::new(None),
+            last_net_stack_fingerprint: Mutex::new(None),
             intentional_stop: AtomicBool::new(false),
             auto_rollback_in_flight: AtomicBool::new(false),
             last_ipv6_resync_ts: PortableAtomicU64::new(0),
@@ -1547,7 +1553,7 @@ impl CoreManager {
             .map_err(|e| format!("failed to write check candidate: {e}"))?;
         let mut cmd = Command::new(bin_path);
         cmd.args(["check", "-c", &guard.0.to_string_lossy()]);
-        match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(15)).await {
+        match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(8)).await {
             Ok(out) if out.status.success() => Ok(()),
             Ok(out) => {
                 let stderr = String::from_utf8_lossy(&out.stderr);
@@ -1555,24 +1561,27 @@ impl CoreManager {
                 Err(format!("{}{}", stderr.trim(), stdout.trim()))
             }
             Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                Err("tachyon-core check timed out after 15s".to_string())
+                Err("tachyon-core check timed out after 8s".to_string())
             }
             Err(e) => Err(format!("failed to invoke tachyon-core check: {e}")),
         }
     }
 
     #[inline(never)]
-    async fn compile_or_safe_minimal(
+    async fn compile_or_safe_minimal_with_wan6(
         &self,
         store_snapshot: &crate::store::RouterStoreData,
+        wan6_available: Option<bool>,
     ) -> (Value, BTreeMap<String, String>) {
         crate::adguard_hosts::ensure_adguard_trs_compiled_in(
             &crate::store::runtime_state_dir(),
             self,
         )
         .await;
+        let effective_wan6 =
+            wan6_available.unwrap_or_else(crate::store::detect_wan6_runtime_available);
         let mut seed_errors = BTreeMap::new();
-        match config_gen::compile_core_config(store_snapshot) {
+        match config_gen::compile_core_config_with_wan6(store_snapshot, effective_wan6) {
             Ok(v) => (v, seed_errors),
             Err(e) => {
                 let pretty = Self::format_fault_reason(&format!("{e:#}"));
@@ -1588,7 +1597,7 @@ impl CoreManager {
                 (
                     config_gen::compile_safe_minimal_core_config_with_wan6(
                         store_snapshot,
-                        crate::store::detect_wan6_runtime_available(),
+                        effective_wan6,
                     ),
                     seed_errors,
                 )
@@ -1609,7 +1618,7 @@ impl CoreManager {
         None
     }
 
-    /// Resolve effective `TACHYON_MEMLIMIT_MB` (MiB): explicit setting wins; otherwise auto-cap low-RAM routers (< 320 MiB).
+    /// Resolve effective `TACHYON_MEMLIMIT_MB` (MiB): explicit setting wins; otherwise auto-cap routers (< 640 MiB).
     pub(crate) fn effective_core_memory_limit_mb(
         configured_mb: u32,
         total_ram_kb: Option<u64>,
@@ -1619,6 +1628,7 @@ impl CoreManager {
         }
         match total_ram_kb {
             Some(kb) if kb > 0 && kb < 320 * 1024 => ((kb / 1024) / 2).clamp(64, 160) as u32,
+            Some(kb) if kb < 640 * 1024 => ((kb / 1024) * 28 / 100).clamp(112, 144) as u32,
             _ => 0,
         }
     }
@@ -1662,7 +1672,7 @@ impl CoreManager {
             .map_err(|e| format!("tachyon-core spawn failed: {e:#}"))?;
 
         for _ in 0..4 {
-            tokio::time::sleep(Duration::from_millis(75)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
             if let Ok(Some(status)) = child.try_wait() {
                 let mut early_err = String::new();
                 if let Some(stderr) = child.stderr.take() {
@@ -1713,7 +1723,12 @@ impl CoreManager {
 
             let mut last_err: Option<String> = None;
             let mut passed = false;
-            for _ in 0..16 {
+            let check_started = Instant::now();
+            const QUARANTINE_CHECK_BUDGET: Duration = Duration::from_secs(12);
+            for attempt in 0..16 {
+                if attempt > 0 && check_started.elapsed() >= QUARANTINE_CHECK_BUDGET {
+                    break;
+                }
                 match Self::run_core_check_on_value(&bin_path, &cfg).await {
                     Ok(()) => {
                         passed = true;
@@ -1941,7 +1956,12 @@ impl CoreManager {
         );
         Self::ensure_runtime_cache_dir(&store_snapshot.settings.cache_path);
         Box::pin(self.ensure_server_tls_certs(&store_snapshot)).await;
-        let (cfg_val, seed_errors) = Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
+        let (cfg_val, seed_errors) =
+            Box::pin(self.compile_or_safe_minimal_with_wan6(
+                &store_snapshot,
+                Some(startup_wan6.wan6_available),
+            ))
+            .await;
         let (cfg_path, prepared_cfg, mut quarantined) = match Box::pin(
             self.prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors),
         )
@@ -2121,6 +2141,19 @@ impl CoreManager {
         } else {
             Box::pin(net_stack::apply_network_stack(&store_snapshot)).await
         };
+        let post_net_wan6 = crate::store::probe_wan6_runtime_state();
+        let applied_net_fp = if net_res.is_ok() {
+            let fp = Self::compute_net_stack_fingerprint(
+                &store_snapshot,
+                safe_minimal_active,
+                post_net_wan6.wan6_available,
+            );
+            *self.last_net_stack_fingerprint.lock().await = Some(fp.clone());
+            Some(fp)
+        } else {
+            *self.last_net_stack_fingerprint.lock().await = None;
+            None
+        };
         let _ = Box::pin(self.refresh_core_version()).await;
         let nft_ok = net_stack::check_nft_table_active().await;
 
@@ -2146,14 +2179,22 @@ impl CoreManager {
             }
         }
         Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
-        self.record_watchdog_applied_config(&store_snapshot, &prepared_cfg, &quarantined)
-            .await;
-        let post_wan6 = crate::store::probe_wan6_runtime_state();
+        self.record_watchdog_applied_config(
+            &store_snapshot,
+            &prepared_cfg,
+            &quarantined,
+            startup_wan6.wan6_available,
+        )
+        .await;
         let post_ipv6_state = crate::store::resolve_effective_ipv6_state(
             &store_snapshot.settings,
-            post_wan6.wan6_available,
+            post_net_wan6.wan6_available,
         );
-        if post_ipv6_state != startup_ipv6_state && !self.is_manually_stopped() {
+        let cfg_ipv6_matches =
+            Self::core_config_ipv6_matches(&cfg_path, &store_snapshot, post_ipv6_state);
+        if Self::should_resync_startup_ipv6(startup_ipv6_state, post_ipv6_state, cfg_ipv6_matches)
+            && !self.is_manually_stopped()
+        {
             self.state.live.write().await.push_event(
                 "info",
                 "core_mgr",
@@ -2163,8 +2204,11 @@ impl CoreManager {
                     post_ipv6_state.as_str(),
                 ),
             );
-            let (re_cfg_val, re_seed_errors) =
-                Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
+            let (re_cfg_val, re_seed_errors) = Box::pin(self.compile_or_safe_minimal_with_wan6(
+                &store_snapshot,
+                Some(post_net_wan6.wan6_available),
+            ))
+            .await;
             if let Ok((re_cfg_path, re_prepared_cfg, re_quarantined)) =
                 Box::pin(self.prepare_and_write_validated_core_config(
                     &store_snapshot,
@@ -2175,11 +2219,20 @@ impl CoreManager {
             {
                 let re_safe_minimal = re_quarantined.contains_key("_core_runtime");
                 self.state.live.write().await.safe_minimal_active = re_safe_minimal;
-                if re_safe_minimal {
-                    let _ = Box::pin(net_stack::apply_network_stack_safe_minimal(&store_snapshot))
-                        .await;
-                } else {
-                    let _ = Box::pin(net_stack::apply_network_stack(&store_snapshot)).await;
+                let desired_fp = Self::compute_net_stack_fingerprint(
+                    &store_snapshot,
+                    re_safe_minimal,
+                    post_net_wan6.wan6_available,
+                );
+                if applied_net_fp.as_deref() != Some(desired_fp.as_str()) {
+                    let re_net_res = if re_safe_minimal {
+                        Box::pin(net_stack::apply_network_stack_safe_minimal(&store_snapshot)).await
+                    } else {
+                        Box::pin(net_stack::apply_network_stack(&store_snapshot)).await
+                    };
+                    if re_net_res.is_ok() {
+                        *self.last_net_stack_fingerprint.lock().await = Some(desired_fp);
+                    }
                 }
                 let payload = json!({ "path": re_cfg_path, "payload": "" }).to_string();
                 if Box::pin(self.clash_request("PUT", "/configs?force=true", Some(&payload)))
@@ -2191,6 +2244,7 @@ impl CoreManager {
                         &store_snapshot,
                         &re_prepared_cfg,
                         &re_quarantined,
+                        post_net_wan6.wan6_available,
                     )
                     .await;
                 }
@@ -2199,24 +2253,64 @@ impl CoreManager {
         Ok(())
     }
 
+    pub(crate) fn should_resync_startup_ipv6(
+        startup_ipv6_state: crate::store::EffectiveIpv6State,
+        post_ipv6_state: crate::store::EffectiveIpv6State,
+        cfg_matches: bool,
+    ) -> bool {
+        post_ipv6_state != startup_ipv6_state && !cfg_matches
+    }
+
+    fn compute_net_stack_fingerprint(
+        store: &crate::store::RouterStoreData,
+        safe_minimal_active: bool,
+        wan6_available: bool,
+    ) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(store.settings.proxy_mode.as_bytes());
+        hasher.update([u8::from(safe_minimal_active), u8::from(wan6_available)]);
+        hasher.update([
+            u8::from(store.settings.tcp_bbr),
+            u8::from(store.settings.smart_queue),
+            u8::from(store.settings.dont_touch_dhcp),
+            u8::from(store.settings.enable_yacd),
+        ]);
+        hasher.update(store.settings.tcp_profile.as_bytes());
+        hasher.update(store.settings.sqm_interface.as_bytes());
+        hasher.update(store.settings.sqm_upload_kbps.to_le_bytes());
+        hasher.update(store.settings.sqm_download_kbps.to_le_bytes());
+        let ruleset = net_stack::compile_nftables_ruleset_with_wan6(store, wan6_available, &[]);
+        hasher.update(ruleset.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
     async fn record_watchdog_applied_config(
         &self,
         store_snapshot: &crate::store::RouterStoreData,
         prepared_cfg: &Value,
         quarantined: &BTreeMap<String, String>,
+        wan6_available: bool,
     ) {
         if quarantined.contains_key("_core_runtime") {
             return;
         }
-        let mut digest = crate::watchdog::compute_desired_digest(store_snapshot);
+        let mut digest = if quarantined.is_empty() {
+            crate::watchdog::compute_config_digest(prepared_cfg)
+        } else {
+            crate::watchdog::compute_desired_digest(store_snapshot)
+        };
         if digest.is_empty() {
             digest = crate::watchdog::compute_config_digest(prepared_cfg);
         }
         if !digest.is_empty() {
-            self.watchdog
-                .lock()
-                .await
-                .record_applied_config(digest.clone());
+            let store_gen = self.state.store_generation();
+            {
+                let mut wd = self.watchdog.lock().await;
+                wd.record_applied_config(digest.clone());
+                wd.cached_store_generation = store_gen;
+                wd.cached_wan6_available = wan6_available;
+                wd.cached_desired_digest = digest.clone();
+            }
             let mut live = self.state.live.write().await;
             live.desired_config_digest = digest;
             live.config_drift = false;
@@ -2331,12 +2425,22 @@ impl CoreManager {
         Ok(())
     }
 
+    pub async fn force_kill_spawned_child_fast(&self) {
+        if let Ok(mut guard) =
+            tokio::time::timeout(Duration::from_millis(120), self.proc.lock()).await
+            && let Some((mut child, _)) = guard.take()
+        {
+            let _ = child.start_kill();
+            let _ = tokio::time::timeout(Duration::from_millis(200), child.wait()).await;
+        }
+    }
+
     async fn stop_locked(&self) {
         if let Some((mut child, _)) = self.proc.lock().await.take() {
             #[cfg(unix)]
             if let Some(child_pid) = child.id() {
                 let _ = tokio::time::timeout(
-                    Duration::from_secs(2),
+                    Duration::from_secs(1),
                     Command::new("kill")
                         .args(["-TERM", &child_pid.to_string()])
                         .stdout(Stdio::null())
@@ -2346,20 +2450,20 @@ impl CoreManager {
                 )
                 .await;
                 if !matches!(
-                    tokio::time::timeout(Duration::from_millis(1500), child.wait()).await,
+                    tokio::time::timeout(Duration::from_millis(700), child.wait()).await,
                     Ok(Ok(_))
                 ) {
                     let _ = child.kill().await;
-                    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                    let _ = tokio::time::timeout(Duration::from_millis(600), child.wait()).await;
                 }
             } else {
                 let _ = child.kill().await;
-                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                let _ = tokio::time::timeout(Duration::from_millis(600), child.wait()).await;
             }
             #[cfg(not(unix))]
             {
                 let _ = child.kill().await;
-                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                let _ = tokio::time::timeout(Duration::from_millis(600), child.wait()).await;
             }
         }
         #[cfg(target_os = "linux")]
@@ -2368,7 +2472,7 @@ impl CoreManager {
             // (e.g., adopted on daemon startup or stale pre-upgrade `(deleted)` binary)
             // so the new binary/config can bind `:1602`, `:53`, and `:9090` cleanly.
             let mut killed_pids = std::collections::HashSet::new();
-            for _ in 0..8 {
+            for _ in 0..4 {
                 let target_pid = {
                     let live = self.state.live.read().await;
                     live.core_pid
@@ -2392,7 +2496,7 @@ impl CoreManager {
                 };
                 killed_pids.insert(ext_pid);
                 let _ = tokio::time::timeout(
-                    Duration::from_secs(2),
+                    Duration::from_secs(1),
                     Command::new("kill")
                         .args(["-TERM", &ext_pid.to_string()])
                         .stdout(Stdio::null())
@@ -2402,7 +2506,7 @@ impl CoreManager {
                 )
                 .await;
                 let mut exited = false;
-                for _ in 0..15 {
+                for _ in 0..7 {
                     if !Self::is_pid_running_non_zombie(ext_pid) {
                         exited = true;
                         break;
@@ -2411,7 +2515,7 @@ impl CoreManager {
                 }
                 if !exited {
                     let _ = tokio::time::timeout(
-                        Duration::from_secs(2),
+                        Duration::from_secs(1),
                         Command::new("kill")
                             .args(["-KILL", &ext_pid.to_string()])
                             .stdout(Stdio::null())
@@ -2425,6 +2529,7 @@ impl CoreManager {
             }
         }
         *self.prev_totals.lock().await = None;
+        *self.last_net_stack_fingerprint.lock().await = None;
         Self::invalidate_clash_cred_cache();
         let mut live = self.state.live.write().await;
         live.core_running = false;
@@ -2470,8 +2575,14 @@ impl CoreManager {
             return self.start_boxed().await;
         }
         let store_snapshot = Box::new(self.state.data.read().await.clone());
+        let reload_wan6 = crate::store::probe_wan6_runtime_state();
         Box::pin(self.ensure_server_tls_certs(&store_snapshot)).await;
-        let (cfg_val, seed_errors) = Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
+        let (cfg_val, seed_errors) =
+            Box::pin(self.compile_or_safe_minimal_with_wan6(
+                &store_snapshot,
+                Some(reload_wan6.wan6_available),
+            ))
+            .await;
         let (cfg_path_buf, prepared_cfg, quarantined) = Box::pin(
             self.prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors),
         )
@@ -2486,21 +2597,39 @@ impl CoreManager {
         Self::invalidate_clash_cred_cache();
         self.state.live.write().await.safe_minimal_active = safe_minimal_active;
         let cfg_path = cfg_path_buf.to_string_lossy().to_string();
-        let net_res = if safe_minimal_active {
-            Box::pin(net_stack::apply_network_stack_safe_minimal(&store_snapshot)).await
+        let desired_net_fp = Self::compute_net_stack_fingerprint(
+            &store_snapshot,
+            safe_minimal_active,
+            reload_wan6.wan6_available,
+        );
+        let prev_net_fp = { self.last_net_stack_fingerprint.lock().await.clone() };
+        let nft_already_ok = if prev_net_fp.as_deref() == Some(desired_net_fp.as_str()) {
+            store_snapshot.settings.proxy_mode == "socks"
+                || net_stack::check_nft_table_active().await
         } else {
-            Box::pin(net_stack::apply_network_stack(&store_snapshot)).await
+            false
         };
-        if let Err(e) = net_res {
-            eprintln!("[tachyon] apply_network_stack failed during reload: {e:#}");
-            self.state.live.write().await.push_event(
-                "error",
-                "net_stack",
-                &format!("apply_network_stack failed: {e:#}"),
-            );
+        if !nft_already_ok {
+            let net_res = if safe_minimal_active {
+                Box::pin(net_stack::apply_network_stack_safe_minimal(&store_snapshot)).await
+            } else {
+                Box::pin(net_stack::apply_network_stack(&store_snapshot)).await
+            };
+            if let Err(e) = net_res {
+                *self.last_net_stack_fingerprint.lock().await = None;
+                eprintln!("[tachyon] apply_network_stack failed during reload: {e:#}");
+                self.state.live.write().await.push_event(
+                    "error",
+                    "net_stack",
+                    &format!("apply_network_stack failed: {e:#}"),
+                );
+            } else {
+                *self.last_net_stack_fingerprint.lock().await = Some(desired_net_fp);
+                self.state.live.write().await.nft_table_active =
+                    net_stack::check_nft_table_active().await;
+            }
         } else {
-            self.state.live.write().await.nft_table_active =
-                net_stack::check_nft_table_active().await;
+            self.state.live.write().await.nft_table_active = true;
         }
         let body = json!({ "path": cfg_path }).to_string();
         if Box::pin(self.clash_request("PUT", "/configs?force=true", Some(&body)))
@@ -2512,8 +2641,13 @@ impl CoreManager {
             return self.start_boxed().await;
         }
         Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
-        self.record_watchdog_applied_config(&store_snapshot, &prepared_cfg, &quarantined)
-            .await;
+        self.record_watchdog_applied_config(
+            &store_snapshot,
+            &prepared_cfg,
+            &quarantined,
+            reload_wan6.wan6_available,
+        )
+        .await;
         drop(reload_guard);
         Ok(())
     }
@@ -2694,51 +2828,66 @@ impl CoreManager {
         if sel_map.is_empty() {
             return;
         }
-        let proxies_resp = self.clash_request("GET", "/proxies", None).await.ok();
+        let mut proxies_resp = None;
+        let retry_started = Instant::now();
+        for attempt in 0..4u8 {
+            if let Ok(v) = self.clash_request("GET", "/proxies", None).await {
+                proxies_resp = Some(v);
+                break;
+            }
+            if attempt >= 3 || retry_started.elapsed() >= Duration::from_millis(500) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(120)).await;
+        }
+        let Some(ref body) = proxies_resp else {
+            return;
+        };
         let mut pruned_dirty = false;
         let mut validated = Vec::with_capacity(sel_map.len());
+        let mut synced_updates = Vec::new();
         for (group, tag) in &sel_map {
             let mut chosen = tag.clone();
-            if let Some(ref body) = proxies_resp {
-                let Some(group_obj) = body
-                    .get("proxies")
-                    .and_then(Value::as_object)
-                    .and_then(|m| m.get(group))
-                else {
-                    continue;
-                };
-                if !group_obj
-                    .get("type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|t| t.eq_ignore_ascii_case("selector"))
-                {
-                    continue;
-                }
-                if let Some(all_arr) = group_obj.get("all").and_then(Value::as_array) {
-                    let in_pool = all_arr
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .any(|cand| cand == chosen);
-                    if !in_pool {
-                        let wanted_canon = config_gen::strip_dynamic_server_telemetry(&chosen);
-                        let telemetry_match = (!wanted_canon.is_empty())
-                            .then(|| {
-                                all_arr.iter().filter_map(Value::as_str).find(|cand| {
-                                    config_gen::strip_dynamic_server_telemetry(cand)
-                                        .eq_ignore_ascii_case(&wanted_canon)
-                                })
+            let Some(group_obj) = body
+                .get("proxies")
+                .and_then(Value::as_object)
+                .and_then(|m| m.get(group))
+            else {
+                continue;
+            };
+            if !group_obj
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|t| t.eq_ignore_ascii_case("selector"))
+            {
+                continue;
+            }
+            if let Some(all_arr) = group_obj.get("all").and_then(Value::as_array) {
+                let in_pool = all_arr
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|cand| cand == chosen);
+                if !in_pool {
+                    let wanted_canon = config_gen::strip_dynamic_server_telemetry(&chosen);
+                    let telemetry_match = (!wanted_canon.is_empty())
+                        .then(|| {
+                            all_arr.iter().filter_map(Value::as_str).find(|cand| {
+                                config_gen::strip_dynamic_server_telemetry(cand)
+                                    .eq_ignore_ascii_case(&wanted_canon)
                             })
-                            .flatten()
-                            .or_else(|| {
-                                all_arr.iter().filter_map(Value::as_str).find(|cand| {
-                                    config_gen::server_filter_name_matches(cand, &chosen, &[])
-                                })
-                            });
-                        if let Some(matched) = telemetry_match {
-                            chosen = matched.to_string();
-                            pruned_dirty = true;
-                        } else {
-                            let default_cand = group_obj
+                        })
+                        .flatten()
+                        .or_else(|| {
+                            all_arr.iter().filter_map(Value::as_str).find(|cand| {
+                                config_gen::server_filter_name_matches(cand, &chosen, &[])
+                            })
+                        });
+                    if let Some(matched) = telemetry_match {
+                        chosen = matched.to_string();
+                        pruned_dirty = true;
+                    } else {
+                        let default_cand =
+                            group_obj
                                 .get("default")
                                 .and_then(Value::as_str)
                                 .filter(|def_tag| {
@@ -2747,19 +2896,27 @@ impl CoreManager {
                                         .filter_map(Value::as_str)
                                         .any(|cand| cand == *def_tag)
                                 });
-                            if let Some(fallback) = default_cand
-                                .or_else(|| all_arr.iter().filter_map(Value::as_str).next())
-                            {
-                                chosen = fallback.to_string();
-                                pruned_dirty = true;
-                            } else {
-                                continue;
-                            }
+                        if let Some(fallback) =
+                            default_cand.or_else(|| all_arr.iter().filter_map(Value::as_str).next())
+                        {
+                            chosen = fallback.to_string();
+                            pruned_dirty = true;
+                        } else {
+                            continue;
                         }
                     }
                 }
             }
+            if group_obj.get("now").and_then(Value::as_str) == Some(chosen.as_str()) {
+                if chosen != *tag {
+                    synced_updates.push((group.clone(), chosen));
+                }
+                continue;
+            }
             validated.push((group.clone(), chosen));
+        }
+        for (group, tag) in synced_updates {
+            sel_map.insert(group, tag);
         }
         for (group, tag) in &validated {
             let encoded = crate::store::url_encode_component(group);
@@ -3293,11 +3450,11 @@ impl CoreManager {
 
     pub(crate) fn enable_switch_history(&self) {
         self.switch_history
-            .get_or_init(|| SwitchRecorder::spawn(crate::switch_history::path()));
+            .get_or_init(|| Arc::new(SwitchRecorder::spawn(crate::switch_history::path())));
     }
 
     pub(crate) fn switch_history_stats(&self) -> Option<crate::switch_history::RecorderStats> {
-        self.switch_history.get().map(SwitchRecorder::stats)
+        self.switch_history.get().map(|r| r.stats())
     }
 
     fn switch_history_core(&self) -> Option<(u32, u64)> {
@@ -3306,13 +3463,17 @@ impl CoreManager {
         Some((identity.pid, identity.starttime_ticks))
     }
 
-    /// Perform an HTTP/1.1 request against the local `tachyon-core` Clash API.
-    pub async fn clash_request(
+    async fn clash_request_raw_internal(
         &self,
         method: &str,
         path: &str,
         body: Option<&str>,
-    ) -> anyhow::Result<Value> {
+    ) -> anyhow::Result<(
+        String,
+        Option<(Arc<SwitchRecorder>, SwitchSource, (u32, u64))>,
+        Option<Arc<SwitchGroups>>,
+        Option<Instant>,
+    )> {
         struct ClashConfig {
             path: String,
             mtime: u128,
@@ -3325,15 +3486,18 @@ impl CoreManager {
             std::sync::Mutex::new(None);
         let cur_epoch = CLASH_CRED_EPOCH.load(Ordering::Acquire);
 
-        let observer = self.switch_history.get();
+        let observer = self.switch_history.get().map(Arc::clone);
         let source = match (method, path) {
             ("GET", "/proxies") => Some(SwitchSource::ClashProxies),
             ("GET", "/tachyon/failover") => Some(SwitchSource::CoreFailover),
             _ => None,
         };
         let observation = observer
+            .as_ref()
             .zip(source)
-            .and_then(|(observer, source)| Some((observer, source, self.switch_history_core()?)));
+            .and_then(|(observer, source)| {
+                Some((Arc::clone(observer), source, self.switch_history_core()?))
+            });
         let mut switch_groups = None;
 
         let (mut addr, mut secret, cfg_path) = {
@@ -3552,7 +3716,56 @@ impl CoreManager {
                 json_part.trim()
             );
         }
-        let result = serde_json::from_str::<Value>(json_part.trim()).unwrap_or_else(|_| json!({}));
+        let trimmed = json_part.trim();
+        let raw_body = if trimmed.is_empty() {
+            "{}".to_string()
+        } else {
+            trimmed.to_string()
+        };
+        Ok((raw_body, observation, switch_groups, started))
+    }
+
+    /// Perform an HTTP/1.1 request against the local `tachyon-core` Clash API and return the raw JSON string.
+    pub async fn clash_request_raw(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let (raw_body, observation, switch_groups, started) =
+            self.clash_request_raw_internal(method, path, body).await?;
+        if let (Some((recorder, source, identity)), Some(groups), Some(started)) =
+            (observation, switch_groups, started)
+            && self.switch_history_core() == Some(identity)
+        {
+            let raw_clone = raw_body.clone();
+            let state_clone = Arc::clone(&self.state);
+            tokio::task::spawn_blocking(move || {
+                if let Ok(result) = serde_json::from_str::<Value>(&raw_clone) {
+                    let still_same = state_clone.live.try_read().ok().and_then(|live| {
+                        live.core_identity
+                            .as_ref()
+                            .map(|id| (id.pid, id.starttime_ticks))
+                    }) == Some(identity);
+                    if still_same {
+                        recorder.observe(groups, identity, started, source, &result);
+                    }
+                }
+            });
+        }
+        Ok(raw_body)
+    }
+
+    /// Perform an HTTP/1.1 request against the local `tachyon-core` Clash API.
+    pub async fn clash_request(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+    ) -> anyhow::Result<Value> {
+        let (raw_body, observation, switch_groups, started) =
+            self.clash_request_raw_internal(method, path, body).await?;
+        let result = serde_json::from_str::<Value>(&raw_body).unwrap_or_else(|_| json!({}));
         if let (Some((recorder, source, identity)), Some(groups), Some(started)) =
             (observation, switch_groups, started)
             && self.switch_history_core() == Some(identity)
@@ -4989,8 +5202,9 @@ impl CoreManager {
                     src.sub_preferred_user_agent = pref_ua;
                 }
             }
-            self.state.bump_generation();
             crate::ubus_bridge::sync_from_store_to_json_and_cache(&d);
+            drop(d);
+            self.state.bump_generation();
         }
         Ok(updated_sources)
     }
@@ -5586,100 +5800,109 @@ impl CoreManager {
             )
         };
         let engine_variant = "tachyon-core".to_string();
-        let mut rulesets_files = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(&rulesets_dir) {
-            for entry in rd.flatten() {
-                let p = entry.path();
-                if p.extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|ext| ext == "trs" || ext == "srs")
-                    && let Ok(meta) = entry.metadata()
-                {
-                    let name = p
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let mtime = meta
-                        .modified()
-                        .ok()
-                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs() as i64)
-                        .unwrap_or(0);
-                    rulesets_files.push(json!({
-                        "name": name,
-                        "size_bytes": meta.len(),
-                        "updated_at": mtime
-                    }));
+        let data_dir = crate::snapshots::data_dir_for_state(&self.state);
+        let rulesets_dir_clone = rulesets_dir.clone();
+        let data_dir_clone = data_dir.clone();
+        let (
+            rulesets_files,
+            (fp_inst, fp_run, fp_pid, fp_ver),
+            (torr_inst, torr_run, torr_pid, _),
+            tachyon_bak,
+            core_bak,
+        ) = tokio::task::spawn_blocking(move || {
+            let mut rulesets_files = Vec::new();
+            if let Ok(rd) = std::fs::read_dir(&rulesets_dir_clone) {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if p.extension()
+                        .and_then(|x| x.to_str())
+                        .is_some_and(|ext| ext == "trs" || ext == "srs")
+                        && let Ok(meta) = entry.metadata()
+                    {
+                        let name = p
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let mtime = meta
+                            .modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+                        rulesets_files.push(json!({
+                            "name": name,
+                            "size_bytes": meta.len(),
+                            "updated_at": mtime
+                        }));
+                    }
                 }
             }
-        }
+            let read_ver_file = |paths: &[&str]| -> Option<String> {
+                for p in paths {
+                    if let Ok(raw) = std::fs::read_to_string(p) {
+                        let s = raw.lines().next().unwrap_or("").trim();
+                        if !s.is_empty() {
+                            return Some(s.to_string());
+                        }
+                    }
+                }
+                None
+            };
+            let check_bin = |paths: &[&str],
+                             proc_name: &str,
+                             ver_files: &[&str],
+                             fallback_ver: &str|
+             -> (bool, bool, u32, String) {
+                let installed = paths.iter().any(|p| Path::new(p).exists());
+                let (running, pid) = if installed {
+                    if let Some((p, _)) = sys_info::find_running_process_by_name(proc_name) {
+                        (true, p)
+                    } else {
+                        (false, 0)
+                    }
+                } else {
+                    (false, 0)
+                };
+                let ver = if installed {
+                    read_ver_file(ver_files).unwrap_or_else(|| fallback_ver.to_string())
+                } else {
+                    "не установлен".to_string()
+                };
+                (installed, running, pid, ver)
+            };
+            let fp = check_bin(
+                &[
+                    "/usr/bin/fptn-client-cli",
+                    "/usr/bin/fptn-client",
+                    "/opt/fptn/fptn-client",
+                ],
+                "fptn",
+                &["/etc/fptn/.version"],
+                "установлен",
+            );
+            let torr = check_bin(
+                &[
+                    "/usr/bin/torrserver",
+                    "/opt/torrserver/torrserver",
+                    "/usr/sbin/torrserver",
+                ],
+                "torrserver",
+                &[],
+                "установлен",
+            );
+            let tachyon_bak = crate::snapshots::read_backup_meta(&data_dir_clone, "tachyon");
+            let core_bak = crate::snapshots::read_backup_meta(&data_dir_clone, "tachyon-core");
+            (rulesets_files, fp, torr, tachyon_bak, core_bak)
+        })
+        .await
+        .unwrap_or_default();
         let trs_count = rulesets_files.len();
         let core_ver_str = if core_ver.is_empty() {
             "0.4.4".to_string()
         } else {
             core_ver
         };
-
-        let read_ver_file = |paths: &[&str]| -> Option<String> {
-            for p in paths {
-                if let Ok(raw) = std::fs::read_to_string(p) {
-                    let s = raw.lines().next().unwrap_or("").trim();
-                    if !s.is_empty() {
-                        return Some(s.to_string());
-                    }
-                }
-            }
-            None
-        };
-
-        let check_bin = |paths: &[&str],
-                         proc_name: &str,
-                         ver_files: &[&str],
-                         fallback_ver: &str|
-         -> (bool, bool, u32, String) {
-            let installed = paths.iter().any(|p| Path::new(p).exists());
-            let (running, pid) = if installed {
-                if let Some((p, _)) = sys_info::find_running_process_by_name(proc_name) {
-                    (true, p)
-                } else {
-                    (false, 0)
-                }
-            } else {
-                (false, 0)
-            };
-            let ver = if installed {
-                read_ver_file(ver_files).unwrap_or_else(|| fallback_ver.to_string())
-            } else {
-                "не установлен".to_string()
-            };
-            (installed, running, pid, ver)
-        };
-
-        let (fp_inst, fp_run, fp_pid, fp_ver) = check_bin(
-            &[
-                "/usr/bin/fptn-client-cli",
-                "/usr/bin/fptn-client",
-                "/opt/fptn/fptn-client",
-            ],
-            "fptn",
-            &["/etc/fptn/.version"],
-            "установлен",
-        );
-        let (torr_inst, torr_run, torr_pid, _) = check_bin(
-            &[
-                "/usr/bin/torrserver",
-                "/opt/torrserver/torrserver",
-                "/usr/sbin/torrserver",
-            ],
-            "torrserver",
-            &[],
-            "установлен",
-        );
-
-        let data_dir = crate::snapshots::data_dir_for_state(&self.state);
-        let tachyon_bak = crate::snapshots::read_backup_meta(&data_dir, "tachyon");
-        let core_bak = crate::snapshots::read_backup_meta(&data_dir, "tachyon-core");
 
         let components = vec![
             json!({
@@ -6373,6 +6596,9 @@ impl CoreManager {
         tokio::spawn(async move {
             let mut tick_count = 0u64;
             let mut interval = telemetry_poll_interval();
+            // Consume the immediate first tick so `tick_count = 1` runs after one full period
+            // rather than duplicating the startup `poll_telemetry_and_reconcile(0)` call.
+            interval.tick().await;
             loop {
                 interval.tick().await;
                 tick_count = tick_count.wrapping_add(1);
@@ -9269,7 +9495,15 @@ mod core_mgr_tests {
             159
         );
         assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(485 * 1024)),
+            135
+        );
+        assert_eq!(
             CoreManager::effective_core_memory_limit_mb(0, Some(512 * 1024)),
+            143
+        );
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(1024 * 1024)),
             0
         );
         assert_eq!(CoreManager::effective_core_memory_limit_mb(0, None), 0);
@@ -9326,5 +9560,131 @@ mod core_mgr_tests {
             ),
             vec!["sel-Main".to_string(), "bal-Main-sel".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn test_clash_request_raw_and_restore_saved_selectors_skip_unready_or_unchanged() {
+        let mock = Arc::new(MockClashState::default());
+        let (port, srv_handle) = spawn_test_mock_clash_server(Arc::clone(&mock)).await;
+
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_raw_sel_test_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let cfg_file = dir.join("core-cfg.json");
+        std::fs::write(
+            &cfg_file,
+            json!({
+                "experimental": {
+                    "clash_api": {
+                        "external_controller": format!("127.0.0.1:{port}"),
+                        "secret": ""
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("write cfg");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.clash_api_addr = format!("127.0.0.1:{port}");
+            d.settings.clash_api_secret.clear();
+            d.settings.core_config_path = cfg_file.to_string_lossy().to_string();
+            d.sections[0].enabled = true;
+            d.sections[0].active_selected_tag = "NodeA".to_string();
+        }
+        let mgr = CoreManager::new(Arc::clone(&state));
+        let raw = mgr
+            .clash_request_raw("GET", "/connections", None)
+            .await
+            .expect("clash_request_raw GET /connections");
+        let parsed: Value = serde_json::from_str(&raw).expect("valid raw json");
+        assert!(parsed.get("connections").is_some());
+
+        // When Clash API is unreachable, restore_saved_selectors must abort instead of blasting PUTs.
+        let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind closed port");
+        let closed_port = closed_listener.local_addr().unwrap().port();
+        drop(closed_listener);
+        let closed_cfg = dir.join("closed-cfg.json");
+        std::fs::write(
+            &closed_cfg,
+            json!({
+                "experimental": {
+                    "clash_api": {
+                        "external_controller": format!("127.0.0.1:{closed_port}"),
+                        "secret": ""
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("write closed cfg");
+        {
+            let mut d = state.data.write().await;
+            d.settings.clash_api_addr = format!("127.0.0.1:{closed_port}");
+            d.settings.core_config_path = closed_cfg.to_string_lossy().to_string();
+        }
+        CoreManager::invalidate_clash_cred_cache();
+        let snap = state.data.read().await.clone();
+        let started = Instant::now();
+        mgr.restore_saved_selectors(&snap).await;
+        assert!(started.elapsed() < Duration::from_secs(3));
+
+        // Startup IPv6 resync helper triggers only when effective state changed AND config does not match.
+        assert!(!CoreManager::should_resync_startup_ipv6(
+            crate::store::EffectiveIpv6State::TunnelOverV4,
+            crate::store::EffectiveIpv6State::TunnelOverV4,
+            false
+        ));
+        assert!(!CoreManager::should_resync_startup_ipv6(
+            crate::store::EffectiveIpv6State::Disabled,
+            crate::store::EffectiveIpv6State::Full,
+            true
+        ));
+        assert!(CoreManager::should_resync_startup_ipv6(
+            crate::store::EffectiveIpv6State::Disabled,
+            crate::store::EffectiveIpv6State::Full,
+            false
+        ));
+
+        srv_handle.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_net_stack_fingerprint_stable_across_non_net_changes_and_fast_kill() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_fp_kill_test_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        let mgr = CoreManager::new(Arc::clone(&state));
+        let d1 = state.data.read().await.clone();
+        let mut d2 = d1.clone();
+        d2.sections[0].active_selected_tag = "NodeX".to_string();
+        assert_eq!(
+            CoreManager::compute_net_stack_fingerprint(&d1, false, false),
+            CoreManager::compute_net_stack_fingerprint(&d2, false, false),
+        );
+        d2.settings.tcp_bbr = !d1.settings.tcp_bbr;
+        assert_ne!(
+            CoreManager::compute_net_stack_fingerprint(&d1, false, false),
+            CoreManager::compute_net_stack_fingerprint(&d2, false, false),
+        );
+
+        let child = spawn_dummy_long_process();
+        *mgr.proc.lock().await = Some((child, Instant::now()));
+        assert!(mgr.has_spawned_child().await);
+        mgr.force_kill_spawned_child_fast().await;
+        assert!(!mgr.has_spawned_child().await);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

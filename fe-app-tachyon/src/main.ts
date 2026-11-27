@@ -75,6 +75,12 @@ export {
   getSubsumedCommunityLists,
   parseCommunityHint,
 } from './helpers/communityListPicker';
+export {
+  attachSearchableCheckboxMultiSelect,
+  attachSearchableMultiSelectToOption,
+  createSearchableCheckboxMultiSelect,
+  normalizeMultiSelectChoices,
+} from './helpers/searchableCheckboxMultiSelect';
 export { TachyonShellMethods } from './tachyon/methods/shell';
 export { coreService } from './tachyon/services/core.service';
 export { store } from './tachyon/services/store.service';

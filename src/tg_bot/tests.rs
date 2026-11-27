@@ -2951,3 +2951,14 @@ fn test_core_mgr_restart_alerts_rate_limited_300s() {
     assert_eq!(n3[0].0, "restart");
     assert!(emitted3);
 }
+
+#[test]
+fn test_update_available_notice_uses_tachyon_core_display_name() {
+    let ru_text = format_update_available_notice_text("sing_box", "0.6.8", "0.6.9", true);
+    assert!(ru_text.contains("tachyon-core"), "{ru_text}");
+    assert!(!ru_text.contains("sing_box"), "{ru_text}");
+
+    let en_text = format_update_available_notice_text("sing_box", "0.6.8", "0.6.9", false);
+    assert!(en_text.contains("tachyon-core"), "{en_text}");
+    assert!(!en_text.contains("sing_box"), "{en_text}");
+}

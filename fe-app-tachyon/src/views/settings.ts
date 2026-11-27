@@ -723,6 +723,44 @@ function configureDnsList(option, choices, defaultValue) {
       option_index,
       cfgvalue,
     );
+    if (
+      typeof main !== 'undefined' &&
+      main &&
+      typeof main.attachSearchableCheckboxMultiSelect === 'function'
+    ) {
+      let uiEl = null;
+      try {
+        uiEl =
+          typeof this.getUIElement === 'function'
+            ? this.getUIElement(section_id)
+            : null;
+      } catch (_e) {}
+      if (
+        !uiEl &&
+        typeof dom !== 'undefined' &&
+        dom &&
+        typeof dom.findClassInstance === 'function'
+      ) {
+        try {
+          uiEl = dom.findClassInstance(node);
+        } catch (_e) {}
+      }
+      const choiceList = Object.entries(choices || {}).map(
+        ([value, label]) => ({
+          value,
+          label: _(label),
+        }),
+      );
+      main.attachSearchableCheckboxMultiSelect(uiEl, node, {
+        choices: choiceList,
+        showChips: false,
+        allowCustom: true,
+        placeholder: this.placeholder,
+        option: this,
+        sectionId: section_id,
+        validateItem: (val) => this.validate(section_id, val),
+      });
+    }
     if (this.speedTestController && node) {
       this.speedTestController.attachList(node, { alwaysEnabled: true });
     }
@@ -808,6 +846,7 @@ function configureDnsDynamicList(option, getChoices, defaultValue) {
       disabled: this.readonly != null ? this.readonly : this.map.readonly,
     });
     const node = widget.render();
+    let msHandle = null;
     const refreshChoices = () => {
       if (!node.isConnected) return false;
       const currentValues = widget.getValue();
@@ -828,9 +867,32 @@ function configureDnsDynamicList(option, getChoices, defaultValue) {
         currentChoices.map((choice) => choice.value),
         currentLabels,
       );
+      msHandle?.refreshChoices(currentChoices);
     };
+    if (
+      typeof main !== 'undefined' &&
+      main &&
+      typeof main.attachSearchableCheckboxMultiSelect === 'function'
+    ) {
+      msHandle = main.attachSearchableCheckboxMultiSelect(widget, node, {
+        choices,
+        showChips: false,
+        allowCustom: true,
+        placeholder: this.placeholder,
+        option: this,
+        sectionId: section_id,
+        validateItem: (val) => this.validate(section_id, val),
+        onBeforeOpen: refreshChoices,
+      });
+    }
     const refreshBeforeOpening = (event) => {
-      if (event.target && event.target.closest('.add-item')) refreshChoices();
+      if (
+        event.target &&
+        (event.target.closest('.add-item') ||
+          event.target.closest('.tachyon-ms'))
+      ) {
+        refreshChoices();
+      }
     };
     node.addEventListener('mousedown', refreshBeforeOpening, true);
     node.addEventListener('focusin', refreshBeforeOpening, true);
@@ -7258,6 +7320,13 @@ function createSettingsContent(section, capabilities) {
       ? true
       : _('Select a predefined domain list');
   };
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(sdExcludeListsOpt);
+  }
 
   const sdDomainsOpt = section.taboption(
     'services',

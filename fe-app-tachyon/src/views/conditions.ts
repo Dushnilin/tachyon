@@ -1569,6 +1569,9 @@ function createConditionsContent(section) {
   o.remove = function (sectionId) {
     this.write(sectionId, []);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption(
     'general',
@@ -1633,6 +1636,9 @@ function createConditionsContent(section) {
     if (cycleErr) return cycleErr;
     return true;
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption(
     'general',
@@ -2262,6 +2268,9 @@ function createConditionsContent(section) {
     unsetIfPresent(sectionId, 'source_inbounds');
     syncConditionOptionToParentSection(sectionId, 'source_inbounds', null);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption(
     'network',
@@ -2415,6 +2424,9 @@ function createConditionsContent(section) {
   o.value('at', _('🇦🇹 Austria (at)'));
   o.value('cz', _('🇨🇿 Czechia (cz)'));
   o.value('hk', _('🇭🇰 Hong Kong (hk)'));
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 
   o = section.taboption(
     'network',

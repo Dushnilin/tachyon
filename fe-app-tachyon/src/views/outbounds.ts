@@ -969,6 +969,8 @@ function createChipToggleBar(inputEl, choices, isUpper) {
 }
 
 function createServerChecklistPicker(inputEl) {
+  const BATCH_SIZE = 120;
+  const SELECT_VISIBLE_LIMIT = 300;
   const container = E('div', {
     style: 'margin-top: 6px; min-width: 0; max-width: 100%;',
   });
@@ -977,11 +979,12 @@ function createServerChecklistPicker(inputEl) {
       'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;',
   });
   const selectedChipsBox = E('div', {
-    style: 'display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;',
+    class: 'tachyon-ms__chips',
+    style: 'margin-bottom: 6px;',
   });
   const drawerWrap = E('div', {
     style:
-      'border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; padding: 8px; background: rgba(15, 23, 42, 0.25);',
+      'border: 1px solid var(--border-strong, rgba(128,128,128,0.28)); border-radius: var(--r-btn, 8px); padding: 8px; background: var(--surface, rgba(128, 128, 128, 0.06));',
   });
   const searchRow = E('div', {
     style:
@@ -990,16 +993,50 @@ function createServerChecklistPicker(inputEl) {
   const searchInput = E('input', {
     type: 'text',
     class: 'cbi-input-text',
-    placeholder: _('Search servers in pool...'),
+    placeholder: _tr('Поиск серверов в пуле...', 'Search servers in pool...'),
     style: 'flex: 1; min-width: 160px; font-size: 12px; margin: 0;',
   });
+  const searchClearBtn = E(
+    'button',
+    {
+      type: 'button',
+      class: 'btn cbi-button',
+      title: _tr('Очистить поиск', 'Clear search'),
+      style:
+        'padding: 2px 8px; font-size: 12px; line-height: 1.4; display: none;',
+    },
+    '×',
+  );
+  const statsLabel = E(
+    'span',
+    {
+      style:
+        'font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text2, #888); white-space: nowrap;',
+    },
+    '0 / 0',
+  );
   const listBox = E('div', {
+    class: 'tachyon-ms__list',
     style:
-      'max-height: 200px; min-width: 0; max-width: 100%; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; gap: 3px;',
+      'max-height: 240px; min-width: 0; max-width: 100%; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; gap: 3px;',
   });
 
   let allServers = [];
+  let lastPoolCount = 0;
   let isListOpen = true;
+  let visibleLimit = BATCH_SIZE;
+  let lastFiltered = [];
+
+  const updatePickerStats = (renderedCount, filteredCount, totalCount) => {
+    const q = searchInput.value.trim();
+    if (q) {
+      statsLabel.textContent = `${filteredCount} / ${totalCount}`;
+    } else if (renderedCount < filteredCount) {
+      statsLabel.textContent = `${renderedCount} / ${filteredCount}`;
+    } else {
+      statsLabel.textContent = `${filteredCount}`;
+    }
+  };
 
   const setSelectedValues = (arr) => {
     inputEl.value = arr.join(', ');
@@ -1025,19 +1062,169 @@ function createServerChecklistPicker(inputEl) {
     return merged;
   };
 
+  const buildServerRow = (srv, selected) => {
+    const active = selected.has(srv.value);
+    const cb = E('input', {
+      type: 'checkbox',
+      class: 'tachyon-ms__checkbox',
+      style: 'margin: 0; cursor: pointer; flex-shrink: 0;',
+    });
+    cb.checked = active;
+
+    const protoBadge =
+      srv.proto || srv.trans
+        ? E(
+            'span',
+            { class: 'tachyon-ms__option-badge' },
+            [srv.proto, srv.trans]
+              .filter(Boolean)
+              .map((x) => String(x).toUpperCase())
+              .filter((v, i, a) => a.indexOf(v) === i)
+              .join('+'),
+          )
+        : null;
+
+    const pfxBadge = srv.prefix
+      ? E(
+          'span',
+          {
+            class: 'tachyon-ms__option-badge',
+            style:
+              'color: var(--accent, #0a84ff); border-color: color-mix(in srgb, var(--accent, #0a84ff) 35%, transparent);',
+          },
+          srv.prefix,
+        )
+      : null;
+
+    const toggleSrv = (ev) => {
+      if (ev) ev.stopPropagation();
+      const cur = serverNameList(inputEl.value);
+      const idx = cur.indexOf(srv.value);
+      if (idx >= 0) cur.splice(idx, 1);
+      else cur.push(srv.value);
+      setSelectedValues(cur);
+      renderList();
+    };
+
+    cb.addEventListener('click', toggleSrv);
+
+    return E(
+      'div',
+      {
+        class: `tachyon-ms__option${active ? ' is-selected' : ''}`,
+        style: 'justify-content: space-between;',
+        click: toggleSrv,
+      },
+      [
+        E(
+          'div',
+          {
+            style:
+              'display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;',
+          },
+          [
+            cb,
+            E(
+              'span',
+              {
+                class: 'tachyon-ms__option-label',
+                style:
+                  'font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+              },
+              srv.value,
+            ),
+          ],
+        ),
+        E(
+          'div',
+          {
+            style:
+              'display: flex; align-items: center; gap: 4px; flex-shrink: 0;',
+          },
+          [pfxBadge, protoBadge].filter(Boolean),
+        ),
+      ],
+    );
+  };
+
+  const appendMoreFooter = (filtered, renderedCount, selected) => {
+    const existingMore = listBox.querySelector('.tachyon-ms__more-wrap');
+    if (existingMore && existingMore.parentNode === listBox) {
+      listBox.removeChild(existingMore);
+    }
+    if (renderedCount >= filtered.length) return;
+    const remaining = filtered.length - renderedCount;
+    const nextStep = Math.min(BATCH_SIZE, remaining);
+    const moreBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'tachyon-ms__more-btn',
+        click: () => {
+          const prevEnd = Math.min(lastFiltered.length, visibleLimit);
+          visibleLimit += BATCH_SIZE;
+          const nextEnd = Math.min(lastFiltered.length, visibleLimit);
+          const curSelected = new Set(serverNameList(inputEl.value));
+          const oldMore = listBox.querySelector('.tachyon-ms__more-wrap');
+          if (oldMore && oldMore.parentNode === listBox) {
+            listBox.removeChild(oldMore);
+          }
+          const frag = document.createDocumentFragment();
+          for (let i = prevEnd; i < nextEnd; i += 1) {
+            frag.appendChild(buildServerRow(lastFiltered[i], curSelected));
+          }
+          listBox.appendChild(frag);
+          appendMoreFooter(lastFiltered, nextEnd, curSelected);
+          updatePickerStats(nextEnd, lastFiltered.length, lastPoolCount);
+        },
+      },
+      `${_tr('Показать ещё', 'Show more')} ${nextStep} (${_tr('осталось', 'remaining')}: ${remaining})`,
+    );
+    listBox.appendChild(
+      E('div', { class: 'tachyon-ms__more-wrap' }, [moreBtn]),
+    );
+  };
+
+  const selectFilteredBtn = E(
+    'button',
+    {
+      type: 'button',
+      class: 'btn cbi-button',
+      style: 'padding: 2px 8px; font-size: 11px; line-height: 1.4;',
+      click: () => {
+        const q = searchInput.value.trim().toLowerCase();
+        const merged = getMergedServers();
+        lastPoolCount = merged.length;
+        const filtered = q
+          ? merged.filter(
+              (s) =>
+                s.label.toLowerCase().includes(q) ||
+                s.value.toLowerCase().includes(q),
+            )
+          : merged;
+        const cur = new Set(serverNameList(inputEl.value));
+        filtered.forEach((s) => cur.add(s.value));
+        setSelectedValues(Array.from(cur));
+        renderList();
+      },
+    },
+    _('Select matching'),
+  );
+
   const renderList = () => {
     const selectedArr = serverNameList(inputEl.value);
     const selected = new Set(selectedArr);
     const merged = getMergedServers();
+    lastPoolCount = merged.length;
 
     summaryBar.innerHTML = '';
     const countBadge = E(
       'span',
       {
-        style: `font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; ${
+        style: `font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 2px 8px; border-radius: 6px; ${
           selected.size > 0
-            ? 'background: rgba(10, 132, 255, 0.22); color: #93c5fd; border: 1px solid rgba(10, 132, 255, 0.45);'
-            : 'opacity: 0.72;'
+            ? 'background: color-mix(in srgb, var(--accent, #0a84ff) 14%, transparent); color: var(--accent, #0a84ff); border: 1px solid color-mix(in srgb, var(--accent, #0a84ff) 32%, transparent);'
+            : 'color: var(--text2, #888);'
         }`,
       },
       selected.size > 0
@@ -1077,8 +1264,8 @@ function createServerChecklistPicker(inputEl) {
           },
         },
         isListOpen
-          ? `▴ ${_('Hide server list')} (${merged.length})`
-          : `▾ ${_('Choose from server list')} (${merged.length})`,
+          ? `${_('Hide server list')} (${merged.length})`
+          : `${_('Choose from server list')} (${merged.length})`,
       ),
     );
     summaryBar.appendChild(countBadge);
@@ -1087,37 +1274,40 @@ function createServerChecklistPicker(inputEl) {
     selectedChipsBox.innerHTML = '';
     if (selectedArr.length > 0) {
       selectedChipsBox.style.display = 'flex';
+      const chipFrag = document.createDocumentFragment();
       selectedArr.forEach((name) => {
-        selectedChipsBox.appendChild(
-          E(
-            'button',
-            {
-              type: 'button',
-              class: 'btn cbi-button',
-              title: _('Click to remove server from selection'),
-              style:
-                'padding: 2px 8px; font-size: 11px; line-height: 1.35; border-radius: 999px; background: rgba(10, 132, 255, 0.24); border-color: #0a84ff; color: #dbeafe; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
-              click: () => {
-                const next = serverNameList(inputEl.value).filter(
-                  (x) => x !== name,
-                );
-                setSelectedValues(next);
-                renderList();
-              },
+        const rmBtn = E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-ms__chip-remove',
+            title: _('Click to remove server from selection'),
+            click: () => {
+              const next = serverNameList(inputEl.value).filter(
+                (x) => x !== name,
+              );
+              setSelectedValues(next);
+              renderList();
             },
-            [
-              E('span', {}, `✓ ${name}`),
-              E('span', { style: 'opacity: 0.75; font-weight: 600;' }, '×'),
-            ],
-          ),
+          },
+          '×',
+        );
+        chipFrag.appendChild(
+          E('span', { class: 'tachyon-ms__chip' }, [
+            E('span', { class: 'tachyon-ms__chip-label' }, name),
+            rmBtn,
+          ]),
         );
       });
+      selectedChipsBox.appendChild(chipFrag);
     } else {
       selectedChipsBox.style.display = 'none';
     }
 
     listBox.innerHTML = '';
     if (!merged.length) {
+      statsLabel.textContent = '0 / 0';
+      selectFilteredBtn.style.display = 'none';
       listBox.appendChild(
         E(
           'span',
@@ -1131,6 +1321,7 @@ function createServerChecklistPicker(inputEl) {
     }
 
     const q = searchInput.value.trim().toLowerCase();
+    searchClearBtn.style.display = q ? '' : 'none';
     const filtered = q
       ? merged.filter(
           (s) =>
@@ -1138,129 +1329,71 @@ function createServerChecklistPicker(inputEl) {
             s.value.toLowerCase().includes(q),
         )
       : merged;
+    lastFiltered = filtered;
 
-    // Sort selected servers to top when no search query, or keep natural order?
-    // Keeping selected highlighted with checkbox makes them easy to spot, and we also show selected chips at top!
-    filtered.slice(0, 200).forEach((srv) => {
-      const active = selected.has(srv.value);
-      const cb = E('input', {
-        type: 'checkbox',
-        style: 'margin: 0; cursor: pointer; flex-shrink: 0;',
-      });
-      cb.checked = active;
+    const showSelectVisible =
+      Boolean(q) || filtered.length <= SELECT_VISIBLE_LIMIT;
+    selectFilteredBtn.style.display = showSelectVisible ? '' : 'none';
+    selectFilteredBtn.disabled = filtered.length === 0;
 
-      const protoBadge =
-        srv.proto || srv.trans
-          ? E(
-              'span',
-              {
-                style:
-                  'font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.16); color: #cbd5e1; flex-shrink: 0; font-family: monospace;',
-              },
-              [srv.proto, srv.trans]
-                .filter(Boolean)
-                .map((x) => String(x).toUpperCase())
-                .filter((v, i, a) => a.indexOf(v) === i)
-                .join('+'),
-            )
-          : null;
+    const sliceEnd = Math.min(filtered.length, visibleLimit);
+    updatePickerStats(sliceEnd, filtered.length, merged.length);
 
-      const pfxBadge = srv.prefix
-        ? E(
-            'span',
-            {
-              style:
-                'font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.16); color: #7dd3fc; flex-shrink: 0;',
-            },
-            srv.prefix,
-          )
-        : null;
-
-      const toggleSrv = (ev) => {
-        if (ev) ev.stopPropagation();
-        const cur = serverNameList(inputEl.value);
-        const idx = cur.indexOf(srv.value);
-        if (idx >= 0) cur.splice(idx, 1);
-        else cur.push(srv.value);
-        setSelectedValues(cur);
-        renderList();
-      };
-
-      cb.addEventListener('click', toggleSrv);
-
+    if (!filtered.length) {
       listBox.appendChild(
         E(
           'div',
-          {
-            style: `display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; user-select: none; border: 1px solid ${
-              active ? 'rgba(10, 132, 255, 0.55)' : 'rgba(148, 163, 184, 0.12)'
-            }; background: ${
-              active ? 'rgba(10, 132, 255, 0.18)' : 'rgba(24, 24, 27, 0.55)'
-            };`,
-            click: toggleSrv,
-          },
-          [
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;',
-              },
-              [
-                cb,
-                E(
-                  'span',
-                  {
-                    style: `font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${
-                      active ? 'font-weight: 600; color: #f8fafc;' : ''
-                    }`,
-                  },
-                  srv.value,
-                ),
-              ],
-            ),
-            E(
-              'div',
-              {
-                style:
-                  'display: flex; align-items: center; gap: 4px; flex-shrink: 0;',
-              },
-              [pfxBadge, protoBadge].filter(Boolean),
-            ),
-          ],
+          { class: 'tachyon-ms__empty' },
+          _tr('Ничего не найдено', 'No matches found'),
         ),
       );
-    });
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < sliceEnd; i += 1) {
+      frag.appendChild(buildServerRow(filtered[i], selected));
+    }
+    listBox.appendChild(frag);
+    appendMoreFooter(filtered, sliceEnd, selected);
   };
 
-  const selectFilteredBtn = E(
-    'button',
-    {
-      type: 'button',
-      class: 'btn cbi-button',
-      style: 'padding: 2px 8px; font-size: 11px; line-height: 1.4;',
-      click: () => {
-        const q = searchInput.value.trim().toLowerCase();
-        const merged = getMergedServers();
-        const filtered = q
-          ? merged.filter(
-              (s) =>
-                s.label.toLowerCase().includes(q) ||
-                s.value.toLowerCase().includes(q),
-            )
-          : merged;
-        const cur = new Set(serverNameList(inputEl.value));
-        filtered.forEach((s) => cur.add(s.value));
-        setSelectedValues(Array.from(cur));
-        renderList();
-      },
-    },
-    _('Select matching'),
-  );
+  searchClearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    visibleLimit = BATCH_SIZE;
+    renderList();
+    searchInput.focus();
+  });
 
-  searchInput.addEventListener('input', renderList);
+  listBox.addEventListener('scroll', () => {
+    if (visibleLimit >= lastFiltered.length) return;
+    if (listBox.scrollTop + listBox.clientHeight >= listBox.scrollHeight - 48) {
+      const prevEnd = Math.min(lastFiltered.length, visibleLimit);
+      visibleLimit += BATCH_SIZE;
+      const nextEnd = Math.min(lastFiltered.length, visibleLimit);
+      const selected = new Set(serverNameList(inputEl.value));
+      const oldMore = listBox.querySelector('.tachyon-ms__more-wrap');
+      if (oldMore && oldMore.parentNode === listBox) {
+        listBox.removeChild(oldMore);
+      }
+      const frag = document.createDocumentFragment();
+      for (let i = prevEnd; i < nextEnd; i += 1) {
+        frag.appendChild(buildServerRow(lastFiltered[i], selected));
+      }
+      listBox.appendChild(frag);
+      appendMoreFooter(lastFiltered, nextEnd, selected);
+      updatePickerStats(nextEnd, lastFiltered.length, lastPoolCount);
+    }
+  });
+
+  searchInput.addEventListener('input', () => {
+    visibleLimit = BATCH_SIZE;
+    renderList();
+  });
   inputEl.addEventListener('input', renderList);
   searchRow.appendChild(searchInput);
+  searchRow.appendChild(searchClearBtn);
+  searchRow.appendChild(statsLabel);
   searchRow.appendChild(selectFilteredBtn);
   drawerWrap.appendChild(searchRow);
   drawerWrap.appendChild(listBox);
@@ -3152,7 +3285,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
 }
 
 function isProxyShareLinkUri(str) {
-  return /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|tewfai|csqtt|wdtt|qwdtt|warp|wg|awg|wireguard|socks5?h?):\/\//i.test(
+  return /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|tewfai|csqtt|wdtt|qwdtt|warp|wg|awg|wireguard|phobos|socks5?h?):\/\//i.test(
     String(str || '').trim(),
   );
 }
@@ -3859,6 +3992,9 @@ function createOutboundsContent(section) {
   o.remove = function (sectionId) {
     this.write(sectionId, []);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption(
     'general',
@@ -3913,6 +4049,9 @@ function createOutboundsContent(section) {
   o.remove = function (sectionId) {
     this.write(sectionId, []);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption('general', form.DummyValue, '_summary', _('Details'));
   o.modalonly = false;
@@ -4786,8 +4925,8 @@ function createOutboundsContent(section) {
     form.TextValue,
     'amnezia_conf_text',
     _tr(
-      'Новый конфиг WireGuard / AmneziaWG (.conf или vpn://)',
-      'New AmneziaWG / WireGuard .conf or vpn:// Content',
+      'Новый конфиг WireGuard / AmneziaWG / Phobos (.conf или vpn:// / phobos://)',
+      'New WireGuard / AmneziaWG / Phobos .conf or vpn:// / phobos:// Content',
     ),
     _tr(
       'Вставка текста заменяет текущий конфиг источника (если выше не включён режим добавления).',
@@ -6717,6 +6856,9 @@ function createOutboundsContent(section) {
   o.value('ws', 'WebSocket');
   o.value('raw_tls', 'Raw TLS');
   o.depends('source_type', 'tewfai');
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption(
     'general',
@@ -8239,6 +8381,9 @@ function createOutboundsContent(section) {
       })
       .catch(() => uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || []);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 }
 
 export default baseclass.extend({

@@ -14,6 +14,7 @@ import {
   exportThemeJson,
   getActiveTheme,
   getAllThemes,
+  getThemeAutoConfig,
   inferSchemeFromBg,
   isBgAnimationEnabled,
   normalizeHexColor,
@@ -22,6 +23,7 @@ import {
   saveCustomTheme,
   setActiveTheme,
   setBgAnimationEnabled,
+  setThemeAutoConfig,
   subscribeThemeChange,
 } from './themeCatalog';
 
@@ -602,13 +604,22 @@ export function createTopbarThemeDropdown(): HTMLElement {
 
   const render = () => {
     const active = getActiveTheme();
+    const autoCfg = getThemeAutoConfig();
     const themes = getAllThemes();
+    const modeLabel =
+      autoCfg.mode === 'system'
+        ? tr('Как в браузере', 'Browser')
+        : autoCfg.mode === 'schedule'
+          ? `${tr('По расписанию', 'Schedule')} ${autoCfg.scheduleStart}–${autoCfg.scheduleEnd}`
+          : '';
     const btn = createEl(
       'button',
       {
         type: 'button',
         class: `tachyon-topbar__icon-btn tachyon-theme-trigger${isOpen ? ' is-open' : ''}`,
-        title: `${tr('Тема интерфейса', 'Interface Theme')}: ${active.name}`,
+        title: modeLabel
+          ? `${tr('Тема интерфейса', 'Interface Theme')}: ${active.name} (${modeLabel})`
+          : `${tr('Тема интерфейса', 'Interface Theme')}: ${active.name}`,
         'aria-expanded': isOpen ? 'true' : 'false',
         click: (ev: MouseEvent) => {
           ev.preventDefault();
@@ -630,42 +641,101 @@ export function createTopbarThemeDropdown(): HTMLElement {
 
     const children: HTMLElement[] = [btn];
     if (isOpen) {
-      const menuItems = themes.map((t) => {
-        const isCurrent = t.id === active.id;
-        return createEl(
+      const autoModeItems: HTMLElement[] = [
+        createEl(
           'button',
           {
             type: 'button',
-            class: `tachyon-theme-menu__item${isCurrent ? ' is-active' : ''}`,
-            'data-theme-id': t.id,
+            class: `tachyon-theme-menu__item${autoCfg.mode === 'system' ? ' is-active' : ''}`,
+            'data-theme-auto-mode': 'system',
             click: (ev: MouseEvent) => {
               ev.preventDefault();
               ev.stopPropagation();
-              setActiveTheme(t.id);
+              setThemeAutoConfig({ mode: 'system' });
               isOpen = false;
               render();
             },
           },
           [
-            createEl('span', { class: 'tachyon-theme-menu__swatch-pair' }, [
-              createEl('span', {
-                class: 'tachyon-theme-menu__swatch-bg',
-                style: `background:${t.colors.bg}`,
-              }),
-              createEl('span', {
-                class: 'tachyon-theme-menu__swatch-accent',
-                style: `background:${t.colors.accent}`,
-              }),
+            createEl('span', { class: 'tachyon-theme-menu__label' }, [
+              tr('Как в браузере', 'Follow browser'),
             ]),
-            createEl('span', { class: 'tachyon-theme-menu__label' }, [t.name]),
-            isCurrent
+            autoCfg.mode === 'system'
               ? createEl('span', { class: 'tachyon-theme-menu__check' }, [
                   renderCheckIcon(13),
                 ])
               : null,
           ],
-        );
-      });
+        ),
+        createEl(
+          'button',
+          {
+            type: 'button',
+            class: `tachyon-theme-menu__item${autoCfg.mode === 'schedule' ? ' is-active' : ''}`,
+            'data-theme-auto-mode': 'schedule',
+            click: (ev: MouseEvent) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              setThemeAutoConfig({ mode: 'schedule' });
+              isOpen = false;
+              render();
+            },
+          },
+          [
+            createEl('span', { class: 'tachyon-theme-menu__label' }, [
+              `${tr('По расписанию', 'Schedule')} (${autoCfg.scheduleStart}–${autoCfg.scheduleEnd})`,
+            ]),
+            autoCfg.mode === 'schedule'
+              ? createEl('span', { class: 'tachyon-theme-menu__check' }, [
+                  renderCheckIcon(13),
+                ])
+              : null,
+          ],
+        ),
+        createEl('div', { class: 'tachyon-theme-menu__sep' }),
+      ];
+
+      const menuItems = [
+        ...autoModeItems,
+        ...themes.map((t) => {
+          const isCurrent = t.id === active.id;
+          return createEl(
+            'button',
+            {
+              type: 'button',
+              class: `tachyon-theme-menu__item${isCurrent ? ' is-active' : ''}`,
+              'data-theme-id': t.id,
+              click: (ev: MouseEvent) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                setActiveTheme(t.id);
+                isOpen = false;
+                render();
+              },
+            },
+            [
+              createEl('span', { class: 'tachyon-theme-menu__swatch-pair' }, [
+                createEl('span', {
+                  class: 'tachyon-theme-menu__swatch-bg',
+                  style: `background:${t.colors.bg}`,
+                }),
+                createEl('span', {
+                  class: 'tachyon-theme-menu__swatch-accent',
+                  style: `background:${t.colors.accent}`,
+                }),
+              ]),
+              createEl('span', { class: 'tachyon-theme-menu__label' }, [
+                t.name,
+              ]),
+              isCurrent
+                ? createEl('span', { class: 'tachyon-theme-menu__check' }, [
+                    renderCheckIcon(13),
+                  ])
+                : null,
+            ],
+          );
+        }),
+      ];
 
       const animEnabled = isBgAnimationEnabled();
       menuItems.push(
@@ -758,6 +828,7 @@ export function renderThemeSettingsCard(): HTMLElement {
 
   const render = () => {
     const active = getActiveTheme();
+    const autoCfg = getThemeAutoConfig();
     const themes = getAllThemes();
 
     const importFileInput = createEl('input', {
@@ -784,14 +855,19 @@ export function renderThemeSettingsCard(): HTMLElement {
       },
     }) as HTMLInputElement;
 
+    const subText =
+      autoCfg.mode === 'system'
+        ? `${tr('Режим: как в браузере', 'Mode: follow browser')} · ${tr('Активная тема:', 'Active theme:')} ${active.name}`
+        : autoCfg.mode === 'schedule'
+          ? `${tr('Режим: по расписанию', 'Mode: schedule')} (${autoCfg.scheduleStart}–${autoCfg.scheduleEnd}) · ${tr('Активная тема:', 'Active theme:')} ${active.name}`
+          : `${tr('Активная тема:', 'Active theme:')} ${active.name}`;
+
     const header = createEl('div', { class: 'tachyon-theme-settings-hdr' }, [
       createEl('div', {}, [
         createEl('div', { class: 'tachyon-theme-settings-title' }, [
           tr('Цветовая тема интерфейса', 'Interface Color Theme'),
         ]),
-        createEl('div', { class: 'tachyon-theme-settings-sub' }, [
-          `${tr('Активная тема:', 'Active theme:')} ${active.name}`,
-        ]),
+        createEl('div', { class: 'tachyon-theme-settings-sub' }, [subText]),
       ]),
       createEl('div', { class: 'tachyon-theme-settings-actions' }, [
         importFileInput,
@@ -832,11 +908,192 @@ export function renderThemeSettingsCard(): HTMLElement {
       ]),
     ]);
 
+    const makeThemeSelect = (
+      id: string,
+      selectedId: string,
+      onChange: (nextId: string) => void,
+    ) => {
+      const sel = createEl(
+        'select',
+        {
+          id,
+          class: 'tachyon-theme-input',
+          change: () => onChange(sel.value),
+        },
+        themes.map((t) =>
+          createEl(
+            'option',
+            {
+              value: t.id,
+              ...(t.id === selectedId ? { selected: 'selected' } : {}),
+            },
+            [
+              `${t.name} (${t.scheme === 'light' ? tr('Светлая', 'Light') : tr('Тёмная', 'Dark')})`,
+            ],
+          ),
+        ),
+      ) as HTMLSelectElement;
+      sel.value = selectedId;
+      return sel;
+    };
+
+    const makeTimeInput = (
+      id: string,
+      value: string,
+      onChange: (val: string) => void,
+    ) =>
+      createEl('input', {
+        id,
+        type: 'time',
+        class: 'tachyon-theme-input tachyon-theme-time-input',
+        value,
+        change: (ev: Event) => {
+          const input = ev.currentTarget as HTMLInputElement;
+          onChange(input.value);
+        },
+      }) as HTMLInputElement;
+
+    const autoControlsChildren: HTMLElement[] = [
+      createEl('div', { class: 'tachyon-theme-auto-modes' }, [
+        createEl('div', { class: 'tachyon-theme-meta-lbl' }, [
+          tr('Режим переключения', 'Switching mode'),
+        ]),
+        createEl('div', { class: 'tachyon-theme-scheme-tabs' }, [
+          createEl(
+            'button',
+            {
+              type: 'button',
+              class: `tachyon-theme-scheme-btn${autoCfg.mode === 'manual' ? ' is-active' : ''}`,
+              'data-theme-mode-btn': 'manual',
+              click: () => {
+                setThemeAutoConfig({ mode: 'manual' });
+              },
+            },
+            [tr('Вручную', 'Manual')],
+          ),
+          createEl(
+            'button',
+            {
+              type: 'button',
+              class: `tachyon-theme-scheme-btn${autoCfg.mode === 'system' ? ' is-active' : ''}`,
+              'data-theme-mode-btn': 'system',
+              click: () => {
+                setThemeAutoConfig({ mode: 'system' });
+              },
+            },
+            [tr('Как в браузере', 'Browser')],
+          ),
+          createEl(
+            'button',
+            {
+              type: 'button',
+              class: `tachyon-theme-scheme-btn${autoCfg.mode === 'schedule' ? ' is-active' : ''}`,
+              'data-theme-mode-btn': 'schedule',
+              click: () => {
+                setThemeAutoConfig({ mode: 'schedule' });
+              },
+            },
+            [tr('По расписанию', 'Schedule')],
+          ),
+        ]),
+      ]),
+    ];
+
+    if (autoCfg.mode === 'system' || autoCfg.mode === 'schedule') {
+      autoControlsChildren.push(
+        createEl('div', { class: 'tachyon-theme-auto-pair' }, [
+          createEl('div', { class: 'tachyon-theme-meta-col' }, [
+            createEl(
+              'label',
+              {
+                class: 'tachyon-theme-meta-lbl',
+                for: 'tachyon-theme-day-select',
+              },
+              [tr('Светлая (дневная) тема', 'Light (day) theme')],
+            ),
+            makeThemeSelect(
+              'tachyon-theme-day-select',
+              autoCfg.lightThemeId,
+              (lightThemeId) => setThemeAutoConfig({ lightThemeId }),
+            ),
+          ]),
+          createEl('div', { class: 'tachyon-theme-meta-col' }, [
+            createEl(
+              'label',
+              {
+                class: 'tachyon-theme-meta-lbl',
+                for: 'tachyon-theme-night-select',
+              },
+              [tr('Тёмная (ночная) тема', 'Dark (night) theme')],
+            ),
+            makeThemeSelect(
+              'tachyon-theme-night-select',
+              autoCfg.darkThemeId,
+              (darkThemeId) => setThemeAutoConfig({ darkThemeId }),
+            ),
+          ]),
+        ]),
+      );
+    }
+
+    if (autoCfg.mode === 'schedule') {
+      autoControlsChildren.push(
+        createEl('div', { class: 'tachyon-theme-auto-schedule' }, [
+          createEl('div', { class: 'tachyon-theme-meta-col' }, [
+            createEl(
+              'label',
+              {
+                class: 'tachyon-theme-meta-lbl',
+                for: 'tachyon-theme-schedule-start',
+              },
+              [tr('Начало ночной темы', 'Night theme start')],
+            ),
+            makeTimeInput(
+              'tachyon-theme-schedule-start',
+              autoCfg.scheduleStart,
+              (scheduleStart) => setThemeAutoConfig({ scheduleStart }),
+            ),
+          ]),
+          createEl('div', { class: 'tachyon-theme-meta-col' }, [
+            createEl(
+              'label',
+              {
+                class: 'tachyon-theme-meta-lbl',
+                for: 'tachyon-theme-schedule-end',
+              },
+              [tr('Начало дневной темы', 'Day theme start')],
+            ),
+            makeTimeInput(
+              'tachyon-theme-schedule-end',
+              autoCfg.scheduleEnd,
+              (scheduleEnd) => setThemeAutoConfig({ scheduleEnd }),
+            ),
+          ]),
+        ]),
+      );
+    }
+
+    const autoBar = createEl(
+      'div',
+      { class: 'tachyon-theme-auto-bar' },
+      autoControlsChildren,
+    );
+
     const grid = createEl(
       'div',
       { class: 'tachyon-theme-cards-grid' },
       themes.map((t: TachyonThemeDefinition) => {
         const isCurrent = t.id === active.id;
+        const isAutoDay =
+          autoCfg.mode !== 'manual' && t.id === autoCfg.lightThemeId;
+        const isAutoNight =
+          autoCfg.mode !== 'manual' && t.id === autoCfg.darkThemeId;
+        const roleTags: string[] = [];
+        if (isAutoDay) roleTags.push(tr('День', 'Day'));
+        if (isAutoNight) roleTags.push(tr('Ночь', 'Night'));
+        if (isCurrent) roleTags.push(tr('Активна', 'Active'));
+        const statusText = roleTags.join(' · ');
+
         return createEl(
           'div',
           {
@@ -933,11 +1190,11 @@ export function renderThemeSettingsCard(): HTMLElement {
                       ['×'],
                     ),
                   ])
-                : isCurrent
+                : statusText
                   ? createEl(
                       'span',
                       { class: 'tachyon-theme-card__active-tag' },
-                      [tr('Активна', 'Active')],
+                      [statusText],
                     )
                   : null,
             ]),
@@ -946,7 +1203,7 @@ export function renderThemeSettingsCard(): HTMLElement {
       }),
     );
 
-    card.replaceChildren(header, grid);
+    card.replaceChildren(header, autoBar, grid);
   };
 
   subscribeThemeChange(() => {

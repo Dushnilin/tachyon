@@ -203,20 +203,11 @@ fn try_forward_cli_to_daemon(args: &[String]) -> Option<(i32, String, String)> {
     Some((code, stdout, stderr))
 }
 
-fn main() -> anyhow::Result<()> {
-    sys_info::init_daemon_start_time();
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let subcommand_early = args.first().map(String::as_str).unwrap_or("daemon");
-    if matches!(subcommand_early, "version" | "-v" | "--version") {
-        println!("tachyon {}", crate::store::TACHYON_VERSION);
-        return Ok(());
-    }
-    if matches!(subcommand_early, "-h" | "--help" | "help") {
-        print!("{}", ubus_bridge::cli_help_text());
-        return Ok(());
-    }
-    if !matches!(
-        subcommand_early,
+const DAEMON_SHUTDOWN_BUDGET: Duration = Duration::from_millis(2200);
+
+fn is_local_cli_subcommand(subcommand: &str) -> bool {
+    matches!(
+        subcommand,
         "daemon"
             | "serve"
             | "--daemon"
@@ -242,7 +233,51 @@ fn main() -> anyhow::Result<()> {
             | "nodes-status"
             | "nodes_status"
             | "outbound-status"
-    ) && let Some((code, stdout, stderr)) = try_forward_cli_to_daemon(&args)
+            | "stop-shutdown"
+            | "stop-and-restore-native"
+            | "stop_and_restore_native"
+    )
+}
+
+async fn run_graceful_shutdown_with_budget(
+    state_sig: &AppState,
+    core_sig: &CoreManager,
+    budget: Duration,
+) {
+    cleanup_daemon_runtime_markers();
+    let cleanup = async {
+        if state_sig.is_disk_modified_externally() {
+            eprintln!("[tachyon] preserving externally modified store on shutdown");
+        } else if state_sig.is_dirty() {
+            let _ = state_sig.save().await;
+        }
+        if core_sig.has_spawned_child().await {
+            let _ = core_sig.stop_for_shutdown().await;
+        }
+    };
+    if tokio::time::timeout(budget, cleanup).await.is_err() {
+        eprintln!(
+            "[tachyon] shutdown exceeded {}ms budget; forcing core stop",
+            budget.as_millis()
+        );
+        core_sig.force_kill_spawned_child_fast().await;
+    }
+}
+
+fn main() -> anyhow::Result<()> {
+    sys_info::init_daemon_start_time();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let subcommand_early = args.first().map(String::as_str).unwrap_or("daemon");
+    if matches!(subcommand_early, "version" | "-v" | "--version") {
+        println!("tachyon {}", crate::store::TACHYON_VERSION);
+        return Ok(());
+    }
+    if matches!(subcommand_early, "-h" | "--help" | "help") {
+        print!("{}", ubus_bridge::cli_help_text());
+        return Ok(());
+    }
+    if !is_local_cli_subcommand(subcommand_early)
+        && let Some((code, stdout, stderr)) = try_forward_cli_to_daemon(&args)
     {
         if !stdout.is_empty() {
             print!("{stdout}");
@@ -508,16 +543,12 @@ fn main() -> anyhow::Result<()> {
                         let _ = tokio::signal::ctrl_c().await;
                     }
                     eprintln!("\n[tachyon] shutting down...");
-                    cleanup_daemon_runtime_markers();
-                    if core_sig.has_spawned_child().await {
-                        let _ = core_sig.stop_for_shutdown().await;
-                    }
-                    if state_sig.is_disk_modified_externally() {
-                        eprintln!("[tachyon] preserving externally modified store on shutdown");
-                    } else if state_sig.is_dirty() {
-                        let _ = state_sig.save().await;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    run_graceful_shutdown_with_budget(
+                        &state_sig,
+                        &core_sig,
+                        DAEMON_SHUTDOWN_BUDGET,
+                    )
+                    .await;
                     std::process::exit(0);
                 });
 
@@ -611,4 +642,58 @@ fn main() -> anyhow::Result<()> {
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn test_local_cli_subcommand_allowlist_includes_shutdown_commands() {
+        assert!(is_local_cli_subcommand("stop-shutdown"));
+        assert!(is_local_cli_subcommand("stop-and-restore-native"));
+        assert!(is_local_cli_subcommand("stop_and_restore_native"));
+        assert!(is_local_cli_subcommand("daemon"));
+        assert!(is_local_cli_subcommand("status"));
+        assert!(!is_local_cli_subcommand("reload"));
+        assert!(!is_local_cli_subcommand("start"));
+        assert!(!is_local_cli_subcommand("stop"));
+    }
+
+    #[tokio::test]
+    async fn test_graceful_shutdown_completes_within_budget_even_if_core_stalls() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_main_shutdown_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let store_path = dir.join("store.json");
+        let state = AppState::load_or_create(&store_path).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.tun_mtu = 1412;
+        }
+        state
+            .dirty
+            .store(true, std::sync::atomic::Ordering::Release);
+        let core = CoreManager::new(Arc::clone(&state));
+        // Hold reload_lock to simulate an in-flight start/reload blocking stop_for_shutdown.
+        let _lock_guard = core.reload_lock.lock().await;
+
+        assert!(DAEMON_SHUTDOWN_BUDGET < Duration::from_millis(2500));
+        let started = Instant::now();
+        run_graceful_shutdown_with_budget(&state, &core, Duration::from_millis(250)).await;
+        assert!(started.elapsed() < Duration::from_millis(1000));
+        assert!(
+            !state.is_dirty(),
+            "dirty store must be saved before timeout"
+        );
+
+        let saved_raw = std::fs::read_to_string(&store_path).expect("saved store");
+        assert!(saved_raw.contains("1412"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

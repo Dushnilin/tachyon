@@ -4,18 +4,27 @@ import {
   BUILTIN_THEMES,
   BG_ANIMATION_STORAGE_KEY,
   CUSTOM_THEMES_STORAGE_KEY,
+  THEME_DARK_ID_STORAGE_KEY,
   THEME_ID_STORAGE_KEY,
+  THEME_LIGHT_ID_STORAGE_KEY,
+  THEME_MODE_STORAGE_KEY,
+  THEME_SCHEDULE_END_STORAGE_KEY,
+  THEME_SCHEDULE_START_STORAGE_KEY,
   applyThemeToDocument,
   computeThemeCssVars,
   deleteCustomTheme,
   exportThemeJson,
   getActiveTheme,
   getAllThemes,
+  getThemeAutoConfig,
   isBgAnimationEnabled,
+  isScheduleNightNow,
   parseThemeImportText,
+  resolveEffectiveThemeId,
   saveCustomTheme,
   setActiveTheme,
   setBgAnimationEnabled,
+  setThemeAutoConfig,
 } from '../themeCatalog';
 
 describe('themeCatalog', () => {
@@ -198,6 +207,86 @@ describe('themeCatalog', () => {
       expect(attrs['data-darkmode']).toBe('false');
       expect(styleProps.get('--bg')).toBe(bg);
       expect(styleProps.get('--surface')).toBe(surface);
+    }
+  });
+
+  it('supports browser prefers-color-scheme mode, custom schedule mode, manual override, and custom theme cleanup', () => {
+    let prefersDark = false;
+    (globalThis as any).window = {
+      matchMedia: () => ({ matches: prefersDark }),
+    };
+
+    try {
+      setThemeAutoConfig({
+        mode: 'system',
+        lightThemeId: 'apple-light',
+        darkThemeId: 'tokyo-night',
+      });
+      expect(storage.get(THEME_MODE_STORAGE_KEY)).toBe('system');
+      expect(storage.get(THEME_LIGHT_ID_STORAGE_KEY)).toBe('apple-light');
+      expect(storage.get(THEME_DARK_ID_STORAGE_KEY)).toBe('tokyo-night');
+      expect(getActiveTheme().id).toBe('apple-light');
+
+      prefersDark = true;
+      expect(getActiveTheme().id).toBe('tokyo-night');
+
+      // Schedule crossing midnight (22:00 .. 07:00)
+      setThemeAutoConfig({
+        mode: 'schedule',
+        scheduleStart: '22:00',
+        scheduleEnd: '07:00',
+      });
+      expect(storage.get(THEME_SCHEDULE_START_STORAGE_KEY)).toBe('22:00');
+      expect(storage.get(THEME_SCHEDULE_END_STORAGE_KEY)).toBe('07:00');
+      expect(
+        isScheduleNightNow('22:00', '07:00', new Date(2026, 0, 1, 22, 0)),
+      ).toBe(true);
+      expect(
+        isScheduleNightNow('22:00', '07:00', new Date(2026, 0, 1, 2, 30)),
+      ).toBe(true);
+      expect(
+        isScheduleNightNow('22:00', '07:00', new Date(2026, 0, 1, 7, 0)),
+      ).toBe(false);
+      expect(
+        isScheduleNightNow('22:00', '07:00', new Date(2026, 0, 1, 14, 0)),
+      ).toBe(false);
+      expect(resolveEffectiveThemeId(new Date(2026, 0, 1, 23, 15))).toBe(
+        'tokyo-night',
+      );
+      expect(resolveEffectiveThemeId(new Date(2026, 0, 1, 12, 0))).toBe(
+        'apple-light',
+      );
+
+      // Same-day schedule (09:00 .. 18:00)
+      setThemeAutoConfig({
+        mode: 'schedule',
+        scheduleStart: '09:00',
+        scheduleEnd: '18:00',
+      });
+      expect(resolveEffectiveThemeId(new Date(2026, 0, 1, 9, 0))).toBe(
+        'tokyo-night',
+      );
+      expect(resolveEffectiveThemeId(new Date(2026, 0, 1, 18, 0))).toBe(
+        'apple-light',
+      );
+
+      // Selecting a custom theme in auto config cleans up back to defaults on delete
+      const custom = saveCustomTheme({
+        name: 'Night Custom',
+        scheme: 'dark',
+        colors: { bg: '#111115', accent: '#38bdf8' },
+      });
+      setThemeAutoConfig({ darkThemeId: custom.id });
+      expect(getThemeAutoConfig().darkThemeId).toBe(custom.id);
+      deleteCustomTheme(custom.id);
+      expect(getThemeAutoConfig().darkThemeId).toBe('default-dark');
+
+      // Manual theme selection switches mode back to manual
+      setActiveTheme('nord');
+      expect(getThemeAutoConfig().mode).toBe('manual');
+      expect(getActiveTheme().id).toBe('nord');
+    } finally {
+      delete (globalThis as any).window;
     }
   });
 });

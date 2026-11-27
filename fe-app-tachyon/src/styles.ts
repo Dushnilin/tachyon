@@ -1239,7 +1239,11 @@ input.cbi-button-action:hover:not(:disabled),
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-value:has(.cbi-dropdown[open]),
 .tachyon-view .cbi-value:has(.cbi-dropdown[open]),
 #modal_overlay .cbi-value:has(.cbi-dropdown[open]),
-.cbi-modal .cbi-value:has(.cbi-dropdown[open]) {
+.cbi-modal .cbi-value:has(.cbi-dropdown[open]),
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-value:has(.tachyon-ms.is-open),
+.tachyon-view .cbi-value:has(.tachyon-ms.is-open),
+#modal_overlay .cbi-value:has(.tachyon-ms.is-open),
+.cbi-modal .cbi-value:has(.tachyon-ms.is-open) {
     position: relative !important;
     z-index: 2600 !important;
 }
@@ -5769,7 +5773,10 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
 
 #modal_overlay > .modal:has(.cbi-dropdown[open]),
 .modal.cbi-modal:has(.cbi-dropdown[open]),
-.cbi-modal:has(.cbi-dropdown[open]) {
+.cbi-modal:has(.cbi-dropdown[open]),
+#modal_overlay > .modal:has(.tachyon-ms.is-open),
+.modal.cbi-modal:has(.tachyon-ms.is-open),
+.cbi-modal:has(.tachyon-ms.is-open) {
     overflow: visible !important;
 }
 
@@ -11838,6 +11845,34 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
     flex-wrap: wrap;
 }
 
+.tachyon-theme-auto-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 10px 14px;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    align-items: end;
+}
+
+.tachyon-theme-auto-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-theme-auto-pair,
+.tachyon-theme-auto-schedule {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+    gap: 8px 10px;
+}
+
+.tachyon-theme-time-input {
+    font-variant-numeric: tabular-nums;
+}
+
 .tachyon-theme-cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
@@ -12889,5 +12924,504 @@ html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-action:h
     [data-tachyon-theme-scheme="light"] .tachyon-topbar {
         border: 1px solid ButtonBorder !important;
     }
+}
+
+/* ==========================================================================
+   Searchable Checkbox Multi-Select (DynamicList & Server Pool Pickers)
+   ========================================================================== */
+
+.cbi-dynlist.tachyon-dynlist-has-ms > .item,
+.cbi-dynlist.tachyon-dynlist-has-ms > .add-item,
+.cbi-dynlist.tachyon-dynlist-has-ms > .cbi-dropdown,
+.cbi-dynlist.tachyon-dynlist-has-ms-items-visible > .add-item {
+    display: none !important;
+}
+
+.tachyon-ms {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.tachyon-ms__chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.tachyon-ms__chips[hidden] {
+    display: none !important;
+}
+
+.tachyon-ms__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 2px 6px 2px 8px;
+    border-radius: var(--r-xs, 6px);
+    border: 1px solid color-mix(in srgb, var(--accent, #0a84ff) 32%, var(--border-strong, rgba(255, 255, 255, 0.16)));
+    background: color-mix(in srgb, var(--accent, #0a84ff) 12%, transparent);
+    color: var(--text, #f5f5f7);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.35;
+    box-sizing: border-box;
+}
+
+.tachyon-ms__chip-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-ms__chip-remove {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 0 0 auto;
+    width: 16px !important;
+    height: 16px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    color: var(--text2, #a1a1a6) !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+.tachyon-ms__chip-remove:hover {
+    background: color-mix(in srgb, var(--danger, #ff453a) 16%, transparent) !important;
+    color: var(--danger, #ff453a) !important;
+}
+
+.tachyon-ms__chips-toggle {
+    display: inline-flex !important;
+    align-items: center !important;
+    height: 24px !important;
+    min-height: 0 !important;
+    padding: 0 8px !important;
+    border-radius: var(--r-xs, 6px) !important;
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.15)) !important;
+    background: var(--hover, #1c1c1f) !important;
+    color: var(--text2, #a1a1a6) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+
+.tachyon-ms__trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-height: 36px !important;
+    padding: 6px 10px !important;
+    margin: 0 !important;
+    border-radius: var(--r-btn, 8px) !important;
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.15)) !important;
+    background: var(--surface, var(--background-color-high, #141416)) !important;
+    color: var(--text, var(--text-color-high, #f5f5f7)) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1.35 !important;
+    text-align: left !important;
+    cursor: pointer;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.tachyon-ms__trigger:hover:not(:disabled) {
+    border-color: var(--accent, #0a84ff) !important;
+    background: var(--hover, #1c1c1f) !important;
+}
+
+.tachyon-ms.is-open > .tachyon-ms__trigger {
+    border-color: var(--accent, #0a84ff) !important;
+}
+
+.tachyon-ms__trigger:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.tachyon-ms__trigger-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-ms__trigger-text.is-placeholder {
+    color: var(--text2, var(--text-color-medium, #a1a1a6));
+    font-weight: 400;
+}
+
+.tachyon-ms__trigger-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.tachyon-ms__count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: var(--r-xs, 6px);
+    background: color-mix(in srgb, var(--accent, #0a84ff) 16%, transparent);
+    color: var(--accent, #0a84ff);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon-ms__count-badge[hidden] {
+    display: none !important;
+}
+
+.tachyon-ms__chevron {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text2, #a1a1a6);
+    transition: transform 140ms ease;
+}
+
+.tachyon-ms.is-open .tachyon-ms__chevron {
+    transform: rotate(180deg);
+}
+
+.tachyon-ms__panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 3200;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border-radius: var(--r-btn, 8px);
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.16));
+    background: var(--elevated, var(--surface, #1c1c1f));
+    color: var(--text, #f5f5f7);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.36);
+    box-sizing: border-box;
+}
+
+.tachyon-ms__panel[hidden] {
+    display: none !important;
+}
+
+.tachyon-ms.is-dropup > .tachyon-ms__panel {
+    top: auto;
+    bottom: calc(100% + 4px);
+}
+
+.tachyon-ms__search-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    min-height: 32px;
+    border-radius: var(--r-xs, 6px);
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14));
+    background: var(--bg, #0b0b0c);
+    box-sizing: border-box;
+}
+
+.tachyon-ms__search-row:focus-within {
+    border-color: var(--accent, #0a84ff);
+}
+
+.tachyon-ms__search-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text3, #6e6e73);
+    flex: 0 0 auto;
+}
+
+.tachyon-ms__search-input,
+#modal_overlay > .modal .tachyon-ms__search-input {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: 30px !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: var(--text, #f5f5f7) !important;
+    padding: 4px 0 !important;
+    margin: 0 !important;
+    font-size: 13px !important;
+    line-height: 1.3 !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.tachyon-ms__search-clear {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 0 0 auto;
+    width: 20px !important;
+    height: 20px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    color: var(--text2, #a1a1a6) !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+.tachyon-ms__search-clear[hidden] {
+    display: none !important;
+}
+
+.tachyon-ms__search-clear:hover {
+    background: var(--hover, #1c1c1f) !important;
+    color: var(--text, #f5f5f7) !important;
+}
+
+.tachyon-ms__stats {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text2, #a1a1a6);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.tachyon-ms__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tachyon-ms__actions-left {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tachyon-ms__action-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 26px !important;
+    min-height: 0 !important;
+    padding: 0 10px !important;
+    margin: 0 !important;
+    border-radius: var(--r-xs, 6px) !important;
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14)) !important;
+    background: var(--surface, #141416) !important;
+    color: var(--text, #f5f5f7) !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+.tachyon-ms__action-btn[hidden] {
+    display: none !important;
+}
+
+.tachyon-ms__action-btn:hover:not(:disabled) {
+    border-color: var(--accent, #0a84ff) !important;
+    background: var(--hover, #1c1c1f) !important;
+}
+
+.tachyon-ms__action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.tachyon-ms__action-btn.is-done {
+    border-color: color-mix(in srgb, var(--accent, #0a84ff) 44%, transparent) !important;
+    background: color-mix(in srgb, var(--accent, #0a84ff) 16%, transparent) !important;
+    color: var(--accent, #0a84ff) !important;
+}
+
+.tachyon-ms__action-btn.is-clear:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--danger, #ff453a) 45%, transparent) !important;
+    color: var(--danger, #ff453a) !important;
+}
+
+.tachyon-ms__error {
+    padding: 6px 8px;
+    border-radius: var(--r-xs, 6px);
+    border: 1px solid color-mix(in srgb, var(--danger, #ff453a) 40%, transparent);
+    background: color-mix(in srgb, var(--danger, #ff453a) 12%, transparent);
+    color: var(--danger, #ff453a);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.tachyon-ms__error[hidden],
+.tachyon-ms__custom-add[hidden] {
+    display: none !important;
+}
+
+.tachyon-ms__custom-add-btn {
+    width: 100% !important;
+    text-align: left !important;
+    padding: 6px 10px !important;
+    min-height: 0 !important;
+    border-radius: var(--r-xs, 6px) !important;
+    border: 1px dashed color-mix(in srgb, var(--accent, #0a84ff) 45%, transparent) !important;
+    background: color-mix(in srgb, var(--accent, #0a84ff) 8%, transparent) !important;
+    color: var(--accent, #0a84ff) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+}
+
+.tachyon-ms__list {
+    max-height: min(260px, 42vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-right: 2px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tachyon-ms__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 5px 8px;
+    border-radius: var(--r-xs, 6px);
+    border: 1px solid transparent;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12.5px;
+    line-height: 1.35;
+    box-sizing: border-box;
+}
+
+.tachyon-ms__option:hover,
+.tachyon-ms__option:focus-visible {
+    background: var(--hover, #1c1c1f);
+    outline: none;
+}
+
+.tachyon-ms__option.is-selected {
+    background: color-mix(in srgb, var(--accent, #0a84ff) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent, #0a84ff) 32%, transparent);
+}
+
+.tachyon-ms__checkbox {
+    flex: 0 0 auto !important;
+    width: 15px !important;
+    height: 15px !important;
+    margin: 0 !important;
+    accent-color: var(--accent, #0a84ff);
+    cursor: pointer;
+}
+
+.tachyon-ms__option-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.tachyon-ms__option.is-selected .tachyon-ms__option-label {
+    font-weight: 600;
+}
+
+.tachyon-ms__option-badge {
+    flex: 0 0 auto;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+    background: var(--surface, #141416);
+    color: var(--text2, #a1a1a6);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.tachyon-ms__empty {
+    padding: 12px 8px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text2, #a1a1a6);
+}
+
+.tachyon-ms__more-wrap {
+    padding-top: 4px;
+}
+
+.tachyon-ms__more-btn {
+    width: 100% !important;
+    height: 30px !important;
+    min-height: 0 !important;
+    padding: 0 10px !important;
+    border-radius: var(--r-xs, 6px) !important;
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14)) !important;
+    background: var(--surface, #141416) !important;
+    color: var(--text, #f5f5f7) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+
+.tachyon-ms__more-btn:hover {
+    border-color: var(--accent, #0a84ff) !important;
+    background: var(--hover, #1c1c1f) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-ms__panel {
+    background: var(--surface, #ffffff);
+    color: var(--text, #0f172a);
+    border-color: var(--border-strong, rgba(15, 23, 42, 0.16));
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-ms__search-row {
+    background: var(--bg, #f5f7fb);
+    border-color: var(--border-strong, rgba(15, 23, 42, 0.16));
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-ms__search-input,
+[data-tachyon-theme-scheme="light"] #modal_overlay > .modal .tachyon-ms__search-input {
+    color: var(--text, #0f172a) !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon-ms__chip,
+[data-tachyon-theme-scheme="light"] .tachyon-ms__trigger,
+[data-tachyon-theme-scheme="light"] .tachyon-ms__action-btn,
+[data-tachyon-theme-scheme="light"] .tachyon-ms__more-btn {
+    color: var(--text, #0f172a) !important;
 }
 `;

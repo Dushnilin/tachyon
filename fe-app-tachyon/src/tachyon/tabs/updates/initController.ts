@@ -1327,7 +1327,11 @@ async function openReleaseNotesModal(opts: {
 
   if (!currentNotes || isTruncatedNotes) {
     try {
-      const matched = await getReleaseForNotes(opts.component, currentVersion);
+      const matched = await getReleaseForNotes(
+        opts.component,
+        currentVersion,
+        opts.releaseUrl,
+      );
       currentNotes = matched?.body?.trim() || currentNotes;
       if (!currentVersion && matched?.tag) {
         currentVersion = matched.tag;
