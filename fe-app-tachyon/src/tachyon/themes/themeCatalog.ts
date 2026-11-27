@@ -1,11 +1,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const THEME_ID_STORAGE_KEY = 'tachyon_ui_theme_id';
+export const THEME_MODE_STORAGE_KEY = 'tachyon_ui_theme_mode';
+export const THEME_LIGHT_ID_STORAGE_KEY = 'tachyon_ui_theme_light_id';
+export const THEME_DARK_ID_STORAGE_KEY = 'tachyon_ui_theme_dark_id';
+export const THEME_SCHEDULE_START_STORAGE_KEY =
+  'tachyon_ui_theme_schedule_start';
+export const THEME_SCHEDULE_END_STORAGE_KEY = 'tachyon_ui_theme_schedule_end';
 export const CUSTOM_THEMES_STORAGE_KEY = 'tachyon_ui_custom_themes';
 export const THEME_CHANGED_EVENT = 'tachyon:theme-changed';
 export const BG_ANIMATION_STORAGE_KEY = 'tachyon_ui_bg_animation';
 export const BG_ANIMATION_CHANGED_EVENT = 'tachyon:bg-animation-changed';
 
 export type ThemeScheme = 'dark' | 'light';
+export type ThemeAutoMode = 'manual' | 'system' | 'schedule';
+
+export interface ThemeAutoConfig {
+  mode: ThemeAutoMode;
+  lightThemeId: string;
+  darkThemeId: string;
+  scheduleStart: string;
+  scheduleEnd: string;
+}
+
+export const DEFAULT_LIGHT_THEME_ID = 'default-light';
+export const DEFAULT_DARK_THEME_ID = 'default-dark';
+export const DEFAULT_SCHEDULE_START = '22:00';
+export const DEFAULT_SCHEDULE_END = '07:00';
 
 export interface TachyonThemeColors {
   bg: string;
@@ -604,8 +624,133 @@ export function getThemeById(id?: string | null): TachyonThemeDefinition {
   return all.find((t) => t.id === target) || all[0] || BUILTIN_THEMES[0];
 }
 
+function hasThemeId(id: string): boolean {
+  const target = String(id || '').trim();
+  return Boolean(target && getAllThemes().some((t) => t.id === target));
+}
+
+export function parseTimeToMinutes(
+  hhmm: string,
+  fallbackMinutes: number,
+): number {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+  if (!match) return fallbackMinutes;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (
+    !Number.isInteger(h) ||
+    !Number.isInteger(m) ||
+    h < 0 ||
+    h > 23 ||
+    m < 0 ||
+    m > 59
+  ) {
+    return fallbackMinutes;
+  }
+  return h * 60 + m;
+}
+
+export function normalizeTimeHHMM(raw: string, fallback: string): string {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(raw || '').trim());
+  if (!match) return fallback;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (
+    !Number.isInteger(h) ||
+    !Number.isInteger(m) ||
+    h < 0 ||
+    h > 23 ||
+    m < 0 ||
+    m > 59
+  ) {
+    return fallback;
+  }
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+export function isScheduleNightNow(
+  startHHMM: string,
+  endHHMM: string,
+  now: Date = new Date(),
+): boolean {
+  const start = parseTimeToMinutes(startHHMM, 22 * 60);
+  const end = parseTimeToMinutes(endHHMM, 7 * 60);
+  if (start === end) return false;
+  const cur = now.getHours() * 60 + now.getMinutes();
+  if (start < end) {
+    return cur >= start && cur < end;
+  }
+  return cur >= start || cur < end;
+}
+
+export function getSystemPrefersDark(): boolean {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.matchMedia !== 'function'
+  ) {
+    return true;
+  }
+  try {
+    return Boolean(window.matchMedia('(prefers-color-scheme: dark)')?.matches);
+  } catch {
+    return true;
+  }
+}
+
+export function getThemeAutoConfig(): ThemeAutoConfig {
+  const fallback: ThemeAutoConfig = {
+    mode: 'manual',
+    lightThemeId: DEFAULT_LIGHT_THEME_ID,
+    darkThemeId: DEFAULT_DARK_THEME_ID,
+    scheduleStart: DEFAULT_SCHEDULE_START,
+    scheduleEnd: DEFAULT_SCHEDULE_END,
+  };
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const rawMode = String(
+      localStorage.getItem(THEME_MODE_STORAGE_KEY) || '',
+    ).trim();
+    const mode: ThemeAutoMode =
+      rawMode === 'system' || rawMode === 'schedule' ? rawMode : 'manual';
+    const rawLight = String(
+      localStorage.getItem(THEME_LIGHT_ID_STORAGE_KEY) || '',
+    ).trim();
+    const rawDark = String(
+      localStorage.getItem(THEME_DARK_ID_STORAGE_KEY) || '',
+    ).trim();
+    const lightThemeId = hasThemeId(rawLight)
+      ? rawLight
+      : DEFAULT_LIGHT_THEME_ID;
+    const darkThemeId = hasThemeId(rawDark) ? rawDark : DEFAULT_DARK_THEME_ID;
+    const scheduleStart = normalizeTimeHHMM(
+      String(localStorage.getItem(THEME_SCHEDULE_START_STORAGE_KEY) || ''),
+      DEFAULT_SCHEDULE_START,
+    );
+    const scheduleEnd = normalizeTimeHHMM(
+      String(localStorage.getItem(THEME_SCHEDULE_END_STORAGE_KEY) || ''),
+      DEFAULT_SCHEDULE_END,
+    );
+    return { mode, lightThemeId, darkThemeId, scheduleStart, scheduleEnd };
+  } catch {
+    return fallback;
+  }
+}
+
+export function resolveEffectiveThemeId(now: Date = new Date()): string {
+  const cfg = getThemeAutoConfig();
+  if (cfg.mode === 'system') {
+    return getSystemPrefersDark() ? cfg.darkThemeId : cfg.lightThemeId;
+  }
+  if (cfg.mode === 'schedule') {
+    return isScheduleNightNow(cfg.scheduleStart, cfg.scheduleEnd, now)
+      ? cfg.darkThemeId
+      : cfg.lightThemeId;
+  }
+  return getSavedThemeId();
+}
+
 export function getActiveTheme(): TachyonThemeDefinition {
-  return getThemeById(getSavedThemeId());
+  return getThemeById(resolveEffectiveThemeId());
 }
 
 export function isBgAnimationEnabled(): boolean {
@@ -742,11 +887,102 @@ export function setActiveTheme(id: string): TachyonThemeDefinition {
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(THEME_ID_STORAGE_KEY, theme.id);
+      localStorage.setItem(THEME_MODE_STORAGE_KEY, 'manual');
     } catch {
       // ignore
     }
   }
   return applyThemeToDocument(theme, true);
+}
+
+export function setThemeAutoConfig(
+  patch: Partial<ThemeAutoConfig>,
+): TachyonThemeDefinition {
+  const cur = getThemeAutoConfig();
+  const nextMode: ThemeAutoMode =
+    patch.mode === 'system' ||
+    patch.mode === 'schedule' ||
+    patch.mode === 'manual'
+      ? patch.mode
+      : cur.mode;
+  const nextLight =
+    patch.lightThemeId && hasThemeId(patch.lightThemeId)
+      ? patch.lightThemeId
+      : cur.lightThemeId;
+  const nextDark =
+    patch.darkThemeId && hasThemeId(patch.darkThemeId)
+      ? patch.darkThemeId
+      : cur.darkThemeId;
+  const nextStart =
+    patch.scheduleStart !== undefined
+      ? normalizeTimeHHMM(patch.scheduleStart, cur.scheduleStart)
+      : cur.scheduleStart;
+  const nextEnd =
+    patch.scheduleEnd !== undefined
+      ? normalizeTimeHHMM(patch.scheduleEnd, cur.scheduleEnd)
+      : cur.scheduleEnd;
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(THEME_MODE_STORAGE_KEY, nextMode);
+      localStorage.setItem(THEME_LIGHT_ID_STORAGE_KEY, nextLight);
+      localStorage.setItem(THEME_DARK_ID_STORAGE_KEY, nextDark);
+      localStorage.setItem(THEME_SCHEDULE_START_STORAGE_KEY, nextStart);
+      localStorage.setItem(THEME_SCHEDULE_END_STORAGE_KEY, nextEnd);
+    } catch {
+      // ignore
+    }
+  }
+  ensureAutoThemeWatcher();
+  return applyThemeToDocument(getActiveTheme(), true);
+}
+
+let autoWatcherInstalled = false;
+
+export function ensureAutoThemeWatcher(): void {
+  if (autoWatcherInstalled || typeof window === 'undefined') return;
+  autoWatcherInstalled = true;
+
+  const syncIfNeeded = () => {
+    const cfg = getThemeAutoConfig();
+    if (cfg.mode === 'manual') return;
+    const target = getThemeById(resolveEffectiveThemeId());
+    const currentId =
+      typeof document !== 'undefined'
+        ? document.documentElement?.getAttribute?.('data-tachyon-theme')
+        : null;
+    if (target.id !== currentId) {
+      applyThemeToDocument(target, true);
+    }
+  };
+
+  try {
+    if (typeof window.matchMedia === 'function') {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mql && typeof mql.addEventListener === 'function') {
+        mql.addEventListener('change', syncIfNeeded);
+      } else if (mql && typeof (mql as any).addListener === 'function') {
+        (mql as any).addListener(syncIfNeeded);
+      }
+    }
+  } catch {
+    // ignore matchMedia failures
+  }
+
+  if (
+    typeof document !== 'undefined' &&
+    typeof document.addEventListener === 'function'
+  ) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'hidden') {
+        syncIfNeeded();
+      }
+    });
+  }
+
+  if (typeof window.setInterval === 'function') {
+    window.setInterval(syncIfNeeded, 30_000);
+  }
 }
 
 export function slugifyCustomThemeId(name: string): string {
@@ -803,6 +1039,21 @@ export function deleteCustomTheme(id: string): void {
   if (!target) return;
   const next = getCustomThemes().filter((t) => t.id !== target);
   persistCustomThemes(next);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      if (localStorage.getItem(THEME_LIGHT_ID_STORAGE_KEY) === target) {
+        localStorage.setItem(
+          THEME_LIGHT_ID_STORAGE_KEY,
+          DEFAULT_LIGHT_THEME_ID,
+        );
+      }
+      if (localStorage.getItem(THEME_DARK_ID_STORAGE_KEY) === target) {
+        localStorage.setItem(THEME_DARK_ID_STORAGE_KEY, DEFAULT_DARK_THEME_ID);
+      }
+    } catch {
+      // ignore
+    }
+  }
   if (getSavedThemeId() === target) {
     setActiveTheme(DEFAULT_THEME_ID);
   } else {

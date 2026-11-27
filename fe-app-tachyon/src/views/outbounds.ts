@@ -3285,7 +3285,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
 }
 
 function isProxyShareLinkUri(str) {
-  return /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|tewfai|csqtt|wdtt|qwdtt|warp|wg|awg|wireguard|socks5?h?):\/\//i.test(
+  return /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|tewfai|csqtt|wdtt|qwdtt|warp|wg|awg|wireguard|phobos|socks5?h?):\/\//i.test(
     String(str || '').trim(),
   );
 }
@@ -4925,8 +4925,8 @@ function createOutboundsContent(section) {
     form.TextValue,
     'amnezia_conf_text',
     _tr(
-      'Новый конфиг WireGuard / AmneziaWG (.conf или vpn://)',
-      'New AmneziaWG / WireGuard .conf or vpn:// Content',
+      'Новый конфиг WireGuard / AmneziaWG / Phobos (.conf или vpn:// / phobos://)',
+      'New WireGuard / AmneziaWG / Phobos .conf or vpn:// / phobos:// Content',
     ),
     _tr(
       'Вставка текста заменяет текущий конфиг источника (если выше не включён режим добавления).',

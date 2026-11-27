@@ -503,7 +503,33 @@ const EARLY_THEME_APPLY_SCRIPT: &str = r##"<script>
       var n = parseInt(m[1], 16);
       return ((n >> 16) & 255) + ", " + ((n >> 8) & 255) + ", " + (n & 255);
     }
+    var mode = localStorage.getItem("tachyon_ui_theme_mode") || "manual";
     var tid = localStorage.getItem("tachyon_ui_theme_id") || "default-dark";
+    if (mode !== "system" && mode !== "schedule" && !localStorage.getItem("tachyon_ui_theme_id") && localStorage.getItem("tachyon_color_scheme_v1") === "light") {
+      tid = "default-light";
+    }
+    function toMin(raw, fb) {
+      var m = /^(\d{1,2}):(\d{2})$/.exec(String(raw || "").trim());
+      if (!m) return fb;
+      var h = parseInt(m[1], 10), mn = parseInt(m[2], 10);
+      return (h >= 0 && h <= 23 && mn >= 0 && mn <= 59) ? h * 60 + mn : fb;
+    }
+    if (mode === "system") {
+      var prefersDark = true;
+      try { prefersDark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) {}
+      tid = prefersDark
+        ? (localStorage.getItem("tachyon_ui_theme_dark_id") || "default-dark")
+        : (localStorage.getItem("tachyon_ui_theme_light_id") || "default-light");
+    } else if (mode === "schedule") {
+      var st = toMin(localStorage.getItem("tachyon_ui_theme_schedule_start"), 22 * 60);
+      var en = toMin(localStorage.getItem("tachyon_ui_theme_schedule_end"), 7 * 60);
+      var nowD = new Date();
+      var cur = nowD.getHours() * 60 + nowD.getMinutes();
+      var isNight = st === en ? false : (st < en ? (cur >= st && cur < en) : (cur >= st || cur < en));
+      tid = isNight
+        ? (localStorage.getItem("tachyon_ui_theme_dark_id") || "default-dark")
+        : (localStorage.getItem("tachyon_ui_theme_light_id") || "default-light");
+    }
     var customList = [];
     try { customList = JSON.parse(localStorage.getItem("tachyon_ui_custom_themes") || "[]") || []; } catch (e) {}
     var matchedCustom = null;

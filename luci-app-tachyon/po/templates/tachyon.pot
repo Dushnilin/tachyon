@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 12:48+0300\n"
-"PO-Revision-Date: 2026-11-27 12:48+0300\n"
+"POT-Creation-Date: 2026-11-27 14:10+0300\n"
+"PO-Revision-Date: 2026-11-27 14:10+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -61,7 +61,7 @@ msgstr ""
 msgid "+ Add priority"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:706
+#: src/tachyon/themes/themeControls.ts:776
 msgid "+ Create custom theme..."
 msgstr ""
 
@@ -69,7 +69,7 @@ msgstr ""
 msgid "+ Create new routing section"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:830
+#: src/tachyon/themes/themeControls.ts:906
 msgid "+ Custom Theme"
 msgstr ""
 
@@ -403,7 +403,7 @@ msgstr ""
 msgid "AWG Fake Packets / MTU"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:324
+#: src/tachyon/themes/themeControls.ts:326
 msgid "Accent"
 msgstr ""
 
@@ -493,7 +493,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:141
 #: src/tachyon/tabs/monitoring/initController.ts:938
 #: src/tachyon/tabs/monitoring/render.ts:24
-#: src/tachyon/themes/themeControls.ts:940
+#: src/tachyon/themes/themeControls.ts:1094
 #: src/views/parental.ts:520
 #: src/views/parental.ts:526
 msgid "Active"
@@ -612,7 +612,9 @@ msgstr ""
 msgid "Active sessions re-evaluated against routing rules"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:793
+#: src/tachyon/themes/themeControls.ts:860
+#: src/tachyon/themes/themeControls.ts:862
+#: src/tachyon/themes/themeControls.ts:863
 msgid "Active theme:"
 msgstr ""
 
@@ -1382,7 +1384,7 @@ msgstr ""
 msgid "Apply Configuration"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:436
+#: src/tachyon/themes/themeControls.ts:438
 msgid "Apply JSON"
 msgstr ""
 
@@ -1916,11 +1918,11 @@ msgstr ""
 msgid "Background animation: Enabled (click to disable)"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:811
+#: src/tachyon/themes/themeControls.ts:887
 msgid "Background animation: Off"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:810
+#: src/tachyon/themes/themeControls.ts:886
 msgid "Background animation: On"
 msgstr ""
 
@@ -1998,7 +2000,7 @@ msgstr ""
 msgid "Balancers (URLTest / Priority)"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:516
+#: src/tachyon/themes/themeControls.ts:518
 msgid "Base preset"
 msgstr ""
 
@@ -2254,6 +2256,11 @@ msgstr ""
 msgid "Bot Status"
 msgstr ""
 
+#: src/tachyon/themes/themeControls.ts:611
+#: src/tachyon/themes/themeControls.ts:984
+msgid "Browser"
+msgstr ""
+
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:102
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:139
 msgid "Browser FakeIP check could not be completed"
@@ -2434,7 +2441,7 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:1975
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1796
 #: src/tachyon/tabs/diagnostic/initController.ts:1308
-#: src/tachyon/themes/themeControls.ts:563
+#: src/tachyon/themes/themeControls.ts:565
 #: src/views/dns_speed_test.ts:355
 #: src/views/outbounds.ts:2104
 #: src/views/section.ts:12094
@@ -3102,7 +3109,7 @@ msgstr ""
 #: src/tachyon/tabs/updates/initController.ts:1318
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:496
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:560
-#: src/tachyon/themes/themeControls.ts:500
+#: src/tachyon/themes/themeControls.ts:502
 #: src/views/dns_speed_test.ts:140
 #: src/views/section.ts:20454
 #: src/views/section.ts:6472
@@ -3583,7 +3590,7 @@ msgstr ""
 msgid "Continuously probe servers and route traffic through the lowest-latency alive node"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:522
+#: src/tachyon/themes/themeControls.ts:524
 msgid "Contrast scheme"
 msgstr ""
 
@@ -3627,7 +3634,7 @@ msgstr ""
 msgid "Copy Address"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:461
+#: src/tachyon/themes/themeControls.ts:463
 msgid "Copy JSON"
 msgstr ""
 
@@ -3913,12 +3920,12 @@ msgstr ""
 msgid "Custom Target URL(s)..."
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:114
-#: src/tachyon/themes/themeControls.ts:572
+#: src/tachyon/themes/themeControls.ts:116
+#: src/tachyon/themes/themeControls.ts:574
 msgid "Custom Theme"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:493
+#: src/tachyon/themes/themeControls.ts:495
 msgid "Custom Theme Builder"
 msgstr ""
 
@@ -4330,12 +4337,17 @@ msgid "Daily quota applies only when Target Scope is All Internet"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:139
-#: src/tachyon/themes/themeControls.ts:904
+#: src/tachyon/themes/themeControls.ts:1161
+#: src/tachyon/themes/themeControls.ts:931
 #: src/views/outbounds.ts:3547
 msgid "Dark"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:244
+#: src/tachyon/themes/themeControls.ts:1027
+msgid "Dark (night) theme"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:246
 msgid "Dark base"
 msgstr ""
 
@@ -4373,6 +4385,14 @@ msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1616
 msgid "Date"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:1092
+msgid "Day"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:1064
+msgid "Day theme start"
 msgstr ""
 
 #: src/views/parental.ts:1307
@@ -4504,7 +4524,7 @@ msgstr ""
 msgid "Delete the snapshot"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:927
+#: src/tachyon/themes/themeControls.ts:1184
 msgid "Delete theme"
 msgstr ""
 
@@ -5066,7 +5086,7 @@ msgstr ""
 msgid "Download .conf"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:482
+#: src/tachyon/themes/themeControls.ts:484
 msgid "Download .json"
 msgstr ""
 
@@ -5217,14 +5237,14 @@ msgid "Eco Mode: On"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4485
-#: src/tachyon/themes/themeControls.ts:920
+#: src/tachyon/themes/themeControls.ts:1177
 #: src/views/outbounds.ts:2938
 #: src/views/server.ts:3930
 #: src/views/tachyon.ts:233
 msgid "Edit"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:492
+#: src/tachyon/themes/themeControls.ts:494
 msgid "Edit Custom Theme"
 msgstr ""
 
@@ -5232,7 +5252,7 @@ msgstr ""
 msgid "Edit Outbound Group"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:914
+#: src/tachyon/themes/themeControls.ts:1171
 msgid "Edit theme"
 msgstr ""
 
@@ -5633,7 +5653,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1392
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3468
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3470
-#: src/tachyon/themes/themeControls.ts:333
+#: src/tachyon/themes/themeControls.ts:335
 #: src/views/section.ts:12777
 #: src/views/section.ts:12780
 #: src/views/section.ts:12792
@@ -6218,7 +6238,7 @@ msgstr ""
 msgid "Failed to import snapshot profile"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:777
+#: src/tachyon/themes/themeControls.ts:848
 msgid "Failed to import theme file"
 msgstr ""
 
@@ -6250,7 +6270,7 @@ msgstr ""
 msgid "Failed to load versions"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:428
+#: src/tachyon/themes/themeControls.ts:430
 msgid "Failed to parse JSON/JSONC"
 msgstr ""
 
@@ -6814,6 +6834,10 @@ msgstr ""
 msgid "Flush nftables rules"
 msgstr ""
 
+#: src/tachyon/themes/themeControls.ts:661
+msgid "Follow browser"
+msgstr ""
+
 #: src/views/settings.ts:5866
 msgid "Force immediate download and refresh of all remote lists and rule sets"
 msgstr ""
@@ -7354,7 +7378,7 @@ msgstr ""
 msgid "Hide Intermediate Detour Outbounds"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:542
+#: src/tachyon/themes/themeControls.ts:544
 msgid "Hide JSON Import / Export"
 msgstr ""
 
@@ -7850,7 +7874,7 @@ msgstr ""
 msgid "Import .ovpn File"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:546
+#: src/tachyon/themes/themeControls.ts:548
 msgid "Import / Export JSON / JSONC"
 msgstr ""
 
@@ -7863,7 +7887,7 @@ msgstr ""
 msgid "Import Hosts File"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:821
+#: src/tachyon/themes/themeControls.ts:897
 msgid "Import JSON"
 msgstr ""
 
@@ -8244,7 +8268,7 @@ msgstr ""
 msgid "Interface"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:790
+#: src/tachyon/themes/themeControls.ts:868
 msgid "Interface Color Theme"
 msgstr ""
 
@@ -8268,7 +8292,8 @@ msgstr ""
 msgid "Interface Subnet Match (iface=CIDR)"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:611
+#: src/tachyon/themes/themeControls.ts:621
+#: src/tachyon/themes/themeControls.ts:622
 msgid "Interface Theme"
 msgstr ""
 
@@ -8791,7 +8816,7 @@ msgstr ""
 msgid "Invalid target domain or URL"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:373
+#: src/tachyon/themes/themeControls.ts:375
 msgid "Invalid theme JSON/JSONC"
 msgstr ""
 
@@ -8813,7 +8838,7 @@ msgstr ""
 msgid "Invalid value"
 msgstr ""
 
-#: src/validators/validateVpnUrl.ts:497
+#: src/validators/validateVpnUrl.ts:499
 #: src/views/outbounds.ts:4575
 msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
 msgstr ""
@@ -9206,8 +9231,13 @@ msgstr ""
 msgid "Level name"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:903
+#: src/tachyon/themes/themeControls.ts:1160
+#: src/tachyon/themes/themeControls.ts:931
 msgid "Light"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:1012
+msgid "Light (day) theme"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:143
@@ -9226,7 +9256,7 @@ msgstr ""
 msgid "Light Yellow"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:257
+#: src/tachyon/themes/themeControls.ts:259
 msgid "Light base"
 msgstr ""
 
@@ -9308,7 +9338,7 @@ msgstr ""
 msgid "Live filter preview"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:320
+#: src/tachyon/themes/themeControls.ts:322
 msgid "Live palette preview"
 msgstr ""
 
@@ -9335,7 +9365,7 @@ msgstr ""
 msgid "Load .conf file(s) from your computer into this source."
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:404
+#: src/tachyon/themes/themeControls.ts:406
 msgid "Load .json file"
 msgstr ""
 
@@ -9641,6 +9671,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2582
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2659
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2052
+#: src/tachyon/themes/themeControls.ts:972
 msgid "Manual"
 msgstr ""
 
@@ -9931,6 +9962,14 @@ msgstr ""
 msgid "Mode"
 msgstr ""
 
+#: src/tachyon/themes/themeControls.ts:860
+msgid "Mode: follow browser"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:862
+msgid "Mode: schedule"
+msgstr ""
+
 #: src/views/settings.ts:6847
 msgid "Model name to use. Leave empty to auto-detect or use provider default (gpt-4o-mini / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
 msgstr ""
@@ -10209,6 +10248,14 @@ msgstr ""
 
 #: src/tachyon/connectionWizard.ts:8961
 msgid "Next →"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:1093
+msgid "Night"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:1049
+msgid "Night theme start"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:2124
@@ -10870,7 +10917,7 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1092
 #: src/tachyon/tabs/dashboard/initController.ts:7395
-#: src/tachyon/themes/themeControls.ts:327
+#: src/tachyon/themes/themeControls.ts:329
 msgid "Online"
 msgstr ""
 
@@ -11316,7 +11363,7 @@ msgstr ""
 msgid "Page"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:418
+#: src/tachyon/themes/themeControls.ts:420
 msgid "Palette applied to editor."
 msgstr ""
 
@@ -11448,7 +11495,7 @@ msgstr ""
 msgid "Paste subscription URL (https://...) or proxy links (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:342
+#: src/tachyon/themes/themeControls.ts:344
 msgid "Paste theme JSON / JSONC (supports colors map, // comments and #hex)..."
 msgstr ""
 
@@ -13744,7 +13791,7 @@ msgid "Save"
 msgstr ""
 
 #: src/tachyon/appShell.ts:1394
-#: src/tachyon/themes/themeControls.ts:587
+#: src/tachyon/themes/themeControls.ts:589
 msgid "Save & Apply"
 msgstr ""
 
@@ -13796,6 +13843,9 @@ msgid "Scan Strategies"
 msgstr ""
 
 #: src/tachyon/configHistoryModal.ts:666
+#: src/tachyon/themes/themeControls.ts:613
+#: src/tachyon/themes/themeControls.ts:686
+#: src/tachyon/themes/themeControls.ts:996
 #: src/views/conditions.ts:208
 #: src/views/parental.ts:947
 msgid "Schedule"
@@ -15640,6 +15690,10 @@ msgstr ""
 msgid "Switching interface language..."
 msgstr ""
 
+#: src/tachyon/themes/themeControls.ts:959
+msgid "Switching mode"
+msgstr ""
+
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:103
 msgid "Sync System Time (NTP)"
 msgstr ""
@@ -16427,15 +16481,15 @@ msgstr ""
 msgid "Theme"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:453
+#: src/tachyon/themes/themeControls.ts:455
 msgid "Theme JSON copied"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:510
+#: src/tachyon/themes/themeControls.ts:512
 msgid "Theme name"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:581
+#: src/tachyon/themes/themeControls.ts:583
 msgid "Theme saved:"
 msgstr ""
 
@@ -16490,7 +16544,7 @@ msgstr ""
 msgid "This speed test supports DoH, DoT, DoQ, and UDP DNS servers."
 msgstr ""
 
-#: src/validators/validateVpnUrl.ts:533
+#: src/validators/validateVpnUrl.ts:559
 msgid "This vpn:// key is an Amnezia Cloud API token without embedded WireGuard keys. Export a .conf file or full container config in the Amnezia app."
 msgstr ""
 
@@ -17772,10 +17826,10 @@ msgstr ""
 #: src/validators/validateUrl.ts:32
 #: src/validators/validateVlessUrl.ts:115
 #: src/validators/validateVmessUrl.ts:66
-#: src/validators/validateVpnUrl.ts:562
-#: src/validators/validateVpnUrl.ts:714
-#: src/validators/validateVpnUrl.ts:731
-#: src/validators/validateVpnUrl.ts:822
+#: src/validators/validateVpnUrl.ts:588
+#: src/validators/validateVpnUrl.ts:740
+#: src/validators/validateVpnUrl.ts:757
+#: src/validators/validateVpnUrl.ts:869
 #: src/views/conditions.ts:1009
 #: src/views/conditions.ts:996
 #: src/views/section.ts:9352
@@ -18054,7 +18108,7 @@ msgstr ""
 msgid "Waiting for router services to restart..."
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:330
+#: src/tachyon/themes/themeControls.ts:332
 msgid "Warning"
 msgstr ""
 
@@ -18439,7 +18493,7 @@ msgstr ""
 msgid "e.g. Main Subscription, YouTube Desync, EU AWG"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:223
+#: src/tachyon/themes/themeControls.ts:225
 msgid "e.g. Midnight Slate"
 msgstr ""
 
@@ -19104,7 +19158,7 @@ msgstr ""
 msgid "▲ Hide full catalog"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:689
+#: src/tachyon/themes/themeControls.ts:759
 msgid "○ Background animation: Off"
 msgstr ""
 
@@ -19120,7 +19174,7 @@ msgstr ""
 msgid "● High latency"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:688
+#: src/tachyon/themes/themeControls.ts:758
 msgid "✓ Background animation: On"
 msgstr ""
 

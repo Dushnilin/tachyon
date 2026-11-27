@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 15:48+0300\n"
-"PO-Revision-Date: 2026-11-27 15:48+0300\n"
+"POT-Creation-Date: 2026-11-27 17:10+0300\n"
+"PO-Revision-Date: 2026-11-27 17:10+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1580,6 +1580,9 @@ msgstr "Язык бота"
 msgid "Bot Status"
 msgstr "Статус бота"
 
+msgid "Browser"
+msgstr "Как в браузере"
+
 msgid "Browser FakeIP check could not be completed"
 msgstr "Не удалось выполнить проверку FakeIP в браузере"
 
@@ -2993,6 +2996,9 @@ msgstr "Суточная квота действует только при вы�
 msgid "Dark"
 msgstr "Тёмный"
 
+msgid "Dark (night) theme"
+msgstr "Тёмная (ночная) тема"
+
 msgid "Dark base"
 msgstr "Тёмная основа"
 
@@ -3022,6 +3028,12 @@ msgstr "Передача данных подтверждена: передано
 
 msgid "Date"
 msgstr "Дата"
+
+msgid "Day"
+msgstr "День"
+
+msgid "Day theme start"
+msgstr "Начало дневной темы"
 
 msgid "Days of Week"
 msgstr "Дни недели"
@@ -4684,6 +4696,9 @@ msgstr "Очистить DNS-кеш Tachyon Core"
 
 msgid "Flush nftables rules"
 msgstr "Сбросить правила nftables"
+
+msgid "Follow browser"
+msgstr "Как в браузере"
 
 msgid "Force immediate download and refresh of all remote lists and rule sets"
 msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
@@ -6356,6 +6371,9 @@ msgstr "Имя уровня"
 msgid "Light"
 msgstr "Светлая"
 
+msgid "Light (day) theme"
+msgstr "Светлая (дневная) тема"
+
 msgid "Light Blue"
 msgstr "Светло-синий"
 
@@ -6857,6 +6875,12 @@ msgstr "Имя пользователя смешанного прокси"
 msgid "Mode"
 msgstr "Режим"
 
+msgid "Mode: follow browser"
+msgstr "Режим: как в браузере"
+
+msgid "Mode: schedule"
+msgstr "Режим: по расписанию"
+
 msgid "Model name to use. Leave empty to auto-detect or use provider default (gpt-4o-mini / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
 msgstr "Название используемой модели. Оставьте пустым для автоопределения или модели по умолчанию (gpt-4o-mini / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
 
@@ -7057,6 +7081,12 @@ msgstr "Вперед"
 
 msgid "Next →"
 msgstr "Далее →"
+
+msgid "Night"
+msgstr "Ночь"
+
+msgid "Night theme start"
+msgstr "Начало ночной темы"
 
 msgid "No"
 msgstr "Нет"
@@ -10756,6 +10786,9 @@ msgstr "Переход на резерв"
 
 msgid "Switching interface language..."
 msgstr "Переключение языка интерфейса..."
+
+msgid "Switching mode"
+msgstr "Режим переключения"
 
 msgid "Sync System Time (NTP)"
 msgstr "Синхронизировать время (NTP)"

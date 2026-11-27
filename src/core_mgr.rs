@@ -1618,7 +1618,7 @@ impl CoreManager {
         None
     }
 
-    /// Resolve effective `TACHYON_MEMLIMIT_MB` (MiB): explicit setting wins; otherwise auto-cap low-RAM routers (< 320 MiB).
+    /// Resolve effective `TACHYON_MEMLIMIT_MB` (MiB): explicit setting wins; otherwise auto-cap routers (< 640 MiB).
     pub(crate) fn effective_core_memory_limit_mb(
         configured_mb: u32,
         total_ram_kb: Option<u64>,
@@ -1628,6 +1628,7 @@ impl CoreManager {
         }
         match total_ram_kb {
             Some(kb) if kb > 0 && kb < 320 * 1024 => ((kb / 1024) / 2).clamp(64, 160) as u32,
+            Some(kb) if kb < 640 * 1024 => ((kb / 1024) * 28 / 100).clamp(112, 144) as u32,
             _ => 0,
         }
     }
@@ -9494,7 +9495,15 @@ mod core_mgr_tests {
             159
         );
         assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(485 * 1024)),
+            135
+        );
+        assert_eq!(
             CoreManager::effective_core_memory_limit_mb(0, Some(512 * 1024)),
+            143
+        );
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(1024 * 1024)),
             0
         );
         assert_eq!(CoreManager::effective_core_memory_limit_mb(0, None), 0);

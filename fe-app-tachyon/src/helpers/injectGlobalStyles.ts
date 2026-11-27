@@ -1,6 +1,7 @@
 import { GlobalStyles } from '../styles';
 import {
   applyThemeToDocument,
+  ensureAutoThemeWatcher,
   getActiveTheme,
   isBgAnimationEnabled,
 } from '../tachyon/themes/themeCatalog';
@@ -36,6 +37,7 @@ export function injectGlobalStyles() {
   }
 
   try {
+    ensureAutoThemeWatcher();
     const activeTheme = applyThemeToDocument(getActiveTheme(), false);
     if (activeTheme.scheme === 'light') {
       document.documentElement.setAttribute('data-darkmode', 'false');

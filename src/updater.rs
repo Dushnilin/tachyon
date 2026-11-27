@@ -2990,16 +2990,26 @@ fn schedule_tachyon_service_restart() {
     if !init.exists() {
         return;
     }
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(1500)).await;
-        let _ = Command::new(&init)
-            .arg("restart")
+    let init_str = init.to_string_lossy().into_owned();
+    let detached = std::process::Command::new("setsid")
+        .args(["sh", "-c", "sleep 2; exec \"$1\" restart", "_", &init_str])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    if detached.is_err() {
+        let _ = std::process::Command::new("sh")
+            .args([
+                "-c",
+                "(sleep 2; exec \"$1\" restart) </dev/null >/dev/null 2>&1 &",
+                "_",
+                &init_str,
+            ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status()
-            .await;
-    });
+            .spawn();
+    }
 }
 
 async fn install_tachyon_release(

@@ -71,6 +71,17 @@ describe('LogNotificationDeduper', () => {
         'tachyon: [debug] Subscription DNS resolution failed for rule; retrying in 5s (attempt 1/3)',
       ),
     ).toBe(false);
+    // Transient per-node tunnel keepalive/idle exits should not spam red toasts
+    expect(
+      isErrorLogLine(
+        '2026-11-27 13:12:11 [ERROR] openconnect[FI OpenConnect AnyConnect] stack exited: FI OpenConnect AnyConnect: websocket keepalive timeout',
+      ),
+    ).toBe(false);
+    expect(
+      isErrorLogLine(
+        '2026-11-27 13:12:11 [ERROR] wireguard stack exited: tunnel closed',
+      ),
+    ).toBe(false);
     // Other real errors must still fire
     expect(
       isErrorLogLine('tachyon: [error] tachyon-core crashed unexpectedly'),

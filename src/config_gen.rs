@@ -278,6 +278,9 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     if scheme_lower == "vpn" {
         return parse_vpn_uri(uri, rest, idx);
     }
+    if scheme_lower == "phobos" {
+        return parse_phobos_uri(uri, rest, idx);
+    }
     if (scheme_lower == "fptn" || scheme_lower == "fptnb")
         && let Some(first) = parse_fptn_token_nodes(uri).into_iter().next()
     {
@@ -4058,6 +4061,57 @@ pub fn diagnose_amnezia_vpn_uri(uri: &str) -> Result<(), &'static str> {
     extract_amnezia_vpn_nodes_inner(uri, 0, "", 0).map(|_| ())
 }
 
+fn parse_phobos_uri(full_uri: &str, _rest: &str, idx: usize) -> Option<ParsedProxyNode> {
+    let trimmed = full_uri.trim();
+    if trimmed.len() <= "phobos://".len()
+        || !trimmed[.."phobos://".len()].eq_ignore_ascii_case("phobos://")
+    {
+        return None;
+    }
+    let body = &trimmed["phobos://".len()..];
+    let (payload_raw, frag_raw) = match body.split_once('#') {
+        Some((b, f)) => (b, Some(f)),
+        None => (body, None),
+    };
+    let payload_trimmed = payload_raw.trim();
+    let payload = payload_trimmed
+        .strip_prefix("v1.")
+        .unwrap_or(payload_trimmed);
+    let decoded = decode_b64_flex(payload)?;
+    let conf_text = String::from_utf8(decoded).ok()?;
+    let fallback_tag = format!("phobos-{idx}");
+    let (_, mut outbound_json) =
+        parse_amnezia_conf_outbounds_with_prefix(&fallback_tag, &conf_text)
+            .into_iter()
+            .next()?;
+    let server = outbound_json
+        .get("server")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let server_port = outbound_json
+        .get("server_port")
+        .and_then(Value::as_u64)
+        .unwrap_or(51820) as u16;
+    let tag_from_frag = frag_raw
+        .map(|f| url_decode_percent(f).trim().to_string())
+        .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("none"));
+    let tag = tag_from_frag.unwrap_or_else(|| format!("phobos-{server}:{server_port}-{idx}"));
+    if let Some(obj) = outbound_json.as_object_mut() {
+        obj.insert("tag".into(), json!(tag));
+    }
+    let country = detect_country_code(&tag);
+    Some(ParsedProxyNode {
+        tag,
+        protocol: "wireguard".to_string(),
+        server,
+        server_port,
+        country,
+        raw_uri: trimmed.to_string(),
+        outbound_json,
+    })
+}
+
 fn parse_vpn_uri(full_uri: &str, _rest: &str, idx: usize) -> Option<ParsedProxyNode> {
     extract_amnezia_vpn_nodes_inner(full_uri, idx, "", 0)
         .ok()
@@ -6143,6 +6197,7 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                         if lt.starts_with("vpn://")
                             || lt.starts_with("awg://")
                             || lt.starts_with("wg://")
+                            || lt.starts_with("phobos://")
                         {
                             if !current.is_empty() {
                                 texts.push(compact_vpn_uri(&current));
@@ -6181,7 +6236,9 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                     }
                 }
                 if batch.is_empty()
-                    && (trimmed.starts_with("awg://") || trimmed.starts_with("wg://"))
+                    && (trimmed.starts_with("awg://")
+                        || trimmed.starts_with("wg://")
+                        || trimmed.starts_with("phobos://"))
                     && let Some(node) = parse_proxy_uri(trimmed, idx)
                 {
                     batch.push((node.tag, node.outbound_json));
@@ -10095,6 +10152,7 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
 
     let mut used_tags: HashSet<String> = HashSet::new();
     let mut renamed_tags: HashMap<String, String> = HashMap::new();
+    let mut hidden_sub_tags: HashSet<String> = HashSet::new();
     let mut staged: Vec<(String, Value, bool, bool)> = Vec::new();
 
     for n in &nodes {
@@ -10200,12 +10258,18 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
         }
         apply_outbound_common_opts(src, &mut val);
 
+        let is_hidden_detour = n.raw_uri == "json:hidden|detour";
+        let is_hidden_sub =
+            src.include_urltest_groups && n.raw_uri.starts_with("json:hidden") && !is_hidden_detour;
+        if is_hidden_sub {
+            hidden_sub_tags.insert(final_tag.clone());
+        }
         let visible_in_selector = !(aux_balancer_members.contains(&n.tag)
-            || (src.include_urltest_groups && n.raw_uri.starts_with("json:hidden"))
             || (src.include_urltest_groups
                 && src.hide_urltest_group_outbounds
-                && urltest_member_tags.contains(&n.tag))
-            || (src.hide_detour_outbounds && detour_targets.contains(&n.tag)));
+                && (urltest_member_tags.contains(&n.tag) || is_hidden_sub))
+            || (src.hide_detour_outbounds
+                && (is_hidden_detour || detour_targets.contains(&n.tag))));
         staged.push((final_tag, val, visible_in_selector, false));
     }
 
@@ -10276,7 +10340,7 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
 
     let mut out = Vec::with_capacity(resolved.len());
     for (tag, val, visible, is_ut) in resolved {
-        if !is_ut && !visible && !needed_hidden.contains(&tag) {
+        if !is_ut && (!visible || hidden_sub_tags.contains(&tag)) && !needed_hidden.contains(&tag) {
             continue;
         }
         out.push((tag, val, visible));
@@ -10553,6 +10617,44 @@ struct WgPeerDraft {
     keepalive: Option<Value>,
 }
 
+#[derive(Default)]
+struct PhobosConfMeta {
+    target: Option<String>,
+    key: Option<String>,
+    masking: Option<String>,
+    max_dummy: Option<u64>,
+    obfuscate_bytes: Option<u64>,
+    media_pt: Option<u64>,
+    media_ssrc: Option<String>,
+    media_clock: Option<u64>,
+    version: Option<u64>,
+}
+
+fn is_phobos_loopback_endpoint(ep: &str) -> bool {
+    let trimmed = ep.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let host = if let Some(rest) = trimmed.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else if let Some((h, _)) = trimmed.rsplit_once(':') {
+        h
+    } else {
+        trimmed
+    };
+    let h = host.trim();
+    h.eq_ignore_ascii_case("localhost") || h == "127.0.0.1" || h == "::1" || h == "0.0.0.0"
+}
+
+fn parse_phobos_opt_u64(val: &str) -> Option<u64> {
+    let t = val.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("none") {
+        None
+    } else {
+        t.parse::<u64>().ok()
+    }
+}
+
 pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
     base_prefix: &str,
     conf: &str,
@@ -10584,6 +10686,10 @@ pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
     let mut reject_after_time: Option<Value> = None;
     let mut keepalive_timeout: Option<Value> = None;
     let mut max_handshake_attempts: Option<Value> = None;
+    let mut phobos = PhobosConfMeta::default();
+    let mut has_instance_or_client = false;
+    let mut has_socks5_section = false;
+    let mut has_wg_section = false;
 
     let mut peers: Vec<WgPeerDraft> = Vec::new();
     let mut section = "";
@@ -10595,13 +10701,25 @@ pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
         }
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             let sec_name = trimmed[1..trimmed.len() - 1].trim().to_ascii_lowercase();
-            section = if sec_name == "interface" {
-                "interface"
-            } else if sec_name == "peer" {
-                peers.push(WgPeerDraft::default());
-                "peer"
-            } else {
-                "other"
+            section = match sec_name.as_str() {
+                "interface" => {
+                    has_wg_section = true;
+                    "interface"
+                }
+                "peer" => {
+                    has_wg_section = true;
+                    peers.push(WgPeerDraft::default());
+                    "peer"
+                }
+                "instance" | "client" => {
+                    has_instance_or_client = true;
+                    "instance"
+                }
+                "socks5" => {
+                    has_socks5_section = true;
+                    "socks5"
+                }
+                _ => "other",
             };
             continue;
         }
@@ -10617,8 +10735,66 @@ pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
         if val.is_empty() || val.starts_with('$') {
             continue;
         }
+        if matches!(section, "instance" | "socks5" | "")
+            && key == "mode"
+            && val.eq_ignore_ascii_case("socks5")
+        {
+            return Vec::new();
+        }
         match section {
+            "instance" => match key.as_str() {
+                "target" => {
+                    if !val.eq_ignore_ascii_case("none") {
+                        phobos.target = Some(val.to_string());
+                    }
+                }
+                "key" | "obfuscator_key" => {
+                    if !val.eq_ignore_ascii_case("none") {
+                        phobos.key = Some(val.to_string());
+                    }
+                }
+                "masking" | "obfuscator_masking" => {
+                    phobos.masking = Some(val.to_ascii_lowercase());
+                }
+                "max-dummy" | "max_dummy" | "obfuscator_max_dummy" => {
+                    phobos.max_dummy = parse_phobos_opt_u64(val);
+                }
+                "obfuscate-bytes" | "obfuscate_bytes" | "obfuscator_bytes" => {
+                    phobos.obfuscate_bytes = parse_phobos_opt_u64(val);
+                }
+                "media-pt" | "media_pt" | "obfuscator_media_pt" => {
+                    phobos.media_pt = parse_phobos_opt_u64(val);
+                }
+                "media-ssrc" | "media_ssrc" | "obfuscator_media_ssrc" => {
+                    if !val.eq_ignore_ascii_case("none") {
+                        phobos.media_ssrc = Some(val.to_string());
+                    }
+                }
+                "media-clock" | "media_clock" | "obfuscator_media_clock" => {
+                    phobos.media_clock = parse_phobos_opt_u64(val);
+                }
+                "version" => {
+                    phobos.version = parse_phobos_opt_u64(val);
+                }
+                _ => {}
+            },
+            "socks5" | "other" => {}
             "peer" => {
+                if val.eq_ignore_ascii_case("none")
+                    && matches!(
+                        key.as_str(),
+                        "presharedkey"
+                            | "preshared_key"
+                            | "pre_shared_key"
+                            | "psk"
+                            | "persistentkeepalive"
+                            | "persistent_keepalive"
+                            | "persistent_keepalive_interval"
+                            | "endpoint"
+                    )
+                {
+                    continue;
+                }
                 if let Some(peer) = peers.last_mut() {
                     match key.as_str() {
                         "publickey" | "public_key" | "peer_public_key" => {
@@ -10640,111 +10816,135 @@ pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
                     }
                 }
             }
-            _ => match key.as_str() {
-                "privatekey" | "private_key" | "client_priv_key" => {
-                    priv_key = val.to_string();
+            _ => {
+                if val.eq_ignore_ascii_case("none")
+                    && matches!(
+                        key.as_str(),
+                        "mtu"
+                            | "dns"
+                            | "presharedkey"
+                            | "preshared_key"
+                            | "pre_shared_key"
+                            | "psk"
+                            | "persistentkeepalive"
+                            | "persistent_keepalive"
+                            | "persistent_keepalive_interval"
+                            | "reserved"
+                            | "listenport"
+                            | "listen_port"
+                            | "table"
+                            | "address"
+                    )
+                {
+                    continue;
                 }
-                "publickey" | "public_key" | "peer_public_key" => {
-                    if peers.is_empty() {
-                        peers.push(WgPeerDraft::default());
+                match key.as_str() {
+                    "privatekey" | "private_key" | "client_priv_key" => {
+                        priv_key = val.to_string();
                     }
-                    if let Some(p) = peers.last_mut()
-                        && p.pub_key.is_empty()
-                    {
-                        p.pub_key = val.to_string();
-                    }
-                }
-                "presharedkey" | "preshared_key" | "pre_shared_key" | "psk" => {
-                    if peers.is_empty() {
-                        peers.push(WgPeerDraft::default());
-                    }
-                    if let Some(p) = peers.last_mut()
-                        && p.psk.is_empty()
-                    {
-                        p.psk = val.to_string();
-                    }
-                }
-                "endpoint" => {
-                    if peers.is_empty() {
-                        peers.push(WgPeerDraft::default());
-                    }
-                    if let Some(p) = peers.last_mut()
-                        && p.endpoint.is_empty()
-                    {
-                        p.endpoint = val.to_string();
-                    }
-                }
-                "persistentkeepalive"
-                | "persistent_keepalive"
-                | "persistent_keepalive_interval" => {
-                    iface_keepalive = parse_awg_int_or_range(val).filter(|v| v.as_u64() != Some(0));
-                }
-                "address" | "local_address" | "ip" | "client_ip" => {
-                    for part in val.split(',') {
-                        let p = part.trim();
-                        if !p.is_empty() && !addresses.iter().any(|existing| existing == p) {
-                            addresses.push(p.to_string());
+                    "publickey" | "public_key" | "peer_public_key" => {
+                        if peers.is_empty() {
+                            peers.push(WgPeerDraft::default());
+                        }
+                        if let Some(p) = peers.last_mut()
+                            && p.pub_key.is_empty()
+                        {
+                            p.pub_key = val.to_string();
                         }
                     }
-                }
-                "mtu" => mtu = val.parse().unwrap_or(0),
-                "jc" => jc = val.parse().ok(),
-                "jmin" => jmin = val.parse().ok(),
-                "jmax" => jmax = val.parse().ok(),
-                "s1" => s1 = val.parse().ok(),
-                "s2" => s2 = val.parse().ok(),
-                "s3" => s3 = val.parse().ok(),
-                "s4" => s4 = val.parse().ok(),
-                "h1" => h1 = parse_awg_h_value(val),
-                "h2" => h2 = parse_awg_h_value(val),
-                "h3" => h3 = parse_awg_h_value(val),
-                "h4" => h4 = parse_awg_h_value(val),
-                "i1" => i_params[0] = Some(val.to_string()),
-                "i2" => i_params[1] = Some(val.to_string()),
-                "i3" => i_params[2] = Some(val.to_string()),
-                "i4" => i_params[3] = Some(val.to_string()),
-                "i5" => i_params[4] = Some(val.to_string()),
-                "j1" => j_params[0] = Some(val.to_string()),
-                "j2" => j_params[1] = Some(val.to_string()),
-                "j3" => j_params[2] = Some(val.to_string()),
-                "itime" => itime = val.parse().ok(),
-                "contentpaddingaddition" | "content_padding_addition" => {
-                    content_padding_addition = Some(val.to_string());
-                }
-                "randomtrailers" | "random_trailers" => {
-                    random_trailers = parse_awg_bool(val);
-                }
-                "disablecookies" | "disable_cookies" => {
-                    disable_cookies = parse_awg_bool(val);
-                }
-                "rekeyaftertime" | "rekey_after_time" => {
-                    rekey_after_time = parse_awg_int_or_range(val);
-                }
-                "rekeytimeout" | "rekey_timeout" => {
-                    rekey_timeout = parse_awg_int_or_range(val);
-                }
-                "rejectaftertime" | "reject_after_time" => {
-                    reject_after_time = parse_awg_int_or_range(val);
-                }
-                "keepalivetimeout" | "keepalive_timeout" => {
-                    keepalive_timeout = parse_awg_int_or_range(val);
-                }
-                "maxhandshakeattempts" | "max_handshake_attempts" => {
-                    max_handshake_attempts = parse_awg_int_or_range(val);
-                }
-                "headerprotectionkey" | "header_protection_key" => {
-                    if decode_b64_flex(val).is_some_and(|b| b.len() == 32) {
-                        header_protection_key = Some(val.to_string());
-                    } else {
-                        return Vec::new();
+                    "presharedkey" | "preshared_key" | "pre_shared_key" | "psk" => {
+                        if peers.is_empty() {
+                            peers.push(WgPeerDraft::default());
+                        }
+                        if let Some(p) = peers.last_mut()
+                            && p.psk.is_empty()
+                        {
+                            p.psk = val.to_string();
+                        }
                     }
+                    "endpoint" => {
+                        if peers.is_empty() {
+                            peers.push(WgPeerDraft::default());
+                        }
+                        if let Some(p) = peers.last_mut()
+                            && p.endpoint.is_empty()
+                        {
+                            p.endpoint = val.to_string();
+                        }
+                    }
+                    "persistentkeepalive"
+                    | "persistent_keepalive"
+                    | "persistent_keepalive_interval" => {
+                        iface_keepalive =
+                            parse_awg_int_or_range(val).filter(|v| v.as_u64() != Some(0));
+                    }
+                    "address" | "local_address" | "ip" | "client_ip" => {
+                        for part in val.split(',') {
+                            let p = part.trim();
+                            if !p.is_empty() && !addresses.iter().any(|existing| existing == p) {
+                                addresses.push(p.to_string());
+                            }
+                        }
+                    }
+                    "mtu" => mtu = val.parse().unwrap_or(0),
+                    "jc" => jc = val.parse().ok(),
+                    "jmin" => jmin = val.parse().ok(),
+                    "jmax" => jmax = val.parse().ok(),
+                    "s1" => s1 = val.parse().ok(),
+                    "s2" => s2 = val.parse().ok(),
+                    "s3" => s3 = val.parse().ok(),
+                    "s4" => s4 = val.parse().ok(),
+                    "h1" => h1 = parse_awg_h_value(val),
+                    "h2" => h2 = parse_awg_h_value(val),
+                    "h3" => h3 = parse_awg_h_value(val),
+                    "h4" => h4 = parse_awg_h_value(val),
+                    "i1" => i_params[0] = Some(val.to_string()),
+                    "i2" => i_params[1] = Some(val.to_string()),
+                    "i3" => i_params[2] = Some(val.to_string()),
+                    "i4" => i_params[3] = Some(val.to_string()),
+                    "i5" => i_params[4] = Some(val.to_string()),
+                    "j1" => j_params[0] = Some(val.to_string()),
+                    "j2" => j_params[1] = Some(val.to_string()),
+                    "j3" => j_params[2] = Some(val.to_string()),
+                    "itime" => itime = val.parse().ok(),
+                    "contentpaddingaddition" | "content_padding_addition" => {
+                        content_padding_addition = Some(val.to_string());
+                    }
+                    "randomtrailers" | "random_trailers" => {
+                        random_trailers = parse_awg_bool(val);
+                    }
+                    "disablecookies" | "disable_cookies" => {
+                        disable_cookies = parse_awg_bool(val);
+                    }
+                    "rekeyaftertime" | "rekey_after_time" => {
+                        rekey_after_time = parse_awg_int_or_range(val);
+                    }
+                    "rekeytimeout" | "rekey_timeout" => {
+                        rekey_timeout = parse_awg_int_or_range(val);
+                    }
+                    "rejectaftertime" | "reject_after_time" => {
+                        reject_after_time = parse_awg_int_or_range(val);
+                    }
+                    "keepalivetimeout" | "keepalive_timeout" => {
+                        keepalive_timeout = parse_awg_int_or_range(val);
+                    }
+                    "maxhandshakeattempts" | "max_handshake_attempts" => {
+                        max_handshake_attempts = parse_awg_int_or_range(val);
+                    }
+                    "headerprotectionkey" | "header_protection_key" => {
+                        if decode_b64_flex(val).is_some_and(|b| b.len() == 32) {
+                            header_protection_key = Some(val.to_string());
+                        } else {
+                            return Vec::new();
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
         }
     }
 
-    if priv_key.is_empty() {
+    if (has_socks5_section && !has_wg_section) || priv_key.is_empty() {
         return Vec::new();
     }
     if addresses.is_empty() {
@@ -10758,13 +10958,49 @@ pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
         }
     }
 
+    let mut obf_map = Map::new();
+    if has_instance_or_client {
+        if let Some(ref k) = phobos.key {
+            obf_map.insert("key".into(), json!(k));
+        }
+        if let Some(ref m) = phobos.masking {
+            obf_map.insert("masking".into(), json!(m));
+        }
+        if let Some(v) = phobos.max_dummy {
+            obf_map.insert("max_dummy".into(), json!(v));
+        }
+        if let Some(v) = phobos.obfuscate_bytes {
+            obf_map.insert("obfuscate_bytes".into(), json!(v));
+        }
+        if let Some(v) = phobos.media_pt {
+            obf_map.insert("media_pt".into(), json!(v));
+        }
+        if let Some(ref v) = phobos.media_ssrc {
+            obf_map.insert("media_ssrc".into(), json!(v));
+        }
+        if let Some(v) = phobos.media_clock {
+            obf_map.insert("media_clock".into(), json!(v));
+        }
+        if let Some(v) = phobos.version {
+            obf_map.insert("version".into(), json!(v));
+        }
+    }
+
     let valid_peers: Vec<(String, String, u16, String, Option<Value>)> = peers
         .into_iter()
         .filter_map(|p| {
-            if p.pub_key.is_empty() || p.endpoint.is_empty() {
+            let eff_endpoint = if (p.endpoint.is_empty()
+                || is_phobos_loopback_endpoint(&p.endpoint))
+                && phobos.target.is_some()
+            {
+                phobos.target.as_deref().unwrap_or("")
+            } else {
+                p.endpoint.as_str()
+            };
+            if p.pub_key.is_empty() || eff_endpoint.is_empty() {
                 return None;
             }
-            let (host, port) = split_host_port(&p.endpoint, 51820)?;
+            let (host, port) = split_host_port(eff_endpoint, 51820)?;
             let ka = p.keepalive.or_else(|| iface_keepalive.clone());
             Some((host, p.pub_key, port, p.psk, ka))
         })
@@ -10908,6 +11144,9 @@ pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
             if let Some(ref mha) = max_handshake_attempts {
                 obj.insert("max_handshake_attempts".into(), mha.clone());
             }
+        }
+        if !obf_map.is_empty() {
+            obj.insert("obfuscator".into(), Value::Object(obf_map.clone()));
         }
         out.push((tag, Value::Object(obj)));
     }
@@ -30888,6 +31127,91 @@ PersistentKeepalive = 25
         );
         assert_eq!(outs[0].0, "awgconf-src_rtest");
         assert!(!outs.iter().any(|(tag, _, _)| tag == "awgconf-src_rtest-1"));
+    }
+
+    #[test]
+    fn test_phobos_wireguard_uri_and_conf_parse() {
+        let ini = "\
+[instance]
+target = 198.51.100.42:51820
+key = phobos_secret_key
+masking = stun
+max-dummy = 64
+
+[Interface]
+PrivateKey = cGFzc3dvcmRwYXNzd29yZHBhc3N3b3JkcGFzc3dvcmQ=
+Address = 10.9.0.2/32
+MTU = none
+
+[Peer]
+PublicKey = QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
+Endpoint = 127.0.0.1:41000
+PersistentKeepalive = none
+";
+        let encoded = B64_URL.encode(ini.as_bytes());
+        let uri = format!("phobos://{encoded}#My%20Phobos");
+        let parsed = parse_proxy_uri(&uri, 0).expect("parse phobos:// uri");
+        assert_eq!(parsed.tag, "My Phobos");
+        assert_eq!(parsed.protocol, "wireguard");
+        assert_eq!(parsed.server, "198.51.100.42");
+        assert_eq!(parsed.server_port, 51820);
+        assert_eq!(
+            parsed.outbound_json["obfuscator"]["key"],
+            "phobos_secret_key"
+        );
+        assert_eq!(parsed.outbound_json["obfuscator"]["masking"], "stun");
+        assert_eq!(parsed.outbound_json["obfuscator"]["max_dummy"], 64);
+
+        let conf_outs = parse_amnezia_conf_outbounds_with_prefix("phobos-conf", ini);
+        assert_eq!(conf_outs.len(), 1);
+        assert_eq!(conf_outs[0].1["server"], "198.51.100.42");
+        assert_eq!(conf_outs[0].1["server_port"], 51820);
+        assert_eq!(conf_outs[0].1["obfuscator"]["key"], "phobos_secret_key");
+    }
+
+    #[test]
+    fn test_hide_urltest_group_outbounds_false_exposes_json_hidden_members() {
+        let sub_json = serde_json::json!([
+            {
+                "remarks": "Auto Group",
+                "routing": { "balancers": [{ "tag": "BAL", "selector": ["node-a"] }] },
+                "outbounds": [
+                    {
+                        "protocol": "vless",
+                        "tag": "node-a",
+                        "settings": { "vnext": [{ "address": "a.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111111" }] }] },
+                        "streamSettings": { "network": "tcp", "security": "tls", "tlsSettings": { "serverName": "a.example" } }
+                    }
+                ]
+            }
+        ])
+        .to_string();
+        let parsed = parse_json_subscription_payload(&sub_json).expect("parse json sub");
+        let mut src = OutboundSource {
+            id: "src_vis".into(),
+            enabled: true,
+            source_type: "subscription".into(),
+            include_urltest_groups: true,
+            hide_urltest_group_outbounds: true,
+            cached_nodes: parsed,
+            ..Default::default()
+        };
+        let outs_hidden = build_source_outbounds(&src);
+        assert!(
+            outs_hidden
+                .iter()
+                .any(|(_, ob, vis)| !*vis && ob["server"] == "a.example"),
+            "with hide_urltest_group_outbounds=true, json:hidden member must be hidden: {outs_hidden:?}"
+        );
+
+        src.hide_urltest_group_outbounds = false;
+        let outs_shown = build_source_outbounds(&src);
+        assert!(
+            outs_shown
+                .iter()
+                .any(|(_, ob, vis)| *vis && ob["server"] == "a.example"),
+            "with hide_urltest_group_outbounds=false, json:hidden member must be visible in selector: {outs_shown:?}"
+        );
     }
 
     #[test]

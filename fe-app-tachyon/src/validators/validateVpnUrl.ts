@@ -47,11 +47,13 @@ export function splitAmneziaTextEntries(
 
   for (const line of normalized.split('\n')) {
     const trimmed = line.trim();
-    if (trimmed.startsWith('vpn://')) {
-      const compact = compactVpnUri(trimmed);
+    if (/^(?:vpn|phobos):\/\//i.test(trimmed)) {
+      const compact = trimmed.startsWith('vpn://')
+        ? compactVpnUri(trimmed)
+        : trimmed;
       vpnLinks.push(compact);
       currentHasFrag = compact.includes('#');
-      inVpn = !currentHasFrag;
+      inVpn = trimmed.startsWith('vpn://') && !currentHasFrag;
     } else if (
       inVpn &&
       !currentHasFrag &&
@@ -511,13 +513,37 @@ export function validateVpnUrl(url: string): ValidationResult {
   };
   try {
     const compacted = compactVpnUri(url);
-    if (compacted.startsWith('vpn://')) {
-      let text = decompressVpnUri(compacted);
-      if (text == null) return invalid();
+    if (compacted.startsWith('vpn://') || /^phobos:\/\//i.test(compacted)) {
+      let text = compacted.startsWith('vpn://')
+        ? decompressVpnUri(compacted)
+        : '';
+      if (compacted.startsWith('vpn://') && text == null) return invalid();
+      if (text == null) text = '';
+      const isPhobosUri = /^phobos:\/\//i.test(compacted);
+      if (isPhobosUri) {
+        const hashIdx = compacted.indexOf('#');
+        const rawPayload = (
+          hashIdx >= 0
+            ? compacted.slice('phobos://'.length, hashIdx)
+            : compacted.slice('phobos://'.length)
+        )
+          .trim()
+          .replace(/^v1\./, '');
+        if (!rawPayload) return invalid();
+        let normB64 = rawPayload.replace(/-/g, '+').replace(/_/g, '/');
+        while (normB64.length % 4) normB64 += '=';
+        try {
+          const decoded = atob(normB64);
+          if (!decoded.toLowerCase().includes('[interface]')) return invalid();
+          text = decoded;
+        } catch (_e) {
+          return invalid();
+        }
+      }
       if (text.length > MAX_AMNEZIA_SIZE || text.includes('\0')) {
         return invalid();
       }
-      if (text.trim().startsWith('{')) {
+      if (!isPhobosUri && text.trim().startsWith('{')) {
         let data = JSON.parse(text) as Record<string, unknown>;
         if (!Array.isArray(data.containers)) {
           if (
@@ -744,9 +770,10 @@ export function validateVpnUrl(url: string): ValidationResult {
         }
       }
 
-      let block: 'interface' | 'peer' | '' = '';
+      let block: 'interface' | 'peer' | 'instance' | 'socks5' | '' = '';
       let interfaces = 0;
       const ifaceFields: Record<string, string> = {};
+      const instanceFields: Record<string, string> = {};
       const peerList: Record<string, string>[] = [];
       let currentPeer: Record<string, string> | null = null;
       for (const raw of text.split('\n')) {
@@ -764,14 +791,31 @@ export function validateVpnUrl(url: string): ValidationResult {
           peerList.push(currentPeer);
           continue;
         }
+        if (lowerLine === '[instance]' || lowerLine === '[client]') {
+          block = 'instance';
+          continue;
+        }
+        if (lowerLine === '[socks5]') {
+          block = 'socks5';
+          continue;
+        }
         if (line.startsWith('[')) return invalid();
         const eq = line.indexOf('=');
         if (block && eq > 0) {
           const k = line.slice(0, eq).trim().toLowerCase();
           const v = line.slice(eq + 1).trim();
+          if (
+            (block === 'instance' || block === 'socks5') &&
+            k === 'mode' &&
+            v.toLowerCase() === 'socks5'
+          ) {
+            return invalid();
+          }
           if (block === 'interface') {
             ifaceFields[k] = v;
-          } else if (currentPeer) {
+          } else if (block === 'instance') {
+            instanceFields[k] = v;
+          } else if (block === 'peer' && currentPeer) {
             currentPeer[k] = v;
           }
         }
@@ -785,28 +829,31 @@ export function validateVpnUrl(url: string): ValidationResult {
         ifaceFields.local_address ||
         ifaceFields.ip ||
         ifaceFields.client_ip;
+      const cleanVal = (v: string | undefined) =>
+        v && v.toLowerCase() !== 'none' ? v : '';
       if (
         interfaces !== 1 ||
         peerList.length < 1 ||
         !key32(privKey) ||
-        !addrVal
+        !cleanVal(addrVal)
       ) {
         return invalid();
       }
+      const phobosTarget = cleanVal(instanceFields.target);
       for (const peerFields of peerList) {
         const pubKey =
           peerFields.publickey ||
           peerFields.public_key ||
           peerFields.peer_public_key ||
           peerFields.server_pub_key;
-        const pskVal =
+        const pskVal = cleanVal(
           peerFields.presharedkey ||
-          peerFields.preshared_key ||
-          peerFields.psk ||
-          peerFields.psk_key;
-        const endpoint = (peerFields.endpoint || '').match(
-          /^(\[[^\]]+\]|[^:\s]+):(\d+)$/,
+            peerFields.preshared_key ||
+            peerFields.psk ||
+            peerFields.psk_key,
         );
+        const effEp = peerFields.endpoint || phobosTarget;
+        const endpoint = (effEp || '').match(/^(\[[^\]]+\]|[^:\s]+):(\d+)$/);
         if (
           !key32(pubKey) ||
           !endpoint ||

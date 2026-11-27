@@ -11845,6 +11845,34 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
     flex-wrap: wrap;
 }
 
+.tachyon-theme-auto-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 10px 14px;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    align-items: end;
+}
+
+.tachyon-theme-auto-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-theme-auto-pair,
+.tachyon-theme-auto-schedule {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+    gap: 8px 10px;
+}
+
+.tachyon-theme-time-input {
+    font-variant-numeric: tabular-nums;
+}
+
 .tachyon-theme-cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
