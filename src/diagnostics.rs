@@ -676,9 +676,9 @@ fn inbound_only_wireguard_endpoint_tags(config: &Value) -> Vec<String> {
                 return None;
             }
 
-            let direct_outbound = outbounds.iter().any(|outbound| {
-                outbound.get("tag").and_then(Value::as_str) == Some(tag)
-            });
+            let direct_outbound = outbounds
+                .iter()
+                .any(|outbound| outbound.get("tag").and_then(Value::as_str) == Some(tag));
             let selector_member = outbounds.iter().any(|outbound| {
                 outbound
                     .get("outbounds")
@@ -1380,7 +1380,10 @@ fn assemble_doctor_report_with_platform(
     {
         for o in out_arr {
             let tag = o.get("tag").and_then(Value::as_str).unwrap_or("");
-            if inbound_only_wireguard_tags.iter().any(|inbound_tag| inbound_tag == tag) {
+            if inbound_only_wireguard_tags
+                .iter()
+                .any(|inbound_tag| inbound_tag == tag)
+            {
                 continue;
             }
             let err_detail = o
