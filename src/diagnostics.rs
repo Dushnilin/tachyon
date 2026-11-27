@@ -648,6 +648,23 @@ fn json_value_references_tag(value: Option<&Value>, tag: &str) -> bool {
     }
 }
 
+/// Search nested config objects for a tag-valued reference field. This deliberately
+/// scans all supported dialer locations: outbounds, endpoints, DNS servers, NTP,
+/// HTTP clients, Cloudflared and inbound detours. A conservative match keeps the
+/// outbound warning rather than suppressing it incorrectly.
+fn json_tree_references_tag(value: Option<&Value>, field: &str, tag: &str) -> bool {
+    match value {
+        Some(Value::Object(object)) => object.iter().any(|(key, value)| {
+            (key == field && json_value_references_tag(Some(value), tag))
+                || json_tree_references_tag(Some(value), field, tag)
+        }),
+        Some(Value::Array(values)) => values
+            .iter()
+            .any(|value| json_tree_references_tag(Some(value), field, tag)),
+        _ => false,
+    }
+}
+
 fn inbound_only_wireguard_endpoint_tags(config: &Value) -> Vec<String> {
     let Some(endpoints) = config.get("endpoints").and_then(Value::as_array) else {
         return Vec::new();
@@ -658,11 +675,7 @@ fn inbound_only_wireguard_endpoint_tags(config: &Value) -> Vec<String> {
         .map(Vec::as_slice)
         .unwrap_or(&[]);
     let route = config.get("route");
-    let rules = route
-        .and_then(|route| route.get("rules"))
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
+    let rules = route.and_then(|route| route.get("rules"));
     let final_outbound = route.and_then(|route| route.get("final"));
 
     endpoints
@@ -679,27 +692,19 @@ fn inbound_only_wireguard_endpoint_tags(config: &Value) -> Vec<String> {
             let direct_outbound = outbounds
                 .iter()
                 .any(|outbound| outbound.get("tag").and_then(Value::as_str) == Some(tag));
-            let selector_member = outbounds.iter().any(|outbound| {
-                outbound
-                    .get("outbounds")
-                    .and_then(Value::as_array)
-                    .is_some_and(|members| {
-                        members.iter().any(|member| member.as_str() == Some(tag))
-                    })
-            });
-            let route_outbound = rules
-                .iter()
-                .any(|rule| json_value_references_tag(rule.get("outbound"), tag));
+            let selector_member =
+                json_tree_references_tag(config.get("outbounds"), "outbounds", tag);
+            let route_outbound = json_tree_references_tag(rules, "outbound", tag);
             let final_outbound = json_value_references_tag(final_outbound, tag);
-            let route_inbound = rules
-                .iter()
-                .any(|rule| json_value_references_tag(rule.get("inbound"), tag));
+            let route_inbound = json_tree_references_tag(rules, "inbound", tag);
+            let detour_reference = json_tree_references_tag(Some(config), "detour", tag);
 
             (route_inbound
                 && !direct_outbound
                 && !selector_member
                 && !route_outbound
-                && !final_outbound)
+                && !final_outbound
+                && !detour_reference)
                 .then(|| tag.to_string())
         })
         .collect()
@@ -8335,6 +8340,101 @@ mod tests {
         });
 
         assert!(inbound_only_wireguard_endpoint_tags(&config).is_empty());
+    }
+
+    #[test]
+    fn wireguard_endpoint_referenced_by_supported_detour_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let base = json!({
+            "endpoints": [{
+                "type": "wireguard",
+                "tag": tag,
+                "address": ["10.253.0.1/32"],
+                "listen_port": 51821
+            }],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [
+                    {"inbound": [tag], "action": "route", "outbound": "direct"}
+                ],
+                "final": "direct"
+            }
+        });
+        let cases = vec![
+            ("outbounds", json!({
+                "outbounds": [
+                    {"type": "direct", "tag": "direct"},
+                    {"type": "vless", "tag": "proxy", "detour": tag}
+                ]
+            })),
+            ("endpoints", json!({
+                "endpoints": [{"type": "tailscale", "tag": "ts", "detour": tag}]
+            })),
+            ("dns.servers", json!({
+                "dns": {"servers": [{"type": "udp", "tag": "dns", "detour": tag}]}
+            })),
+            ("ntp", json!({"ntp": {"detour": tag}})),
+            ("http_clients", json!({"http_clients": [{"detour": tag}]})),
+            ("cloudflared", json!({
+                "cloudflared": {
+                    "control_dialer": {"detour": tag},
+                    "tunnel_dialer": {"detour": tag}
+                }
+            })),
+            ("inbounds", json!({"inbounds": [{"type": "mixed", "tag": "in", "detour": tag}]})),
+        ];
+
+        for (name, extra) in cases {
+            let mut config = base.clone();
+            for (key, value) in extra.as_object().expect("case object") {
+                if key == "endpoints" {
+                    let mut merged = config["endpoints"].as_array().unwrap().clone();
+                    merged.extend(value.as_array().unwrap().iter().cloned());
+                    config["endpoints"] = Value::Array(merged);
+                } else {
+                    config[key] = value.clone();
+                }
+            }
+            assert!(
+                inbound_only_wireguard_endpoint_tags(&config).is_empty(),
+                "endpoint must not be suppressed when referenced by {name} detour"
+            );
+        }
+    }
+
+    #[test]
+    fn wireguard_endpoint_nested_logical_route_references_are_detected() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let outbound_config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [{
+                    "type": "logical",
+                    "mode": "and",
+                    "rules": [{"inbound": [tag], "outbound": tag}]
+                }],
+                "final": "direct"
+            }
+        });
+        assert!(inbound_only_wireguard_endpoint_tags(&outbound_config).is_empty());
+
+        let inbound_only_config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [{
+                    "type": "logical",
+                    "mode": "and",
+                    "rules": [{"inbound": [tag]}]
+                }],
+                "final": "direct"
+            }
+        });
+        assert_eq!(
+            inbound_only_wireguard_endpoint_tags(&inbound_only_config),
+            vec![tag.to_string()]
+        );
     }
 
     #[test]
