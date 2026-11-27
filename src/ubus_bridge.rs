@@ -15077,6 +15077,167 @@ fn service_probe_curl_args(url: &str, socks_proxy: Option<&str>) -> Vec<String> 
     args
 }
 
+#[cfg(test)]
+mod service_probe_integration_tests {
+    use super::{service_http_outcome, service_probe_curl_args};
+    use serde_json::Value;
+    use std::io::{BufRead, BufReader};
+    use std::path::PathBuf;
+    use std::process::{Child, Command, Output, Stdio};
+
+    struct Fixture {
+        child: Child,
+        tls_port: u16,
+        socks_port: u16,
+        cert_path: PathBuf,
+        hits_path: PathBuf,
+    }
+
+    impl Fixture {
+        fn start() -> Self {
+            let fixture_script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/service_probe_tls_socks.py");
+            let mut child = Command::new("python3")
+                .arg(fixture_script)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("python3 and the local HTTPS/SOCKS fixture must be available");
+            let stdout = child.stdout.take().expect("fixture stdout is piped");
+            let mut reader = BufReader::new(stdout);
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("fixture must publish its ports");
+            let metadata: Value =
+                serde_json::from_str(&line).expect("fixture must publish valid JSON");
+            Self {
+                child,
+                tls_port: metadata["tls_port"].as_u64().unwrap() as u16,
+                socks_port: metadata["socks_port"].as_u64().unwrap() as u16,
+                cert_path: PathBuf::from(metadata["cert_path"].as_str().unwrap()),
+                hits_path: PathBuf::from(metadata["hits_path"].as_str().unwrap()),
+            }
+        }
+
+        fn curl(&self, path: &str, proxy: Option<&str>, trust_certificate: bool) -> Output {
+            let url = format!("https://localhost:{}{}", self.tls_port, path);
+            let args = service_probe_curl_args(&url, proxy);
+            let mut command = Command::new("curl");
+            command
+                .args(&args)
+                .env("HTTPS_PROXY", "http://127.0.0.1:1")
+                .env("ALL_PROXY", "http://127.0.0.1:1")
+                .env("NO_PROXY", "localhost")
+                .env("no_proxy", "localhost")
+                .env_remove("CURL_CA_BUNDLE")
+                .env_remove("SSL_CERT_FILE")
+                .env_remove("SSL_CERT_DIR");
+            if trust_certificate {
+                command.env("CURL_CA_BUNDLE", &self.cert_path);
+            }
+            command.output().expect("curl must be installed for integration tests")
+        }
+
+        fn outcome(output: &Output) -> (u16, bool, String) {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let http_code = stdout
+                .trim()
+                .split('|')
+                .next()
+                .and_then(|value| value.parse::<u16>().ok())
+                .unwrap_or(0);
+            let exit_code = output.status.code().unwrap_or(-1);
+            let (success, reason) = service_http_outcome(http_code, exit_code);
+            (http_code, success, reason)
+        }
+
+        fn socks_hits(&self) -> usize {
+            std::fs::read(&self.hits_path).map(|data| data.len()).unwrap_or(0)
+        }
+
+        fn socks_url(&self) -> String {
+            format!("socks5h://127.0.0.1:{}", self.socks_port)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    #[test]
+    fn direct_https_probe_accepts_a_trusted_completed_2xx_response() {
+        let fixture = Fixture::start();
+        let output = fixture.curl("/ok", None, true);
+        let (code, success, reason) = Fixture::outcome(&output);
+        assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(code, 200);
+        assert!(success, "{reason}");
+    }
+
+    #[test]
+    fn invalid_tls_certificate_is_not_reachable() {
+        let fixture = Fixture::start();
+        let output = fixture.curl("/ok", None, false);
+        let (_, success, _) = Fixture::outcome(&output);
+        assert!(!success, "an untrusted local certificate must not pass");
+        assert_ne!(output.status.code(), Some(0));
+    }
+
+    #[test]
+    fn http_denials_and_rate_limits_are_not_reachable() {
+        let fixture = Fixture::start();
+        for (path, expected) in [("/forbidden", 403), ("/rate-limit", 429)] {
+            let output = fixture.curl(path, None, true);
+            let (code, success, _) = Fixture::outcome(&output);
+            assert_eq!(output.status.code(), Some(0));
+            assert_eq!(code, expected);
+            assert!(!success, "{path} must not be classified as reachable");
+        }
+    }
+
+    #[test]
+    fn redirect_from_https_to_http_is_rejected() {
+        let fixture = Fixture::start();
+        let output = fixture.curl("/redirect-http", None, true);
+        let (_, success, _) = Fixture::outcome(&output);
+        assert!(!success, "HTTP downgrade redirect must not pass");
+        assert_ne!(output.status.code(), Some(0));
+    }
+
+    #[test]
+    fn truncated_http_body_is_not_reachable_even_after_200_headers() {
+        let fixture = Fixture::start();
+        let output = fixture.curl("/truncated", None, true);
+        let (code, success, _) = Fixture::outcome(&output);
+        assert_eq!(code, 200);
+        assert_ne!(output.status.code(), Some(0));
+        assert!(!success, "curl's incomplete-transfer exit code must be honored");
+    }
+
+    #[test]
+    fn socks5h_is_used_even_when_no_proxy_environment_matches() {
+        let fixture = Fixture::start();
+        let proxy = fixture.socks_url();
+        let output = fixture.curl("/ok", Some(&proxy), true);
+        let (code, success, reason) = Fixture::outcome(&output);
+        assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(code, 200);
+        assert!(success, "{reason}");
+        assert!(fixture.socks_hits() > 0, "the local SOCKS5 proxy must receive the request");
+    }
+
+    #[test]
+    fn unavailable_socks_proxy_does_not_fall_back_to_direct_path() {
+        let fixture = Fixture::start();
+        let output = fixture.curl("/ok", Some("socks5h://127.0.0.1:1"), true);
+        let (_, success, _) = Fixture::outcome(&output);
+        assert!(!success, "NO_PROXY must not bypass the selected SOCKS proxy");
+        assert_ne!(output.status.code(), Some(0));
+    }
+}
+
 async fn probe_service_target(
     section: String,
     route_type: String,
