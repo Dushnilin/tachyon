@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 05:05+0300\n"
-"PO-Revision-Date: 2026-11-27 05:05+0300\n"
+"POT-Creation-Date: 2026-11-27 09:11+0000\n"
+"PO-Revision-Date: 2026-11-27 09:11+0000\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -3639,7 +3639,7 @@ msgstr ""
 msgid "Copy a compact transfer code to move routes or the entire configuration to another router."
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1814
+#: src/tachyon/tabs/updates/initController.ts:1818
 msgid "Copy address"
 msgstr ""
 
@@ -3974,7 +3974,7 @@ msgstr ""
 msgid "Custom strategy added!"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1389
+#: src/tachyon/tabs/updates/initController.ts:1393
 msgid "Custom tag (e.g. v1.2.3)"
 msgstr ""
 
@@ -6224,7 +6224,8 @@ msgstr ""
 msgid "Failed to load history"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1341
+#: src/tachyon/tabs/updates/initController.ts:1339
+#: src/tachyon/tabs/updates/initController.ts:1345
 msgid "Failed to load release description."
 msgstr ""
 
@@ -7447,7 +7448,7 @@ msgstr ""
 msgid "Hide values"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1827
+#: src/tachyon/tabs/updates/initController.ts:1831
 msgid "Hide versions"
 msgstr ""
 
@@ -8187,21 +8188,21 @@ msgstr ""
 #: src/tachyon/languageSelector.ts:151
 #: src/tachyon/tabs/updates/cardDefinitions.ts:108
 #: src/tachyon/tabs/updates/initController.ts:1063
-#: src/tachyon/tabs/updates/initController.ts:1399
-#: src/tachyon/tabs/updates/initController.ts:1483
+#: src/tachyon/tabs/updates/initController.ts:1403
+#: src/tachyon/tabs/updates/initController.ts:1487
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:485
 msgid "Install"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1862
+#: src/tachyon/tabs/updates/initController.ts:1866
 msgid "Install another build:"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1676
+#: src/tachyon/tabs/updates/initController.ts:1680
 msgid "Installed build → Available build"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1684
+#: src/tachyon/tabs/updates/initController.ts:1688
 #: src/tachyon/tabs/updates/notifications.ts:48
 msgid "Installed version is newer than release"
 msgstr ""
@@ -9131,7 +9132,7 @@ msgstr ""
 msgid "Latest release"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1682
+#: src/tachyon/tabs/updates/initController.ts:1686
 #: src/tachyon/tabs/updates/notifications.ts:51
 msgid "Latest version is installed"
 msgstr ""
@@ -9409,13 +9410,13 @@ msgstr ""
 msgid "Loading stability metrics..."
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1431
+#: src/tachyon/tabs/updates/initController.ts:1435
 msgid "Loading versions..."
 msgstr ""
 
 #: src/tachyon/panelAuthCard.ts:314
 #: src/tachyon/tabs/updates/cardDefinitions.ts:114
-#: src/tachyon/tabs/updates/initController.ts:1627
+#: src/tachyon/tabs/updates/initController.ts:1631
 #: src/tachyon/tabs/updates/initController.ts:935
 #: src/tachyon/tabs/updates/notifications.ts:35
 msgid "Loading..."
@@ -10187,7 +10188,7 @@ msgstr ""
 msgid "New version %s is available for %s"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1519
+#: src/tachyon/tabs/updates/initController.ts:1523
 msgid "Next"
 msgstr ""
 
@@ -10471,7 +10472,7 @@ msgstr ""
 
 #: src/tachyon/tabs/updates/initController.ts:1022
 #: src/tachyon/tabs/updates/initController.ts:1026
-#: src/tachyon/tabs/updates/initController.ts:1443
+#: src/tachyon/tabs/updates/initController.ts:1447
 msgid "No versions found"
 msgstr ""
 
@@ -10588,7 +10589,7 @@ msgstr ""
 #: src/tachyon/helpers/coreVersion.ts:28
 #: src/tachyon/helpers/coreVersion.ts:36
 #: src/tachyon/tabs/updates/cardDefinitions.ts:113
-#: src/tachyon/tabs/updates/initController.ts:1626
+#: src/tachyon/tabs/updates/initController.ts:1630
 #: src/tachyon/tabs/updates/notifications.ts:34
 msgid "Not installed"
 msgstr ""
@@ -11288,7 +11289,7 @@ msgstr ""
 msgid "Padding"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1516
+#: src/tachyon/tabs/updates/initController.ts:1520
 msgid "Page"
 msgstr ""
 
@@ -11943,7 +11944,7 @@ msgstr ""
 msgid "Preview:"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1504
+#: src/tachyon/tabs/updates/initController.ts:1508
 msgid "Previous"
 msgstr ""
 
@@ -12599,7 +12600,7 @@ msgstr ""
 msgid "Rebuild firewall rules"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1670
+#: src/tachyon/tabs/updates/initController.ts:1674
 msgid "Rebuilt release"
 msgstr ""
 
@@ -17277,11 +17278,11 @@ msgstr ""
 msgid "Update is available"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1658
+#: src/tachyon/tabs/updates/initController.ts:1662
 msgid "Update is available for current release"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1616
+#: src/tachyon/tabs/updates/initController.ts:1620
 msgid "Update is available:"
 msgstr ""
 
@@ -17804,7 +17805,7 @@ msgstr ""
 msgid "Verifying router and service readiness..."
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1827
+#: src/tachyon/tabs/updates/initController.ts:1831
 msgid "Versions"
 msgstr ""
 
@@ -18085,10 +18086,10 @@ msgstr ""
 
 #: src/tachyon/tabs/updates/initController.ts:1292
 #: src/tachyon/tabs/updates/initController.ts:1326
-#: src/tachyon/tabs/updates/initController.ts:1359
-#: src/tachyon/tabs/updates/initController.ts:1360
-#: src/tachyon/tabs/updates/initController.ts:1633
-#: src/tachyon/tabs/updates/initController.ts:1705
+#: src/tachyon/tabs/updates/initController.ts:1363
+#: src/tachyon/tabs/updates/initController.ts:1364
+#: src/tachyon/tabs/updates/initController.ts:1637
+#: src/tachyon/tabs/updates/initController.ts:1709
 msgid "What's new?"
 msgstr ""
 
@@ -18673,7 +18674,7 @@ msgstr ""
 msgid "pkts"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1469
+#: src/tachyon/tabs/updates/initController.ts:1473
 msgid "pre-release"
 msgstr ""
 
