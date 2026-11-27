@@ -149,28 +149,28 @@ class OpenWrtPackageTest(unittest.TestCase):
 
     def test_arm_eabi_float_abi_and_attributes_are_enforced(self):
         cases = [
-            ("old EABI", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x04000400},
+            ("old EABI", "armv7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x04000400},
              "EABI version 5"),
-            ("soft-float v7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000200},
+            ("soft-float v7", "armv7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000200},
              "hard-float"),
-            ("newer ISA", {"arm_arch": 14, "vfp_args": 1, "arm_flags": 0x05000400},
+            ("newer ISA", "armv7", {"arm_arch": 14, "vfp_args": 1, "arm_flags": 0x05000400},
              "exceeds armv7 target"),
-            ("real-time profile", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
-                                  "cpu_profile": 82}, "CPU architecture profile"),
-            ("VFPv4 on v7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
-                            "fp_arch": 5}, "exceeds VFPv3-D16"),
-            ("NEON on v7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
-                            "simd_arch": 1}, "Advanced SIMD"),
-            ("VFP on v6", {"arm_arch": 6, "vfp_args": 0, "arm_flags": 0x05000200,
-                           "fp_arch": 2}, "cannot require VFP"),
-            ("base PCS on hard-float", {"arm_arch": 10, "vfp_args": 0, "arm_flags": 0x05000400},
+            ("real-time profile", "armv7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
+                                           "cpu_profile": 82}, "CPU architecture profile"),
+            ("VFPv4 on v7", "armv7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
+                                     "fp_arch": 5}, "exceeds VFPv3-D16"),
+            ("NEON on v7", "armv7", {"arm_arch": 10, "vfp_args": 1, "arm_flags": 0x05000400,
+                                     "simd_arch": 1}, "Advanced SIMD"),
+            ("VFP on v6", "armv6", {"arm_arch": 6, "vfp_args": 0, "arm_flags": 0x05000200,
+                                    "fp_arch": 2}, "cannot require VFP"),
+            ("base PCS on hard-float", "armv7", {"arm_arch": 10, "vfp_args": 0, "arm_flags": 0x05000400},
              "VFP argument ABI"),
         ]
-        for label, fixture, message in cases:
+        for label, target, fixture, message in cases:
             with self.subTest(case=label), self.assertRaisesRegex(ValueError, message):
                 validate_binary_arch(
-                    elf_header(*TARGETS["armv7"], **fixture),
-                    "armv7", TARGET_TRIPLES["armv7"],
+                    elf_header(*TARGETS[target], **fixture),
+                    target, TARGET_TRIPLES[target],
                 )
 
         hard_float_v6 = elf_header(
