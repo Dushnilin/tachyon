@@ -79,10 +79,18 @@ export async function runFakeIPCheck() {
       checkFakeIPResponse.data.IP !== checkIPResponse.data.IP,
   };
 
+  const selectiveTproxy = Boolean(
+    (routerFakeIPResponse.success &&
+      routerFakeIPResponse.data.selective_tproxy) ||
+      (checkFakeIPResponse.success &&
+        checkFakeIPResponse.data.selective_tproxy),
+  );
   const fakeIPWorks = checks.routerFakeIP && checks.browserFakeIP;
   const isDirectOnly = fakeIPWorks && !hasProxySection && !checks.differentIP;
+  const isSelectiveTproxyMatch =
+    fakeIPWorks && selectiveTproxy && !checks.differentIP;
   const { state, description } = fakeIPWorks
-    ? checks.differentIP || isDirectOnly
+    ? checks.differentIP || isDirectOnly || isSelectiveTproxyMatch
       ? { state: 'success' as const, description: _('Checks passed') }
       : {
           state: 'warning' as const,
@@ -136,13 +144,20 @@ export async function runFakeIPCheck() {
       },
       ...insertIf<IDiagnosticsChecksItem>(checks.browserFakeIP, [
         {
-          state: checks.differentIP || isDirectOnly ? 'success' : 'warning',
+          state:
+            checks.differentIP || isDirectOnly || isSelectiveTproxyMatch
+              ? 'success'
+              : 'warning',
           key: !checks.canComparePublicIP
             ? _('Could not compare FakeIP and control public IPs')
             : checks.differentIP
               ? _('FakeIP and control checks use different public IPs')
               : _('FakeIP and control checks use the same public IP'),
-          value: isDirectOnly ? _('Direct connection via ISP') : '',
+          value: isDirectOnly
+            ? _('Direct connection via ISP')
+            : isSelectiveTproxyMatch
+              ? _('Selective TProxy: test domain uses direct path')
+              : '',
         },
       ]),
     ],

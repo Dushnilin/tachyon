@@ -1291,6 +1291,10 @@ export const styles = `
     border-color: rgba(245, 158, 11, 0.28);
 }
 
+.tachyon_diagnostic_alert__preview-chip--info {
+    border-color: rgba(148, 163, 184, 0.28);
+}
+
 .tachyon_diagnostic_alert__preview-dot {
     width: 5px;
     height: 5px;
@@ -1305,6 +1309,10 @@ export const styles = `
 
 .tachyon_diagnostic_alert__preview-dot--error {
     background: #ef4444;
+}
+
+.tachyon_diagnostic_alert__preview-dot--info {
+    background: #94a3b8;
 }
 
 .tachyon_diagnostic_alert__preview-key {
@@ -1421,6 +1429,14 @@ export const styles = `
 
 .tachyon_diagnostic_alert__summary__item--success {
     color: #4ade80;
+}
+
+.tachyon_diagnostic_alert__summary__item--info {
+    color: #94a3b8;
+}
+
+.tachyon_diagnostic_alert__summary__item--info > div {
+    color: #94a3b8;
 }
 
 .tachyon_diagnostic_alert--loading {

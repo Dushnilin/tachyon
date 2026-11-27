@@ -129,18 +129,25 @@ function getServerItems(
     getPortConflictItem(item),
     {
       state:
-        item.firewall_required === 0 || item.firewall_open === -1
-          ? 'warning'
-          : item.firewall_open === 1
-            ? 'success'
-            : 'error',
+        item.firewall_open === 1
+          ? 'success'
+          : item.firewall_required === 0
+            ? 'info'
+            : item.firewall_open === -1
+              ? 'warning'
+              : 'error',
       key: `${prefix} ${_('Firewall WAN port')}`,
       value:
-        item.firewall_required === 0
-          ? _('Not required for this listen address')
-          : item.firewall_open === -1
-            ? _('Firewall status unavailable')
-            : `${item.required_proto}/${Number(item.listen_port || 0)}`,
+        item.firewall_open === 1
+          ? item.firewall_dnat ||
+            `${item.required_proto}/${Number(item.listen_port || 0)}`
+          : item.firewall_required === 0
+            ? item.firewall_skip_reason === 'auto_open_disabled'
+              ? _('Skipped: auto-open in firewall is disabled')
+              : _('Not required for this listen address')
+            : item.firewall_open === -1
+              ? _('Firewall status unavailable')
+              : `${item.required_proto}/${Number(item.listen_port || 0)}`,
     },
     {
       state: item.routes_configured ? 'success' : 'warning',
@@ -236,7 +243,9 @@ export async function runInboundsCheck() {
     items.push(...getServerItems(item, data.wan_ip));
   });
 
-  const allGood = items.every((item) => item.state === 'success');
+  const allGood = items.every(
+    (item) => item.state === 'success' || item.state === 'info',
+  );
   const atLeastOneGood = items.some((item) => item.state !== 'error');
   const { state, description } = getMeta({ atLeastOneGood, allGood });
 

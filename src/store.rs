@@ -5098,6 +5098,13 @@ impl RouterStoreData {
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default();
 
+        let prev_active_selected: HashMap<String, String> = self
+            .sections
+            .iter()
+            .filter(|s| !s.active_selected_tag.trim().is_empty())
+            .map(|s| (s.id.clone(), s.active_selected_tag.trim().to_string()))
+            .collect();
+
         let prev_sources: HashMap<String, OutboundSource> = self
             .outbound_sources
             .drain(..)
@@ -6881,10 +6888,19 @@ impl RouterStoreData {
                     let user_subnets =
                         b.clean_tokens(&["user_subnets", "ip_cidr", "ip_cidrs", "subnets"]);
                     let exclude_subnets = b.clean_tokens(&["exclude_subnets", "excluded_ip_cidr"]);
-                    let active_sel = selector_state
-                        .get(&b.name)
-                        .or_else(|| selector_state.get(&format!("{}-out", b.name)))
-                        .cloned()
+                    let active_sel = b
+                        .opt("active_selected_tag")
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .or_else(|| prev_active_selected.get(&b.name).cloned())
+                        .or_else(|| selector_state.get(&format!("sel-{}", b.name)).cloned())
+                        .or_else(|| {
+                            selector_state
+                                .get(&b.name)
+                                .or_else(|| selector_state.get(&format!("{}-out", b.name)))
+                                .cloned()
+                        })
                         .unwrap_or_default();
 
                     self.sections.push(RoutingSection {
@@ -14268,5 +14284,73 @@ config outbound_source 'awg31_src'
             .find(|g| g.id == "Ai_eu")
             .expect("Ai_eu group");
         assert_eq!(grp.include_servers, vec!["🇩🇪 Germany #1".to_string()]);
+    }
+
+    #[test]
+    fn test_import_preserves_active_selected_tag_over_legacy_selector_state() {
+        let mut store = RouterStoreData {
+            sections: vec![
+                RoutingSection {
+                    id: "SecA".to_string(),
+                    enabled: true,
+                    action: "proxy".to_string(),
+                    connection_type: "vless".to_string(),
+                    section_selection_mode: "default".to_string(),
+                    active_selected_tag: "Node A".to_string(),
+                    ..Default::default()
+                },
+                RoutingSection {
+                    id: "SecB".to_string(),
+                    enabled: true,
+                    action: "proxy".to_string(),
+                    connection_type: "vless".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let blocks = vec![
+            LegacyUciBlock {
+                kind: "section".to_string(),
+                name: "SecA".to_string(),
+                options: HashMap::from([
+                    ("enabled".to_string(), "1".to_string()),
+                    ("action".to_string(), "proxy".to_string()),
+                    ("connection_type".to_string(), "vless".to_string()),
+                    ("section_selection_mode".to_string(), "default".to_string()),
+                ]),
+                lists: HashMap::new(),
+            },
+            LegacyUciBlock {
+                kind: "section".to_string(),
+                name: "SecB".to_string(),
+                options: HashMap::from([
+                    ("enabled".to_string(), "1".to_string()),
+                    ("action".to_string(), "proxy".to_string()),
+                    ("connection_type".to_string(), "vless".to_string()),
+                ]),
+                lists: HashMap::new(),
+            },
+        ];
+
+        store.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+        let sec_a = store.sections.iter().find(|s| s.id == "SecA").unwrap();
+        assert_eq!(sec_a.active_selected_tag, "Node A");
+
+        let explicit_blocks = vec![LegacyUciBlock {
+            kind: "section".to_string(),
+            name: "SecA".to_string(),
+            options: HashMap::from([
+                ("enabled".to_string(), "1".to_string()),
+                ("action".to_string(), "proxy".to_string()),
+                ("connection_type".to_string(), "vless".to_string()),
+                ("active_selected_tag".to_string(), "Node C".to_string()),
+            ]),
+            lists: HashMap::new(),
+        }];
+        store.import_from_blocks_with_cache(&explicit_blocks, Path::new("/nonexistent"));
+        let sec_a_updated = store.sections.iter().find(|s| s.id == "SecA").unwrap();
+        assert_eq!(sec_a_updated.active_selected_tag, "Node C");
     }
 }

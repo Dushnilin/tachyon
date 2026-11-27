@@ -1225,16 +1225,74 @@ input.cbi-button-action:hover:not(:disabled),
     display: flex !important;
     align-items: center !important;
     flex-wrap: nowrap !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
-[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown > ul,
-.tachyon-view .cbi-dropdown > ul,
-#modal_overlay .cbi-dropdown > ul,
-.cbi-modal .cbi-dropdown > ul {
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown[open],
+.tachyon-view .cbi-dropdown[open],
+#modal_overlay .cbi-dropdown[open],
+.cbi-modal .cbi-dropdown[open] {
+    z-index: 2500 !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-value:has(.cbi-dropdown[open]),
+.tachyon-view .cbi-value:has(.cbi-dropdown[open]),
+#modal_overlay .cbi-value:has(.cbi-dropdown[open]),
+.cbi-modal .cbi-value:has(.cbi-dropdown[open]) {
+    position: relative !important;
+    z-index: 2600 !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown[multiple]:not([open]) > ul.dropdown,
+.tachyon-view .cbi-dropdown[multiple]:not([open]) > ul.dropdown,
+#modal_overlay .cbi-dropdown[multiple]:not([open]) > ul.dropdown,
+.cbi-modal .cbi-dropdown[multiple]:not([open]) > ul.dropdown {
+    display: none !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown:not([open]) > ul:not(.dropdown),
+.tachyon-view .cbi-dropdown:not([open]) > ul:not(.dropdown),
+#modal_overlay .cbi-dropdown:not([open]) > ul:not(.dropdown),
+.cbi-modal .cbi-dropdown:not([open]) > ul:not(.dropdown),
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown > ul.preview,
+.tachyon-view .cbi-dropdown > ul.preview,
+#modal_overlay .cbi-dropdown > ul.preview,
+.cbi-modal .cbi-dropdown > ul.preview {
+    position: static !important;
     flex: 1 1 auto !important;
+    width: auto !important;
     min-width: 0 !important;
+    max-width: 100% !important;
+    max-height: none !important;
     margin: 0 !important;
-    padding-right: 28px !important;
+    padding: 0 28px 0 0 !important;
+    overflow: hidden !important;
+    list-style: none !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    z-index: auto !important;
+    transform: none !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown:not([open]) > ul:not(.dropdown) > li,
+.tachyon-view .cbi-dropdown:not([open]) > ul:not(.dropdown) > li,
+#modal_overlay .cbi-dropdown:not([open]) > ul:not(.dropdown) > li,
+.cbi-modal .cbi-dropdown:not([open]) > ul:not(.dropdown) > li,
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown > ul.preview > li,
+.tachyon-view .cbi-dropdown > ul.preview > li,
+#modal_overlay .cbi-dropdown > ul.preview > li,
+.cbi-modal .cbi-dropdown > ul.preview > li {
+    position: static !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    transform: none !important;
 }
 
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown > .open,
@@ -1251,21 +1309,34 @@ input.cbi-button-action:hover:not(:disabled),
     opacity: 0.72 !important;
 }
 
-[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown[open] > ul,
-.tachyon-view .cbi-dropdown[open] > ul,
-#modal_overlay .cbi-dropdown[open] > ul,
-.cbi-modal .cbi-dropdown[open] > ul,
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown[open] > ul:not(.preview),
+.tachyon-view .cbi-dropdown[open] > ul:not(.preview),
+#modal_overlay .cbi-dropdown[open] > ul:not(.preview),
+.cbi-modal .cbi-dropdown[open] > ul:not(.preview),
 .cbi-dropdown[open] > ul.dropdown,
-.cbi-dropdown[open] > ul,
-.cbi-dynlist .cbi-dropdown[open] > ul {
+.cbi-dynlist .cbi-dropdown[open] > ul:not(.preview) {
+    position: absolute !important;
+    top: 100% !important;
+    bottom: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 4px 0 0 0 !important;
+    padding: 4px 0 !important;
     width: 100% !important;
-    max-width: min(100%, calc(100vw - 40px)) !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     max-height: min(320px, 45vh);
     overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
     z-index: 2500 !important;
     box-sizing: border-box !important;
+    transform: none !important;
+    text-align: left !important;
+    background: var(--elevated, var(--surface, #1a1d27)) !important;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.14)) !important;
+    border-radius: var(--r-btn, 8px) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
     -webkit-overflow-scrolling: touch;
 }
 
@@ -1277,6 +1348,38 @@ input.cbi-button-action:hover:not(:disabled),
     word-break: break-word !important;
     line-height: 1.35 !important;
     padding: 7px 10px !important;
+    position: static !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-height: 34px !important;
+    height: auto !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    transform: none !important;
+    text-align: left !important;
+}
+
+#modal_overlay .cbi-dropdown[open] > ul > li > input[type="checkbox"],
+.cbi-modal .cbi-dropdown[open] > ul > li > input[type="checkbox"],
+.tachyon-view .cbi-dropdown[open] > ul > li > input[type="checkbox"] {
+    position: static !important;
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+    width: auto !important;
+}
+
+#modal_overlay .cbi-dropdown[open] > ul.preview > li,
+.cbi-modal .cbi-dropdown[open] > ul.preview > li,
+.tachyon-view .cbi-dropdown[open] > ul.preview > li {
+    display: inline-flex !important;
+    width: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 
 /* Tachyon modal sizing by content type */
@@ -12627,6 +12730,11 @@ html[data-tachyon-theme-scheme="light"] body #modal_overlay .cbi-button-action:h
 [data-tachyon-theme-scheme="light"] .tachyon_diagnostic-summary-banner--success .tachyon_diagnostic-summary-banner__title svg,
 [data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert--success .tachyon_diagnostic_alert__icon {
     color: #15803d !important;
+}
+
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item--info,
+[data-tachyon-theme-scheme="light"] .tachyon_diagnostic_alert__summary__item--info > div {
+    color: #475569 !important;
 }
 
 [data-tachyon-theme-scheme="light"] .tachyon_diag-telemetry__status-badge.is-warn,

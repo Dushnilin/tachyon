@@ -62,7 +62,8 @@ function getItemSeverityRank(
 ): number {
   if (state === 'error') return 0;
   if (state === 'warning') return 1;
-  return 2;
+  if (state === 'success') return 2;
+  return 3;
 }
 
 function renderCheckCountsBadge(
@@ -76,7 +77,9 @@ function renderCheckCountsBadge(
     return null;
   }
   const total = props.items.length;
-  const okCount = props.items.filter((i) => i.state === 'success').length;
+  const okCount = props.items.filter(
+    (i) => i.state === 'success' || i.state === 'info',
+  ).length;
   const warnCount = props.items.filter((i) => i.state === 'warning').length;
   const errCount = props.items.filter((i) => i.state === 'error').length;
 
@@ -187,6 +190,10 @@ function renderCheckSummary(
 
       if (item.state === 'error') {
         iconWrap.appendChild(renderXIcon24());
+      }
+
+      if (item.state === 'info') {
+        iconWrap.appendChild(renderCircleAlertIcon24());
       }
 
       return iconWrap;

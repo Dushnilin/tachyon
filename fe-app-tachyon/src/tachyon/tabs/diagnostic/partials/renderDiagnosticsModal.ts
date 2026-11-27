@@ -64,9 +64,11 @@ function buildPlainTextReport(checks: IDiagnosticsChecksStoreItem[]): string {
       const icon =
         item.state === 'success'
           ? 'OK'
-          : item.state === 'warning'
-            ? 'WARN'
-            : 'FAIL';
+          : item.state === 'info'
+            ? 'INFO'
+            : item.state === 'warning'
+              ? 'WARN'
+              : 'FAIL';
       lines.push(
         `  - [${icon}] ${item.key}${item.value ? `: ${item.value}` : ''}`,
       );
@@ -95,7 +97,9 @@ function renderModalBodyContent(
   const errorCount = checks.filter((c) => c.state === 'error').length;
   const totalAssertions = checks.reduce((acc, c) => acc + c.items.length, 0);
   const passedAssertions = checks.reduce(
-    (acc, c) => acc + c.items.filter((i) => i.state === 'success').length,
+    (acc, c) =>
+      acc +
+      c.items.filter((i) => i.state === 'success' || i.state === 'info').length,
     0,
   );
 

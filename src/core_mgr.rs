@@ -2689,15 +2689,6 @@ impl CoreManager {
             if sec.enabled && !sec.active_selected_tag.trim().is_empty() {
                 sel_map.insert(format!("sel-{}", sec.id), sec.active_selected_tag.clone());
                 sel_map.insert(sec.id.clone(), sec.active_selected_tag.clone());
-                for bal_ref in &sec.balancer_refs {
-                    let b = bal_ref.trim();
-                    if !b.is_empty() {
-                        sel_map.insert(
-                            format!("bal-{}-{}", sec.id, b),
-                            sec.active_selected_tag.clone(),
-                        );
-                    }
-                }
             }
         }
         if sel_map.is_empty() {
@@ -2796,6 +2787,10 @@ impl CoreManager {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
         map.insert(group_or_sec.to_string(), chosen_tag.to_string());
+        if let Some(base) = group_or_sec.strip_prefix("sel-") {
+            map.remove(base);
+            map.remove(&format!("{base}-out"));
+        }
         let _ = crypto_gen::write_json_if_changed(path, &map);
     }
 
@@ -3845,9 +3840,13 @@ impl CoreManager {
     /// Probe exit IP of a specific outbound node via `tachyon-core` `GET /proxies/:name/exit`.
     pub async fn probe_node_exit_ip(&self, tag: &str) -> Value {
         let encoded = crate::store::url_encode_component(tag);
-        self.clash_request("GET", &format!("/proxies/{encoded}/exit"), None)
-            .await
-            .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
+        self.clash_request(
+            "GET",
+            &format!("/proxies/{encoded}/exit?timeout=6000"),
+            None,
+        )
+        .await
+        .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
     }
 
     /// Parse raw subscription content (base64 or newline-separated proxy URIs) into `ParsedProxyNode`s.

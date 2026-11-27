@@ -220,4 +220,122 @@ describe('runInboundsCheck', () => {
     const lastCall = calls[calls.length - 1]?.[0];
     expect(lastCall.items[0].value).toBe('203.0.113.10, 2001:db8::10');
   });
+
+  it('marks firewall WAN port as success with DNAT mapping when auto-open is disabled', async () => {
+    mocks.checkInbounds.mockResolvedValue({
+      success: true,
+      data: {
+        enabled_count: 1,
+        config_path: '/etc/tachyon-core/config.json',
+        wan_ip: '203.0.113.10',
+        wan_public: 1,
+        items: [
+          {
+            section: 'xhttp_srv',
+            label: 'XHTTP',
+            protocol: 'vless',
+            routing_mode: 'rules',
+            tag: 'srv-xhttp',
+            listen: '::',
+            listen_port: 10443,
+            public_host: 'vpn.example.com',
+            public_host_ips: '203.0.113.10',
+            expected_type: 'vless',
+            required_proto: 'tcp',
+            runtime_exists: 1,
+            runtime_type: 'vless',
+            runtime_listen: '::',
+            runtime_port: 10443,
+            runtime_ok: 1,
+            listening: 1,
+            open_firewall_port: 0,
+            firewall_required: 1,
+            firewall_open: 1,
+            firewall_dnat: 'WAN TCP/443 → TCP/10443',
+            firewall_skip_reason: '',
+            port_conflict: 0,
+            port_conflict_owners: '',
+            routes_configured: 1,
+            public_host_resolved: 1,
+            public_host_public: 1,
+            public_host_matches_wan: 1,
+          },
+        ],
+      },
+    });
+
+    await runInboundsCheck();
+
+    const calls = mocks.updateCheckStore.mock.calls;
+    const lastCall = calls[calls.length - 1]?.[0];
+    expect(lastCall.state).toBe('success');
+    const fwItem = lastCall.items.find((i: { key?: string }) =>
+      String(i.key || '').includes('Firewall WAN port'),
+    );
+    expect(fwItem).toEqual(
+      expect.objectContaining({
+        state: 'success',
+        value: 'WAN TCP/443 → TCP/10443',
+      }),
+    );
+  });
+
+  it('shows neutral info status when auto-open is disabled and no DNAT rule exists', async () => {
+    mocks.checkInbounds.mockResolvedValue({
+      success: true,
+      data: {
+        enabled_count: 1,
+        config_path: '/etc/tachyon-core/config.json',
+        wan_ip: '203.0.113.10',
+        wan_public: 1,
+        items: [
+          {
+            section: 'xhttp_srv',
+            label: 'XHTTP',
+            protocol: 'vless',
+            routing_mode: 'rules',
+            tag: 'srv-xhttp',
+            listen: '::',
+            listen_port: 10443,
+            public_host: 'vpn.example.com',
+            public_host_ips: '203.0.113.10',
+            expected_type: 'vless',
+            required_proto: 'tcp',
+            runtime_exists: 1,
+            runtime_type: 'vless',
+            runtime_listen: '::',
+            runtime_port: 10443,
+            runtime_ok: 1,
+            listening: 1,
+            open_firewall_port: 0,
+            firewall_required: 0,
+            firewall_open: -1,
+            firewall_dnat: '',
+            firewall_skip_reason: 'auto_open_disabled',
+            port_conflict: 0,
+            port_conflict_owners: '',
+            routes_configured: 1,
+            public_host_resolved: 1,
+            public_host_public: 1,
+            public_host_matches_wan: 1,
+          },
+        ],
+      },
+    });
+
+    await runInboundsCheck();
+
+    const calls = mocks.updateCheckStore.mock.calls;
+    const lastCall = calls[calls.length - 1]?.[0];
+    expect(lastCall.state).toBe('success');
+    const fwItem = lastCall.items.find((i: { key?: string }) =>
+      String(i.key || '').includes('Firewall WAN port'),
+    );
+    expect(fwItem).toEqual(
+      expect.objectContaining({
+        state: 'info',
+        value: 'Skipped: auto-open in firewall is disabled',
+      }),
+    );
+  });
 });

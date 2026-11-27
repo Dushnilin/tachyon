@@ -81,6 +81,18 @@ describe('Viewport and Mobile Responsiveness Regressions', async () => {
     expect(GlobalStyles).toMatch(
       /\.cbi-dropdown\[open\]\s*>\s*ul[^}]*overflow-y:\s*auto\s*!important/,
     );
+    expect(GlobalStyles).toMatch(
+      /\.cbi-dropdown\[multiple\]:not\(\[open\]\)\s*>\s*ul\.dropdown[^}]*display:\s*none\s*!important/,
+    );
+    expect(GlobalStyles).toMatch(
+      /\.cbi-dropdown\[open\]\s*>\s*ul[^}]*left:\s*0\s*!important/,
+    );
+    expect(GlobalStyles).toMatch(
+      /\.cbi-dropdown\[open\]\s*>\s*ul[^}]*top:\s*100%\s*!important/,
+    );
+    expect(GlobalStyles).toMatch(
+      /\.cbi-dropdown\[open\]\s*>\s*ul\.preview\s*>\s*li[^}]*white-space:\s*nowrap\s*!important/,
+    );
   });
 
   it('keeps mobile modals in a single scroll container so dropdowns do not reset scroll position', () => {

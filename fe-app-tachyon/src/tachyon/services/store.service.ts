@@ -124,7 +124,7 @@ export class StoreService<T extends Record<string, any>> {
 }
 
 export interface IDiagnosticsChecksItem {
-  state: 'error' | 'warning' | 'success';
+  state: 'error' | 'warning' | 'success' | 'info';
   key: string;
   value: string;
 }

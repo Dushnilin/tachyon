@@ -222,4 +222,38 @@ describe('runFakeIPCheck', () => {
       }),
     );
   });
+
+  it('marks check as success when selective_tproxy is enabled and public IPs match', async () => {
+    mocks.checkFakeIP.mockResolvedValue({
+      success: true,
+      data: { fakeip: true, selective_tproxy: true, IP: '198.18.0.5' },
+    });
+    mocks.getFakeIpCheck.mockResolvedValue({
+      success: true,
+      data: { fakeip: true, selective_tproxy: true, IP: '1.2.3.4' },
+    });
+    mocks.getIpCheck.mockResolvedValue({
+      success: true,
+      data: { fakeip: false, selective_tproxy: true, IP: '1.2.3.4' },
+    });
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [{ sectionName: 'Main', action: 'connection' }],
+    });
+
+    await runFakeIPCheck();
+
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        description: 'Checks passed',
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            state: 'success',
+            value: 'Selective TProxy: test domain uses direct path',
+          }),
+        ]),
+      }),
+    );
+  });
 });

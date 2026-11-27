@@ -918,8 +918,11 @@ export namespace Tachyon {
     runtime_port: number;
     runtime_ok: 0 | 1;
     listening: -1 | 0 | 1;
+    open_firewall_port?: 0 | 1;
     firewall_required: 0 | 1;
     firewall_open: -1 | 0 | 1;
+    firewall_dnat?: string;
+    firewall_skip_reason?: string;
     port_conflict: 0 | 1;
     port_conflict_owners: string;
     routes_configured: 0 | 1;
@@ -946,6 +949,7 @@ export namespace Tachyon {
   export interface FakeIPCheckResult {
     fakeip: boolean;
     fakeip_enabled?: boolean;
+    selective_tproxy?: boolean;
     fakeip_v4?: boolean;
     fakeip_v6?: boolean;
     aaaa_suppressed?: boolean;

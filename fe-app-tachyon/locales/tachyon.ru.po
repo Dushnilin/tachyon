@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-26 21:11+0300\n"
-"PO-Revision-Date: 2026-11-26 21:11+0300\n"
+"POT-Creation-Date: 2026-11-27 08:05+0300\n"
+"PO-Revision-Date: 2026-11-27 08:05+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -9839,6 +9839,9 @@ msgstr "Параметры выбора и фильтрации"
 msgid "Selection Algorithm"
 msgstr "Алгоритм выбора"
 
+msgid "Selective TProxy: test domain uses direct path"
+msgstr "Селективный TProxy: тестовый домен идёт напрямую"
+
 msgid "Selector"
 msgstr "Селектор"
 
@@ -10255,6 +10258,9 @@ msgstr "Пропущены комментарии/невалидные:"
 
 msgid "Skipped loopback:"
 msgstr "Пропущены loopback:"
+
+msgid "Skipped: auto-open in firewall is disabled"
+msgstr "Пропущено: автооткрытие в firewall отключено"
 
 msgid "Smart Detect mode"
 msgstr "Режим Smart Detect"

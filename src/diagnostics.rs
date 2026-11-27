@@ -7602,9 +7602,11 @@ pub(crate) fn local_dns_probe_addr(
     local_dns_probe_addr_for(crate::platform::detect_platform(), settings)
 }
 
+pub(crate) const FAKEIP_PROBE_DOMAIN: &str = "probe.example.com";
+
 async fn send_dns_probe(addr: std::net::SocketAddr, qtype_low: u8) -> Option<Vec<u8>> {
     let sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.ok()?;
-    let query = build_dns_query_packet("probe.example.com", u16::from(qtype_low))?;
+    let query = build_dns_query_packet(FAKEIP_PROBE_DOMAIN, u16::from(qtype_low))?;
     tokio::time::timeout(Duration::from_millis(800), sock.send_to(&query, addr))
         .await
         .ok()?
@@ -8036,10 +8038,12 @@ pub(crate) fn format_fakeip_probe_payload(input: FakeIpProbePayloadInput<'_>) ->
         d.settings.fakeip_inet6_range.trim()
     };
     let ipv4_only = if v4_ip.contains(':') { "" } else { v4_ip };
+    let selective_tproxy = crate::net_stack::selective_tproxy_active(d);
     if via_proxy {
         json!({
             "fakeip": d.settings.fakeip_enabled && v4_ok,
             "fakeip_enabled": d.settings.fakeip_enabled,
+            "selective_tproxy": selective_tproxy,
             "fakeip_inet4_range": fakeip4,
             "fakeip_inet6_range": fakeip6,
             "fakeip_v4": v4_ok,
@@ -8054,6 +8058,7 @@ pub(crate) fn format_fakeip_probe_payload(input: FakeIpProbePayloadInput<'_>) ->
         json!({
             "fakeip": false,
             "fakeip_enabled": d.settings.fakeip_enabled,
+            "selective_tproxy": selective_tproxy,
             "fakeip_inet4_range": fakeip4,
             "fakeip_inet6_range": fakeip6,
             "ipv6_effective_state": ipv6_state.as_str(),

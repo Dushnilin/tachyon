@@ -3024,6 +3024,137 @@ pub fn parse_ipwhois_json(raw: &str) -> Option<(String, String)> {
     Some((ip, country_code))
 }
 
+fn parse_clash_exit_probe_json(val: &Value) -> Option<(String, String)> {
+    for family_key in ["ipv4", "ipv6"] {
+        let Some(obj) = val.get(family_key).and_then(Value::as_object) else {
+            continue;
+        };
+        let ip = obj
+            .get("address")
+            .or_else(|| obj.get("ip"))
+            .and_then(Value::as_str)
+            .and_then(normalize_valid_ip);
+        let cc = obj
+            .get("country")
+            .or_else(|| obj.get("country_code"))
+            .or_else(|| obj.get("loc"))
+            .and_then(Value::as_str)
+            .and_then(normalize_iso_country_code);
+        if let (Some(ip), Some(cc)) = (ip, cc) {
+            return Some((ip, cc));
+        }
+    }
+    None
+}
+
+fn format_mixed_proxy_url_from_inbound(inb: &Value) -> Option<String> {
+    let ty = inb.get("type").and_then(Value::as_str).unwrap_or("");
+    if !matches!(ty, "mixed" | "http" | "socks") {
+        return None;
+    }
+    let port = inb
+        .get("listen_port")
+        .and_then(Value::as_u64)
+        .and_then(|p| u16::try_from(p).ok())
+        .filter(|&p| p > 0)?;
+    let scheme = if ty == "socks" { "socks5h" } else { "http" };
+    if let Some(user) = inb
+        .get("users")
+        .and_then(Value::as_array)
+        .and_then(|arr| arr.first())
+    {
+        let u = user.get("username").and_then(Value::as_str).unwrap_or("");
+        let p = user.get("password").and_then(Value::as_str).unwrap_or("");
+        if !u.is_empty() {
+            let eu = url_encode_component(u);
+            let ep = url_encode_component(p);
+            return Some(format!("{scheme}://{eu}:{ep}@127.0.0.1:{port}"));
+        }
+    }
+    Some(format!("{scheme}://127.0.0.1:{port}"))
+}
+
+fn resolve_section_mixed_proxy_url_from_raw(
+    d: &crate::store::RouterStoreData,
+    raw_cfg: Option<&str>,
+    section_id: &str,
+) -> Option<String> {
+    if section_id.trim().is_empty() {
+        return None;
+    }
+    let expected_tag = format!("mixed-sec-{}", section_id.trim());
+    if let Some(raw) = raw_cfg
+        && let Ok(val) = serde_json::from_str::<Value>(raw)
+        && let Some(inbounds) = val.get("inbounds").and_then(Value::as_array)
+        && let Some(inb) = inbounds
+            .iter()
+            .find(|inb| inb.get("tag").and_then(Value::as_str) == Some(expected_tag.as_str()))
+        && let Some(url) = format_mixed_proxy_url_from_inbound(inb)
+    {
+        return Some(url);
+    }
+    d.sections
+        .iter()
+        .find(|s| {
+            s.enabled && s.id == section_id && s.mixed_proxy_enabled && s.mixed_proxy_port > 0
+        })
+        .map(|s| {
+            if s.mixed_proxy_auth_enabled && !s.mixed_proxy_username.is_empty() {
+                let eu = url_encode_component(&s.mixed_proxy_username);
+                let ep = url_encode_component(&s.mixed_proxy_password);
+                format!("http://{eu}:{ep}@127.0.0.1:{}", s.mixed_proxy_port)
+            } else {
+                format!("http://127.0.0.1:{}", s.mixed_proxy_port)
+            }
+        })
+}
+
+fn resolve_section_mixed_proxy_url(
+    d: &crate::store::RouterStoreData,
+    section_id: &str,
+) -> Option<String> {
+    let cfg_path = if d.settings.core_config_path.trim().is_empty() {
+        crate::platform::paths()
+            .core_config_dir
+            .join("config.json")
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        d.settings.core_config_path.clone()
+    };
+    let raw = std::fs::read_to_string(&cfg_path).ok();
+    resolve_section_mixed_proxy_url_from_raw(d, raw.as_deref(), section_id)
+}
+
+fn resolve_primary_exit_section_id(
+    d: &crate::store::RouterStoreData,
+    requested_node: Option<&str>,
+) -> String {
+    if let Some(req) = requested_node.map(str::trim).filter(|s| !s.is_empty()) {
+        let base = req
+            .strip_prefix("sel-")
+            .or_else(|| req.strip_suffix("-out"))
+            .unwrap_or(req);
+        if let Some(sec) = d.sections.iter().find(|s| {
+            s.enabled && (s.id == base || s.id == req || req.starts_with(&format!("bal-{}-", s.id)))
+        }) {
+            return sec.id.clone();
+        }
+        if let Some(sec) = d
+            .sections
+            .iter()
+            .find(|s| s.enabled && s.active_selected_tag.trim() == req)
+        {
+            return sec.id.clone();
+        }
+    }
+    d.sections
+        .iter()
+        .find(|s| s.enabled && !matches!(s.action.as_str(), "bypass" | "block" | "direct"))
+        .map(|s| s.id.clone())
+        .unwrap_or_else(|| "Main".to_string())
+}
+
 fn resolve_local_proxy_url_from_core_config(d: &crate::store::RouterStoreData) -> Option<String> {
     // 1. Inspect core config JSON for local mixed/http/socks inbounds
     let cfg_path = if d.settings.core_config_path.trim().is_empty() {
@@ -3154,6 +3285,7 @@ pub async fn get_exit_country(
 ) -> Value {
     let d = state.data.read().await.clone();
     let active_node = resolve_active_exit_node_tag(&d, core, requested_node).await;
+    let target_section_id = resolve_primary_exit_section_id(&d, requested_node);
     let ttl = Duration::from_secs(EXIT_COUNTRY_CACHE_TTL_SECS);
 
     {
@@ -3174,44 +3306,85 @@ pub async fn get_exit_country(
         }
     }
 
-    let proxy_url = resolve_local_proxy_url_from_core_config(&d);
+    let is_direct_exit = active_node.is_empty() || active_node.eq_ignore_ascii_case("direct");
     let mut last_err = String::new();
     let mut resolved: Option<(String, String, &'static str)> = None;
 
-    match run_exit_country_curl_probe("https://cloudflare.com/cdn-cgi/trace", proxy_url.as_deref())
-        .await
-    {
-        Ok(raw) => {
-            if let Some((ip, cc)) = parse_cloudflare_trace(&raw) {
-                resolved = Some((ip, cc, "cloudflare"));
-            } else {
-                last_err = "cloudflare trace response missing ip/loc".to_string();
-            }
+    if !is_direct_exit {
+        let mut exit_candidates = vec![active_node.clone()];
+        if let Some(req) = requested_node.map(str::trim).filter(|s| !s.is_empty())
+            && !exit_candidates.iter().any(|c| c == req)
+        {
+            exit_candidates.push(req.to_string());
         }
-        Err(e) => {
-            last_err = e;
+        for candidate in &exit_candidates {
+            let probe = core.probe_node_exit_ip(candidate).await;
+            if let Some((ip, cc)) = parse_clash_exit_probe_json(&probe) {
+                resolved = Some((ip, cc, "clash-exit"));
+                break;
+            }
+            if let Some(err) = probe.get("error").and_then(Value::as_str)
+                && !err.trim().is_empty()
+            {
+                last_err = err.trim().to_string();
+            } else if let Some(msg) = probe
+                .get("ipv4")
+                .and_then(|v| v.get("error"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+            {
+                last_err = msg.trim().to_string();
+            }
         }
     }
 
-    if resolved.is_none() {
-        match run_exit_country_curl_probe("https://ipwho.is/", proxy_url.as_deref()).await {
+    let proxy_url = if is_direct_exit {
+        resolve_local_proxy_url_from_core_config(&d)
+    } else {
+        resolve_section_mixed_proxy_url(&d, &target_section_id)
+    };
+
+    if resolved.is_none() && (is_direct_exit || proxy_url.is_some()) {
+        match run_exit_country_curl_probe(
+            "https://cloudflare.com/cdn-cgi/trace",
+            proxy_url.as_deref(),
+        )
+        .await
+        {
             Ok(raw) => {
-                if let Some((ip, cc)) = parse_ipwhois_json(&raw) {
-                    resolved = Some((ip, cc, "ipwhois"));
-                } else if last_err.is_empty() {
-                    last_err = "ipwhois response missing ip/country_code".to_string();
+                if let Some((ip, cc)) = parse_cloudflare_trace(&raw) {
+                    resolved = Some((ip, cc, "cloudflare"));
                 } else {
-                    last_err = format!("{last_err}; ipwhois response missing ip/country_code");
+                    last_err = "cloudflare trace response missing ip/loc".to_string();
                 }
             }
             Err(e) => {
-                if last_err.is_empty() {
-                    last_err = e;
-                } else {
-                    last_err = format!("{last_err}; {e}");
+                last_err = e;
+            }
+        }
+
+        if resolved.is_none() {
+            match run_exit_country_curl_probe("https://ipwho.is/", proxy_url.as_deref()).await {
+                Ok(raw) => {
+                    if let Some((ip, cc)) = parse_ipwhois_json(&raw) {
+                        resolved = Some((ip, cc, "ipwhois"));
+                    } else if last_err.is_empty() {
+                        last_err = "ipwhois response missing ip/country_code".to_string();
+                    } else {
+                        last_err = format!("{last_err}; ipwhois response missing ip/country_code");
+                    }
+                }
+                Err(e) => {
+                    if last_err.is_empty() {
+                        last_err = e;
+                    } else {
+                        last_err = format!("{last_err}; {e}");
+                    }
                 }
             }
         }
+    } else if resolved.is_none() && last_err.is_empty() {
+        last_err = format!("Failed to probe exit route for '{active_node}'");
     }
 
     let now_unix = crate::store::unix_now_u64();
@@ -7964,6 +8137,257 @@ fn uci_firewall_allows_port_proto(
 }
 
 #[cfg(any(target_os = "linux", test))]
+fn clean_dnat_src_port_label(raw: &str, fallback_port: u16) -> String {
+    let trimmed = raw
+        .trim()
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .trim();
+    if trimmed.is_empty() {
+        return fallback_port.to_string();
+    }
+    let first = trimmed
+        .split([',', ' ', '\t'])
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .unwrap_or("");
+    if first.is_empty() {
+        fallback_port.to_string()
+    } else {
+        first.to_string()
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn detect_nft_dnat_src_port(
+    fw4_dstnat: &str,
+    port: u16,
+    proto_lc: &str,
+    local_ips: &[String],
+) -> Option<String> {
+    for line in fw4_dstnat.lines() {
+        let clean = nft_strip_comment(line);
+        if clean.is_empty() {
+            continue;
+        }
+        let clean_lc = clean.to_ascii_lowercase();
+        if clean_lc.contains(" sport ") || !nft_line_matches_proto(&clean_lc, proto_lc) {
+            continue;
+        }
+        let dport_expr = nft_extract_dport_expr(&clean_lc);
+        if let Some(pos) = clean_lc.find("redirect to :") {
+            let tport = nft_extract_port_expr(&clean_lc[pos + 13..]);
+            if nft_port_expr_contains(tport, port) {
+                return Some(clean_dnat_src_port_label(dport_expr, port));
+            }
+            continue;
+        }
+        if clean_lc.contains(" redirect") || clean_lc.starts_with("redirect") {
+            if !dport_expr.is_empty() && nft_port_expr_contains(dport_expr, port) {
+                return Some(clean_dnat_src_port_label(dport_expr, port));
+            }
+            continue;
+        }
+        let after_to = ["dnat ip to ", "dnat ip6 to ", "dnat to "]
+            .iter()
+            .find_map(|pref| clean_lc.find(pref).map(|p| &clean_lc[p + pref.len()..]));
+        let Some(after) = after_to else {
+            continue;
+        };
+        let Some(target_tok) = after.split_whitespace().next() else {
+            continue;
+        };
+        let (dest_ip, target_port) = if let Some(rest) = target_tok.strip_prefix('[') {
+            if let Some((ip_part, tail)) = rest.split_once(']') {
+                (ip_part, tail.strip_prefix(':').unwrap_or(""))
+            } else {
+                ("", "")
+            }
+        } else if let Some((ip_part, p_part)) = target_tok.rsplit_once(':')
+            && ip_part.parse::<std::net::Ipv4Addr>().is_ok()
+        {
+            (ip_part, p_part)
+        } else {
+            (target_tok, "")
+        };
+        if dest_ip.is_empty() || !nft_ip_is_local(dest_ip, local_ips) {
+            continue;
+        }
+        let effective_port = if !target_port.is_empty() {
+            target_port
+        } else {
+            dport_expr
+        };
+        if !effective_port.is_empty() && nft_port_expr_contains(effective_port, port) {
+            return Some(clean_dnat_src_port_label(dport_expr, port));
+        }
+    }
+    None
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn detect_uci_dnat_src_port(
+    uci_show: &str,
+    port: u16,
+    proto_lc: &str,
+    local_ips: &[String],
+) -> Option<String> {
+    #[derive(Default)]
+    struct FwSec {
+        sec_type: String,
+        opts: std::collections::HashMap<String, String>,
+    }
+    let mut order: Vec<String> = Vec::new();
+    let mut map: std::collections::HashMap<String, FwSec> = std::collections::HashMap::new();
+    for line in uci_show.lines() {
+        let trimmed = line.trim();
+        let Some(after) = trimmed.strip_prefix("firewall.") else {
+            continue;
+        };
+        let Some((key, raw_val)) = after.split_once('=') else {
+            continue;
+        };
+        let val = unquote_uci_show_val(raw_val);
+        if let Some((sec, opt)) = key.split_once('.') {
+            let entry = map.entry(sec.to_string()).or_default();
+            entry
+                .opts
+                .entry(opt.to_string())
+                .and_modify(|prev| {
+                    prev.push(' ');
+                    prev.push_str(&val);
+                })
+                .or_insert(val);
+        } else if val == "redirect" {
+            if !map.contains_key(key) {
+                order.push(key.to_string());
+            }
+            map.entry(key.to_string()).or_default().sec_type = val;
+        }
+    }
+
+    for sec_key in order {
+        let Some(sec) = map.get(&sec_key) else {
+            continue;
+        };
+        if sec.sec_type != "redirect" {
+            continue;
+        }
+        let opt = |k: &str| sec.opts.get(k).map(String::as_str).unwrap_or("").trim();
+        let enabled = opt("enabled");
+        if !enabled.is_empty() && enabled != "1" {
+            continue;
+        }
+        let src = opt("src");
+        if !src.is_empty() && src != "wan" && src != "*" {
+            continue;
+        }
+        if !uci_proto_spec_contains(opt("proto"), proto_lc) {
+            continue;
+        }
+        let target = opt("target");
+        if !target.is_empty() && !target.eq_ignore_ascii_case("DNAT") {
+            continue;
+        }
+        let src_port = opt("src_port");
+        if !src_port.is_empty() && src_port != "*" {
+            continue;
+        }
+        if opt("family").eq_ignore_ascii_case("ipv6") {
+            continue;
+        }
+        let dest_ip = opt("dest_ip");
+        if !dest_ip.is_empty() && !nft_ip_is_local(dest_ip, local_ips) {
+            continue;
+        }
+        let port_spec = if !opt("dest_port").is_empty() {
+            opt("dest_port")
+        } else {
+            opt("src_dport")
+        };
+        if !port_spec.is_empty() && nft_port_expr_contains(port_spec, port) {
+            let src_dport = opt("src_dport");
+            return Some(clean_dnat_src_port_label(src_dport, port));
+        }
+    }
+    None
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn detect_firewall_dnat_summary(
+    fw4_dstnat: &str,
+    uci_fw: &str,
+    port: u16,
+    required_proto: &str,
+    local_ips: &[String],
+) -> Option<String> {
+    if port == 0 {
+        return None;
+    }
+    let protos: Vec<&str> = required_proto.split_whitespace().collect();
+    let check_protos = if protos.is_empty() {
+        vec!["tcp"]
+    } else {
+        protos
+    };
+    let mut parts = Vec::new();
+    for proto in check_protos {
+        let proto_lc = proto.to_ascii_lowercase();
+        let proto_uc = proto.to_ascii_uppercase();
+        if let Some(ext_port) = detect_nft_dnat_src_port(fw4_dstnat, port, &proto_lc, local_ips)
+            .or_else(|| detect_uci_dnat_src_port(uci_fw, port, &proto_lc, local_ips))
+        {
+            parts.push(format!("WAN {proto_uc}/{ext_port} → {proto_uc}/{port}"));
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(", "))
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+#[allow(clippy::too_many_arguments)]
+fn assess_inbound_firewall(
+    is_ts: bool,
+    protocol: &str,
+    listen: &str,
+    listen_port: u16,
+    open_firewall_port: bool,
+    required_proto: &str,
+    fw4_in: &str,
+    fw4_dstnat: &str,
+    uci_fw: &str,
+    local_ips: &[String],
+) -> (i32, i32, String, &'static str) {
+    let listen_t = listen.trim();
+    let is_loopback = matches!(listen_t, "127.0.0.1" | "::1" | "[::1]" | "localhost");
+    if is_ts || protocol == "json_inbound" || listen_port == 0 || is_loopback {
+        let reason = if is_loopback { "local_listen" } else { "" };
+        return (0, -1, String::new(), reason);
+    }
+    let fw_open = check_fw4_port_open_with_redirects(
+        fw4_in,
+        fw4_dstnat,
+        uci_fw,
+        listen_port,
+        required_proto,
+        local_ips,
+    );
+    let dnat_summary =
+        detect_firewall_dnat_summary(fw4_dstnat, uci_fw, listen_port, required_proto, local_ips)
+            .unwrap_or_default();
+    if fw_open == 1 {
+        return (1, 1, dnat_summary, "");
+    }
+    if !open_firewall_port {
+        return (0, -1, String::new(), "auto_open_disabled");
+    }
+    (1, fw_open, dnat_summary, "")
+}
+
+#[cfg(any(target_os = "linux", test))]
 fn check_fw4_port_open_with_redirects(
     fw4_in: &str,
     fw4_dstnat: &str,
@@ -8483,52 +8907,73 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
             if runtime_ok == 1 || raw < 0 { raw } else { 0 }
         };
 
-        let firewall_required = if is_ts
+        let firewall_skip_precheck = is_ts
             || srv.protocol == "json_inbound"
             || listen_port == 0
-            || !srv.open_firewall_port
-        {
-            0
-        } else {
-            1
-        };
+            || matches!(listen.trim(), "127.0.0.1" | "::1" | "[::1]" | "localhost");
         #[cfg(target_os = "linux")]
-        let firewall_open = if firewall_required == 1 {
-            let local_ips = collect_local_router_ips(&wan_ip, &wan_ipv6, &listen, &ip_addr_out);
-            let quick = check_fw4_port_open_with_redirects(
-                &fw4_in,
-                &fw4_dstnat,
-                "",
-                listen_port,
-                &required_proto,
-                &local_ips,
-            );
-            if quick == 1 {
-                1
-            } else {
-                let uci_fw = uci_fw_cache.get_or_insert_with(|| {
-                    std::process::Command::new("uci")
-                        .args(["show", "firewall"])
-                        .output()
-                        .ok()
-                        .filter(|o| o.status.success())
-                        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-                        .unwrap_or_default()
-                });
-                check_fw4_port_open_with_redirects(
+        let (firewall_required, firewall_open, firewall_dnat, firewall_skip_reason) =
+            if !firewall_skip_precheck {
+                let local_ips = collect_local_router_ips(&wan_ip, &wan_ipv6, &listen, &ip_addr_out);
+                let quick = check_fw4_port_open_with_redirects(
                     &fw4_in,
                     &fw4_dstnat,
-                    uci_fw,
+                    "",
                     listen_port,
                     &required_proto,
                     &local_ips,
+                );
+                let uci_fw = if quick == 1 {
+                    ""
+                } else {
+                    uci_fw_cache
+                        .get_or_insert_with(|| {
+                            std::process::Command::new("uci")
+                                .args(["show", "firewall"])
+                                .output()
+                                .ok()
+                                .filter(|o| o.status.success())
+                                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                                .unwrap_or_default()
+                        })
+                        .as_str()
+                };
+                assess_inbound_firewall(
+                    is_ts,
+                    &srv.protocol,
+                    &listen,
+                    listen_port,
+                    srv.open_firewall_port,
+                    &required_proto,
+                    &fw4_in,
+                    &fw4_dstnat,
+                    uci_fw,
+                    &local_ips,
                 )
-            }
-        } else {
-            -1
-        };
+            } else {
+                let reason = if matches!(listen.trim(), "127.0.0.1" | "::1" | "[::1]" | "localhost")
+                {
+                    "local_listen"
+                } else {
+                    ""
+                };
+                (0, -1, String::new(), reason)
+            };
         #[cfg(not(target_os = "linux"))]
-        let firewall_open = -1;
+        let (firewall_required, firewall_open, firewall_dnat, firewall_skip_reason) =
+            if firewall_skip_precheck {
+                let reason = if matches!(listen.trim(), "127.0.0.1" | "::1" | "[::1]" | "localhost")
+                {
+                    "local_listen"
+                } else {
+                    ""
+                };
+                (0, -1, String::new(), reason)
+            } else if !srv.open_firewall_port {
+                (0, -1, String::new(), "auto_open_disabled")
+            } else {
+                (1, -1, String::new(), "")
+            };
 
         let routes_configured = if is_native_ts {
             1
@@ -8610,8 +9055,11 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
             "runtime_port": runtime_port,
             "runtime_ok": runtime_ok,
             "listening": listening,
+            "open_firewall_port": i32::from(srv.open_firewall_port),
             "firewall_required": firewall_required,
             "firewall_open": firewall_open,
+            "firewall_dnat": firewall_dnat,
+            "firewall_skip_reason": firewall_skip_reason,
             "port_conflict": 0,
             "port_conflict_owners": "",
             "routes_configured": routes_configured,
@@ -16085,6 +16533,53 @@ mod tests {
             check_fw4_port_open_with_redirects("", "", uci_redirect, 8445, "tcp", &local_ips),
             0
         );
+
+        assert_eq!(
+            detect_firewall_dnat_summary(
+                "\t\ttcp dport 443 dnat ip to 192.168.1.1:10443",
+                "",
+                10443,
+                "tcp",
+                &local_ips
+            ),
+            Some("WAN TCP/443 → TCP/10443".to_string())
+        );
+        assert_eq!(
+            assess_inbound_firewall(
+                false,
+                "vless",
+                "::",
+                10443,
+                false,
+                "tcp",
+                "",
+                "\t\ttcp dport 443 dnat ip to 192.168.1.1:10443",
+                "",
+                &local_ips
+            ),
+            (1, 1, "WAN TCP/443 → TCP/10443".to_string(), "")
+        );
+        assert_eq!(
+            assess_inbound_firewall(
+                false, "vless", "::", 10443, false, "tcp", "", "", "", &local_ips
+            ),
+            (0, -1, String::new(), "auto_open_disabled")
+        );
+        assert_eq!(
+            assess_inbound_firewall(
+                false,
+                "vless",
+                "127.0.0.1",
+                10443,
+                false,
+                "tcp",
+                "",
+                "",
+                "",
+                &local_ips
+            ),
+            (0, -1, String::new(), "local_listen")
+        );
     }
 
     #[test]
@@ -18188,5 +18683,78 @@ tls=TLSv1.3
         let _ = std::fs::remove_dir_all(&dir);
         })
         .await;
+    }
+
+    #[test]
+    fn exit_country_parses_clash_exit_json_and_prefers_section_mixed() {
+        let clash_payload = json!({
+            "outbound": "UK-Node-1",
+            "ipv4": { "address": "185.199.108.153", "country": "gb" },
+            "ipv6": { "error": "Timeout" }
+        });
+        assert_eq!(
+            parse_clash_exit_probe_json(&clash_payload),
+            Some(("185.199.108.153".to_string(), "GB".to_string()))
+        );
+
+        let fallback_v6 = json!({
+            "ipv4": { "error": "network unreachable" },
+            "ipv6": { "address": "2001:db8::1", "country": "DE" }
+        });
+        assert_eq!(
+            parse_clash_exit_probe_json(&fallback_v6),
+            Some(("2001:db8::1".to_string(), "DE".to_string()))
+        );
+
+        let store = crate::store::RouterStoreData {
+            sections: vec![crate::store::RoutingSection {
+                id: "fallback".to_string(),
+                enabled: true,
+                action: "proxy".to_string(),
+                connection_type: "vless".to_string(),
+                active_selected_tag: "UK-Node-1".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_primary_exit_section_id(&store, Some("sel-fallback")),
+            "fallback"
+        );
+        assert_eq!(
+            resolve_primary_exit_section_id(&store, Some("UK-Node-1")),
+            "fallback"
+        );
+
+        let cfg_with_service_only = json!({
+            "inbounds": [
+                { "type": "mixed", "tag": "service-mixed-in", "listen": "127.0.0.1", "listen_port": 4534 }
+            ]
+        })
+        .to_string();
+        assert_eq!(
+            resolve_section_mixed_proxy_url_from_raw(
+                &store,
+                Some(&cfg_with_service_only),
+                "fallback"
+            ),
+            None
+        );
+
+        let cfg_with_section_mixed = json!({
+            "inbounds": [
+                { "type": "mixed", "tag": "service-mixed-in", "listen": "127.0.0.1", "listen_port": 4534 },
+                { "type": "mixed", "tag": "mixed-sec-fallback", "listen": "0.0.0.0", "listen_port": 1088 }
+            ]
+        })
+        .to_string();
+        assert_eq!(
+            resolve_section_mixed_proxy_url_from_raw(
+                &store,
+                Some(&cfg_with_section_mixed),
+                "fallback"
+            ),
+            Some("http://127.0.0.1:1088".to_string())
+        );
     }
 }

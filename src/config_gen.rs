@@ -16236,6 +16236,16 @@ fn compile_core_config_with_rt_dir(
                     &mut dns_rules_vec,
                 );
             }
+            dns_rules_vec.push(json!({
+                "domain": [crate::diagnostics::FAKEIP_PROBE_DOMAIN],
+                "query_type": if ipv6_active {
+                    json!(["A", "AAAA"])
+                } else {
+                    json!(["A"])
+                },
+                "server": "dns-fakeip",
+                "rewrite_ttl": store.settings.dns_rewrite_ttl
+            }));
         } else {
             dns_rules_vec.push(json!({
                 "query_type": if ipv6_active {
@@ -32013,6 +32023,12 @@ proxies:
 
         store.settings.proxy_mode = "tproxy".to_string();
         let cfg = compile_core_config_with_wan6(&store, false).expect("compile tproxy");
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        assert!(dns_rules.iter().any(|r| {
+            r["domain"] == json!([crate::diagnostics::FAKEIP_PROBE_DOMAIN])
+                && r["server"] == "dns-fakeip"
+        }));
 
         let route_rules = cfg["route"]["rules"].as_array().unwrap();
         assert!(!route_rules.iter().any(|r| {

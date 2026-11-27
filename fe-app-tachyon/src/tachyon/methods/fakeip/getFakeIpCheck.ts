@@ -6,6 +6,7 @@ import { createBaseApiRequest, IBaseApiResponse } from '../../api';
 
 interface IGetFakeIpCheckResponse {
   fakeip: boolean;
+  selective_tproxy?: boolean;
   IP: string;
 }
 
