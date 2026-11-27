@@ -84,6 +84,13 @@ jobs:
           cargo check --locked --target arm-unknown-linux-musleabi
           cargo check --locked --target riscv64gc-unknown-linux-musl
 
+      - name: Build and package real ARMv6/ARMv7 release binaries
+        env:
+          TACHYON_TARGETS: "armv7-unknown-linux-musleabihf:armv7 arm-unknown-linux-musleabi:armv6"
+          TACHYON_BUILD_STD: "0"
+          SKIP_FE_BUILD: "1"
+        run: ./build.sh 2.0.0-ci /tmp/tachyon-arm-packages
+
   frontend:
     name: Frontend CI & Locale Sync
     runs-on: ubuntu-latest
