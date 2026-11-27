@@ -62,6 +62,7 @@ function writeStoredKeys(storage: Storage | null, keys: string[]) {
 const SUPPRESSED_LOG_PATTERNS: RegExp[] = [
   /another component action is already running/i,
   /subscription dns resolution failed for rule.*retrying in/i,
+  /\bstack exited:.*\b(?:keepalive timeout|tunnel closed|idle timeout)\b/i,
 ];
 
 export function isErrorLogLine(line: string) {
