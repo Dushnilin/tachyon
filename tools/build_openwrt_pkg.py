@@ -673,7 +673,7 @@ RUST_TARGET_FAMILIES = {
 def _package_arch_family(arch: str) -> str | None:
     for family in ELF_TARGETS:
         if arch == family or arch.startswith(f"{family}_"):
-            return family
+            return "armv6" if family == "arm" else family
     return None
 
 
@@ -710,7 +710,7 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
     if shoff == 0 or shentsize < 40 or shoff + 40 > len(binary):
         raise ValueError("ARM ELF section table is missing or malformed")
 
-    def section(index: int) -> tuple[int, int, int, int]:
+    def section(index: int) -> tuple[int, int, int, int, int]:
         start = shoff + index * shentsize
         if start + 40 > len(binary):
             raise ValueError("Truncated ARM ELF section header")
@@ -762,7 +762,6 @@ def _read_arm_attributes(binary: bytes, byte_order: str) -> tuple[list[int], lis
                           17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
                           30, 31, 34, 36, 38, 42, 44, 46, 48, 50, 52, 64, 66,
                           68, 70, 72, 74, 76}
-    known_string_tags = {4, 5, 65, 67}
 
     def skip_string(data: bytes, pos: int, limit: int) -> int:
         end = data.find(b"\\0", pos, limit)
@@ -895,13 +894,13 @@ def validate_binary_arch(
         expected_family = package_family
 
     expected = ELF_TARGETS[expected_family]
-    if expected_family in ("armv6", "armv7"):
-        validate_arm_abi(binary, expected_family, order)
     if (elf_class, endian, machine) != expected:
         raise ValueError(
             f"ELF architecture does not match release target {arch}"
             + (f" ({target_triple})" if target_triple else "")
         )
+    if expected_family in ("armv6", "armv7"):
+        validate_arm_abi(binary, expected_family, order)
 
 def main() -> None:
     ap = argparse.ArgumentParser()
