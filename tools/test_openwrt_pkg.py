@@ -47,8 +47,12 @@ def _uleb(value):
     return bytes(out)
 
 
-def _arm_attributes(cpu_arch, vfp_args):
-    attributes = _uleb(6) + _uleb(cpu_arch) + _uleb(28) + _uleb(vfp_args)
+def _arm_attributes(cpu_arch, vfp_args, no_defaults=False):
+    attributes = _uleb(6) + _uleb(cpu_arch)
+    if vfp_args is not None:
+        attributes += _uleb(28) + _uleb(vfp_args)
+    if no_defaults:
+        attributes += _uleb(64)
     file_scope = b"\x01" + (5 + len(attributes)).to_bytes(4, "little") + attributes
     vendor_payload = b"aeabi\0" + file_scope
     vendor = (4 + len(vendor_payload)).to_bytes(4, "little") + vendor_payload
@@ -57,7 +61,7 @@ def _arm_attributes(cpu_arch, vfp_args):
 
 def elf_header(
     elf_class, endian, machine, *, arm_arch=None, vfp_args=0,
-    arm_flags=None, include_arm_attributes=True,
+    arm_flags=None, include_arm_attributes=True, no_defaults=False,
 ):
     """Build minimal ELF headers, including real ARM section/attribute tables."""
     raw = bytearray(52 if elf_class == 1 else 64)
@@ -89,7 +93,7 @@ def elf_header(
 
     if arm_arch is None:
         arm_arch = 10
-    attrs = _arm_attributes(arm_arch, vfp_args)
+    attrs = _arm_attributes(arm_arch, vfp_args, no_defaults)
     attrs_off = shstr_off + len(shstrtab)
     shoff = attrs_off + len(attrs)
     raw[32:36] = shoff.to_bytes(4, "little")
@@ -161,6 +165,13 @@ class OpenWrtPackageTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "missing .ARM.attributes"):
             validate_binary_arch(missing, "armv7", TARGET_TRIPLES["armv7"])
+
+        undefined_vfp = elf_header(
+            *TARGETS["armv6"], arm_arch=6, vfp_args=None, no_defaults=True,
+            arm_flags=0x05000200,
+        )
+        with self.assertRaisesRegex(ValueError, "undefined"):
+            validate_binary_arch(undefined_vfp, "armv6", TARGET_TRIPLES["armv6"])
 
         malformed = bytearray(elf_header(
             *TARGETS["armv7"], arm_arch=10, vfp_args=1, arm_flags=0x05000400,
