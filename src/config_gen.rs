@@ -18641,7 +18641,8 @@ struct OutboundFilterMeta {
 struct FilterCriteria<'a> {
     prefixes: &'a [String],
     outbounds_filter: &'a [String],
-    regexes: &'a [String],
+    regexes: &'a [crate::simple_regex::CompiledRegex],
+    regex_configured: bool,
     countries_upper: &'a [String],
     proxy_params_enabled: bool,
     proxy_operator_or: bool,
@@ -18944,17 +18945,15 @@ fn candidate_matches_criteria(
             .outbounds_filter
             .iter()
             .any(|flt| server_tag_matches(tag, flt, known_prefixes)))
-        || criteria.regexes.iter().any(|pat| {
-            let p = pat.trim();
-            !p.is_empty()
-                && (crate::simple_regex::regex_is_match(p, tag)
-                    || crate::simple_regex::regex_is_match(p, display_name))
-        });
+        || criteria
+            .regexes
+            .iter()
+            .any(|regex| regex.is_match(tag) || regex.is_match(display_name));
     let country_matched =
         !country_upper.is_empty() && criteria.countries_upper.iter().any(|c| c == country_upper);
     let base_configured = !criteria.prefixes.is_empty()
         || !criteria.outbounds_filter.is_empty()
-        || criteria.regexes.iter().any(|r| !r.trim().is_empty())
+        || criteria.regex_configured
         || !criteria.countries_upper.is_empty();
     let base_matches = prefix_matched || name_matched || country_matched;
 
@@ -19043,10 +19042,22 @@ fn apply_server_filter_spec(
         .filter(|c| !c.is_empty())
         .collect();
 
+    let compile_regexes = |patterns: &[String]| {
+        patterns
+            .iter()
+            .filter_map(|pattern| crate::simple_regex::CompiledRegex::new(pattern.trim()))
+            .collect::<Vec<_>>()
+    };
+    let inc_regexes = compile_regexes(&spec.include_regex);
+    let exc_regexes = compile_regexes(&spec.exclude_regex);
     let inc_criteria = FilterCriteria {
         prefixes: &spec.include_prefixes,
         outbounds_filter: &spec.include_outbounds,
-        regexes: &spec.include_regex,
+        regexes: &inc_regexes,
+        regex_configured: spec
+            .include_regex
+            .iter()
+            .any(|pattern| !pattern.trim().is_empty()),
         countries_upper: &inc_countries_upper,
         proxy_params_enabled: spec.include_proxy_parameters,
         proxy_operator_or: false,
@@ -19058,7 +19069,11 @@ fn apply_server_filter_spec(
     let exc_criteria = FilterCriteria {
         prefixes: &spec.exclude_prefixes,
         outbounds_filter: &spec.exclude_outbounds,
-        regexes: &spec.exclude_regex,
+        regexes: &exc_regexes,
+        regex_configured: spec
+            .exclude_regex
+            .iter()
+            .any(|pattern| !pattern.trim().is_empty()),
         countries_upper: &exc_countries_upper,
         proxy_params_enabled: spec.exclude_proxy_parameters,
         proxy_operator_or: true,
