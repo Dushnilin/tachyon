@@ -251,8 +251,15 @@ function createLocalDeviceDynamicListWidget(option, section_id, cfgvalue) {
       disabled: option.readonly != null ? option.readonly : option.map.readonly,
     });
     const node = widget.render();
+    const sortedInitialChoices = sortLocalDeviceChoiceValues(choices).map(
+      (key) => ({
+        value: key,
+        label: choices[key] || key,
+      }),
+    );
     let choicesLoaded = Boolean(localDeviceChoicesCache);
     let choicesLoading = false;
+    let msHandle = null;
 
     const loadChoices = () => {
       if (choicesLoaded || choicesLoading) {
@@ -263,23 +270,42 @@ function createLocalDeviceDynamicListWidget(option, section_id, cfgvalue) {
       loadLocalDeviceChoices()
         .then((loadedChoices) => {
           widget.clearChoices();
-          widget.addChoices(
-            sortLocalDeviceChoiceValues(loadedChoices),
-            loadedChoices,
-          );
+          const sortedKeys = sortLocalDeviceChoiceValues(loadedChoices);
+          widget.addChoices(sortedKeys, loadedChoices);
           choicesLoaded = true;
+          msHandle?.refreshChoices(
+            sortedKeys.map((key) => ({
+              value: key,
+              label: loadedChoices[key] || key,
+            })),
+          );
         })
         .finally(() => {
           choicesLoading = false;
         });
     };
 
+    if (
+      typeof main !== "undefined" &&
+      main &&
+      typeof main.attachSearchableCheckboxMultiSelect === "function"
+    ) {
+      msHandle = main.attachSearchableCheckboxMultiSelect(widget, node, {
+        choices: sortedInitialChoices,
+        allowCustom: true,
+        placeholder: option.placeholder,
+        option,
+        sectionId: section_id,
+        onBeforeOpen: loadChoices,
+      });
+    }
+
     const maybeLoadChoices = (ev) => {
       const target = ev.target;
       if (
         target &&
         typeof target.closest === "function" &&
-        target.closest(".cbi-dropdown")
+        (target.closest(".cbi-dropdown") || target.closest(".tachyon-ms"))
       ) {
         loadChoices();
       }

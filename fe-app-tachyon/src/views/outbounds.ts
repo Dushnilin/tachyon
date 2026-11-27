@@ -946,6 +946,8 @@ function createServerChecklistPicker(inputEl) {
 
   let allServers = [];
   let isListOpen = true;
+  const BATCH_SIZE = 120;
+  let visibleLimit = BATCH_SIZE;
 
   const setSelectedValues = (arr) => {
     inputEl.value = arr.join(', ');
@@ -1085,9 +1087,8 @@ function createServerChecklistPicker(inputEl) {
         )
       : merged;
 
-    // Sort selected servers to top when no search query, or keep natural order?
     // Keeping selected highlighted with checkbox makes them easy to spot, and we also show selected chips at top!
-    filtered.slice(0, 200).forEach((srv) => {
+    const appendServerRow = (srv) => {
       const active = selected.has(srv.value);
       const cb = E('input', {
         type: 'checkbox',
@@ -1176,7 +1177,30 @@ function createServerChecklistPicker(inputEl) {
           ],
         ),
       );
-    });
+    };
+
+    const slice = filtered.slice(0, visibleLimit);
+    slice.forEach(appendServerRow);
+    const remaining = filtered.length - slice.length;
+    if (remaining > 0) {
+      const nextCount = Math.min(BATCH_SIZE, remaining);
+      listBox.appendChild(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button',
+            style:
+              'margin-top: 4px; padding: 4px 10px; font-size: 11px; width: 100%; font-variant-numeric: tabular-nums;',
+            click: () => {
+              visibleLimit += BATCH_SIZE;
+              renderList();
+            },
+          },
+          _('Show %d more (%d remaining)').format(nextCount, remaining),
+        ),
+      );
+    }
   };
 
   const selectFilteredBtn = E(
@@ -1204,7 +1228,27 @@ function createServerChecklistPicker(inputEl) {
     _('Select matching'),
   );
 
-  searchInput.addEventListener('input', renderList);
+  searchInput.addEventListener('input', () => {
+    visibleLimit = BATCH_SIZE;
+    renderList();
+  });
+  listBox.addEventListener('scroll', () => {
+    if (listBox.scrollTop + listBox.clientHeight >= listBox.scrollHeight - 40) {
+      const q = searchInput.value.trim().toLowerCase();
+      const merged = getMergedServers();
+      const total = q
+        ? merged.filter(
+            (s) =>
+              s.label.toLowerCase().includes(q) ||
+              s.value.toLowerCase().includes(q),
+          ).length
+        : merged.length;
+      if (visibleLimit < total) {
+        visibleLimit += BATCH_SIZE;
+        renderList();
+      }
+    }
+  });
   inputEl.addEventListener('input', renderList);
   searchRow.appendChild(searchInput);
   searchRow.appendChild(selectFilteredBtn);
@@ -3759,6 +3803,9 @@ function createOutboundsContent(section) {
   o.remove = function (sectionId) {
     this.write(sectionId, []);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
 
   o = section.taboption(
     'general',
@@ -3794,6 +3841,9 @@ function createOutboundsContent(section) {
     });
     return used;
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
   o.write = function (sectionId, value) {
     const want = new Set(asArray(value));
     (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((g) => {
@@ -6129,6 +6179,9 @@ function createOutboundsContent(section) {
   o.value('ws', 'WebSocket');
   o.value('raw_tls', 'Raw TLS');
   o.depends('source_type', 'tewfai');
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o);
+  }
 
   o = section.taboption(
     'general',
@@ -7602,7 +7655,7 @@ function createOutboundsContent(section) {
     const self = this;
     const currentVals =
       uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || [];
-    loadGlobalPoolChoices()
+    return loadGlobalPoolChoices()
       .then((pool) => {
         const servers = (pool && pool.servers) || [];
         const matched = servers.filter(
@@ -7622,10 +7675,13 @@ function createOutboundsContent(section) {
             self.value(val, `${sname} → ${ifc}`);
           });
         });
+        return uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || [];
       })
-      .catch(() => null);
-    return currentVals;
+      .catch(() => currentVals);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === 'function') {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 }
 
 export default baseclass.extend({

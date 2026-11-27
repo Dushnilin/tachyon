@@ -1564,6 +1564,9 @@ function createConditionsContent(section) {
   o.remove = function (sectionId) {
     this.write(sectionId, []);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === "function") {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
 
   o = section.taboption(
     "general",
@@ -1628,6 +1631,9 @@ function createConditionsContent(section) {
     if (cycleErr) return cycleErr;
     return true;
   };
+  if (typeof main.attachSearchableMultiSelectToOption === "function") {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
 
   o = section.taboption(
     "general",
@@ -1643,7 +1649,8 @@ function createConditionsContent(section) {
   o.depends("condition_type", "composite");
   o.validate = function (sectionId, value) {
     const members = asArray(uci.get(UCI_PACKAGE, sectionId, "members"));
-    const cycleErr = detectConditionCycle(sectionId, members, value);
+    const expr = value;
+    const cycleErr = detectConditionCycle(sectionId, members, expr);
     if (cycleErr) return cycleErr;
     return true;
   };
@@ -2257,6 +2264,9 @@ function createConditionsContent(section) {
     unsetIfPresent(sectionId, "source_inbounds");
     syncConditionOptionToParentSection(sectionId, "source_inbounds", null);
   };
+  if (typeof main.attachSearchableMultiSelectToOption === "function") {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
 
   o = section.taboption(
     "network",
@@ -2410,6 +2420,9 @@ function createConditionsContent(section) {
   o.value("at", _("🇦🇹 Austria (at)"));
   o.value("cz", _("🇨🇿 Czechia (cz)"));
   o.value("hk", _("🇭🇰 Hong Kong (hk)"));
+  if (typeof main.attachSearchableMultiSelectToOption === "function") {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 
   o = section.taboption(
     "network",

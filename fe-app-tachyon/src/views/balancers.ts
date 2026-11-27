@@ -626,6 +626,13 @@ function createBalancersContent(section) {
   o.value('process', _('Local Process (process)'));
   o.depends({ balancer_type: 'urltest', mode: 'sticky' });
   o.depends({ balancer_type: 'urltest', mode: 'round_robin' });
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
 
   o = section.option(
     form.Value,
@@ -697,6 +704,13 @@ function createBalancersContent(section) {
   o.remove = function (sectionId) {
     updateSectionsRef('balancer_refs', sectionId, []);
   };
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
 
   o = section.option(form.DummyValue, '_summary', _('Policy Summary'));
   o.modalonly = false;
@@ -729,6 +743,13 @@ function createBalancersContent(section) {
   o.placeholder = 'https://cp.cloudflare.com/generate_204';
   o.depends('balancer_type', 'urltest');
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 
   o = section.option(form.Value, 'health_url', _('Health Check URL'));
   o.modalonly = true;
@@ -749,6 +770,13 @@ function createBalancersContent(section) {
   o.placeholder = 'https://cp.cloudflare.com/generate_204';
   o.depends('balancer_type', 'priority');
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === 'function'
+  ) {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: true });
+  }
 
   o = section.option(
     form.ListValue,

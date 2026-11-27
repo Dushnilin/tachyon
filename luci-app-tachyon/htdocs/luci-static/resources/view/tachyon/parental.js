@@ -1161,6 +1161,13 @@ function createParentalContent(section) {
     });
     return form.DynamicList.prototype.load.apply(this, [sectionId]);
   };
+  if (
+    typeof main !== "undefined" &&
+    main &&
+    typeof main.attachSearchableMultiSelectToOption === "function"
+  ) {
+    main.attachSearchableMultiSelectToOption(o, { allowCustom: false });
+  }
 
   // Device selector with LAN hostnames integration
   o = section.option(

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-27 15:51+0300\n"
-"PO-Revision-Date: 2026-11-27 15:51+0300\n"
+"POT-Creation-Date: 2026-11-27 15:58+0300\n"
+"PO-Revision-Date: 2026-11-27 15:58+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -403,6 +403,9 @@ msgstr "Автоподбор Adaptive 2.0 (auto_tune)"
 
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr "Адаптивный умный перебор (Genetic / Prior Seeds)"
+
+msgid "Add"
+msgstr "Добавить"
 
 msgid "Add Balancer"
 msgstr "Добавить балансировщик"
@@ -1768,6 +1771,9 @@ msgstr "Очистить историю"
 
 msgid "Clear all"
 msgstr "Сбросить все"
+
+msgid "Clear search"
+msgstr "Очистить поиск"
 
 msgid "Click Configure to add services or domains"
 msgstr "Нажмите Изменить для выбора сервисов или доменов"
@@ -6614,11 +6620,17 @@ msgstr "Проблем не обнаружено"
 msgid "No matchers set"
 msgstr "Критерии не заданы"
 
+msgid "No matches found"
+msgstr "Ничего не найдено"
+
 msgid "No matching entries found"
 msgstr "Записи не найдены"
 
 msgid "No more versions found"
 msgstr "Других версий не найдено"
+
+msgid "No options available"
+msgstr "Нет доступных вариантов"
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"
@@ -8732,6 +8744,9 @@ msgstr "Поиск домена или сервиса..."
 msgid "Search servers in pool..."
 msgstr "Поиск серверов в пуле..."
 
+msgid "Search..."
+msgstr "Поиск..."
+
 msgid "Secret"
 msgstr "Секрет"
 
@@ -8980,6 +8995,9 @@ msgstr "Выберите секцию маршрутизации, через к�
 
 msgid "Select the section to route router's own traffic through."
 msgstr "Выберите секцию для маршрутизации трафика роутера."
+
+msgid "Select visible"
+msgstr "Выбрать видимые"
 
 msgid "Select whether to disable the target during the schedule or enable it ONLY during the schedule."
 msgstr "Выберите, отключать ли цель в период расписания или включать ТОЛЬКО в период расписания."
@@ -9299,6 +9317,9 @@ msgstr "Автоматический перевод новых соединен�
 msgid "Shopping"
 msgstr "Магазины"
 
+msgid "Show %d more (%d remaining)"
+msgstr ""
+
 msgid "Show QR code & client share links"
 msgstr "QR-код и ссылка для подключения клиента"
 
@@ -9319,6 +9340,9 @@ msgstr "Показать скрытые"
 
 msgid "Show hidden sections, subscriptions, and servers"
 msgstr "Показать скрытые секции, подписки и серверы"
+
+msgid "Show less"
+msgstr "Свернуть"
 
 msgid "Show matching servers"
 msgstr "Показать подходящие серверы"
@@ -11708,6 +11732,9 @@ msgstr "midsld-2 (за 2 байта до середины домена MidSLD)"
 msgid "min/day"
 msgstr "мин/день"
 
+msgid "more"
+msgstr "ещё"
+
 msgid "ms"
 msgstr "мс"
 
@@ -11758,6 +11785,9 @@ msgstr "пре-релиз"
 
 msgid "quarantine"
 msgstr "карантин"
+
+msgid "remaining"
+msgstr "осталось"
 
 msgid "rndsni (Random same-length ASCII SNI)"
 msgstr ""
