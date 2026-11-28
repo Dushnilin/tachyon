@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-28 10:25+0300\n"
-"PO-Revision-Date: 2026-11-28 10:25+0300\n"
+"POT-Creation-Date: 2026-11-28 12:43+0300\n"
+"PO-Revision-Date: 2026-11-28 12:43+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -7648,11 +7648,11 @@ msgstr ""
 
 #: src/validators/validateDns.ts:20
 #: src/validators/validateDns.ts:29
-#: src/validators/validateDns.ts:59
+#: src/validators/validateDns.ts:80
 msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH"
 msgstr ""
 
-#: src/validators/validateDns.ts:46
+#: src/validators/validateDns.ts:67
 msgid "Invalid DNS server port"
 msgstr ""
 
@@ -7885,6 +7885,11 @@ msgstr ""
 #: src/views/outbounds.ts:6887
 #: src/views/section.ts:14029
 msgid "Invalid TCP Checksum (badsum)"
+msgstr ""
+
+#: src/validators/validateDns.ts:39
+#: src/validators/validateDns.ts:51
+msgid "Invalid TDNS key_id or psk"
 msgstr ""
 
 #: src/validators/validateTuicUrl.ts:63
@@ -16303,8 +16308,8 @@ msgstr ""
 msgid "VPN client flavor the inbound emulates"
 msgstr ""
 
-#: src/validators/validateDns.ts:50
-#: src/validators/validateDns.ts:54
+#: src/validators/validateDns.ts:71
+#: src/validators/validateDns.ts:75
 #: src/validators/validateDomain.ts:57
 #: src/validators/validateDomain.ts:76
 #: src/validators/validateFptnUrl.ts:30

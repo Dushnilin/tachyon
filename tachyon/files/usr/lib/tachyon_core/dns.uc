@@ -333,7 +333,93 @@ function dns_server_lookup_key(host) {
     return lc(pct >= 0 ? substr(host, 0, pct) : host);
 }
 
+function parse_tdns_server(tag_name, dns_server, detour) {
+    let ui = runtime_url.userinfo(dns_server);
+    let colon = index(ui, ":");
+    if (colon <= 0)
+        return null;
+
+    let key_id = trim(substr(ui, 0, colon));
+    let psk = trim(substr(ui, colon + 1));
+    if (match(key_id, /^[0-9a-fA-F]{16}$/) == null || match(psk, /^[A-Za-z0-9_-]{43}$/) == null)
+        return null;
+
+    let server = runtime_url.host(dns_server);
+    if (server == "")
+        return null;
+
+    let port_str = runtime_url.port(dns_server);
+    let server_port = (port_str != "" && match(port_str, /^[0-9]+$/) != null && int(port_str) > 0 && int(port_str) <= 65535)
+        ? int(port_str)
+        : 443;
+
+    let path_val = runtime_url.path(dns_server);
+    let req_path = (path_val != "" && path_val != "/") ? path_val : "/api/v2/telemetry/collect";
+
+    let qp = runtime_url.query_params(dns_server);
+    let mode = lc(trim(as_string(qp.mode || "h2")));
+    if (mode == "")
+        mode = "h2";
+    if (mode != "h2")
+        return { unsupported: "unsupported tdns mode " + mode };
+
+    let codec_raw = lc(trim(as_string(qp.codec || "json")));
+    let codec = (codec_raw == "bin" || codec_raw == "binary" || codec_raw == "raw") ? "bin" : "json";
+
+    let sni = trim(as_string(qp.sni || ""));
+    if (sni == "")
+        sni = server;
+
+    let fp = trim(as_string(qp.fp || qp.fingerprint || "chrome"));
+    if (fp == "")
+        fp = "chrome";
+
+    let pad_raw = trim(as_string(qp.pad || qp.padding || "512"));
+    let padding = (match(pad_raw, /^[0-9]+$/) != null) ? int(pad_raw) : 512;
+    if (padding > 4096)
+        padding = 4096;
+
+    let batch_raw = trim(as_string(qp.batch || qp.batch_ms || "6"));
+    let batch_ms = (match(batch_raw, /^[0-9]+$/) != null) ? int(batch_raw) : 6;
+    if (batch_ms > 50)
+        batch_ms = 50;
+
+    let is_ip = core_ip.valid_ip_with_zone(server);
+    let result = {
+        type: "tdns",
+        tag: tag_name,
+        server,
+        server_port,
+        path: req_path,
+        mode: "h2",
+        codec,
+        key_id,
+        psk,
+        padding,
+        batch_ms,
+        tls: {
+            enabled: true,
+            server_name: sni,
+            utls: {
+                enabled: true,
+                fingerprint: fp
+            }
+        }
+    };
+    if (!is_ip)
+        result.domain_resolver = runtime_constants.BOOTSTRAP_DNS_SERVER_TAG;
+    if (as_string(detour) != "")
+        result.detour = as_string(detour);
+    return result;
+}
+
 function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settings) {
+    if (runtime_url.scheme(dns_server) == "tdns" || dns_type == "tdns") {
+        let tdns = parse_tdns_server(tag_name, dns_server, detour);
+        if (tdns != null)
+            return tdns;
+        return { unsupported: "invalid tdns uri" };
+    }
     let server = runtime_url.host(dns_server);
     let port = runtime_url.port(dns_server);
     let is_ip = core_ip.valid_ip_with_zone(server);

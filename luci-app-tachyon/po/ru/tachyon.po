@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-28 13:25+0300\n"
-"PO-Revision-Date: 2026-11-28 13:25+0300\n"
+"POT-Creation-Date: 2026-11-28 15:43+0300\n"
+"PO-Revision-Date: 2026-11-28 15:43+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -5431,6 +5431,9 @@ msgstr "Неверный URL Shadowsocks: должен начинаться с s
 
 msgid "Invalid TCP Checksum (badsum)"
 msgstr "Неверная контрольная сумма TCP (badsum)"
+
+msgid "Invalid TDNS key_id or psk"
+msgstr ""
 
 msgid "Invalid TUIC URL: UUID must be a valid UUID v4 format"
 msgstr "Неверный TUIC URL: UUID должен быть в корректном формате UUID v4"

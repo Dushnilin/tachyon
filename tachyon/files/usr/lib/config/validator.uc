@@ -1176,9 +1176,46 @@ function validate_required_duration_option(value, label) {
     validate_duration_option(value, label);
 }
 
+function tdns_server_value_valid(value) {
+    value = trim(as_string(value));
+    if (lc(substr(value, 0, 7)) != "tdns://" || match(value, /[ \t\r\n]/) != null)
+        return false;
+
+    let ui = core_url.userinfo(value);
+    let colon = index(ui, ":");
+    if (colon <= 0 || rindex(ui, ":") != colon)
+        return false;
+
+    let key_id = trim(substr(ui, 0, colon));
+    let psk = trim(substr(ui, colon + 1));
+    if (match(key_id, /^[0-9a-fA-F]{16}$/) == null || match(psk, /^[A-Za-z0-9_-]{43}$/) == null)
+        return false;
+
+    let host = core_url.host(value);
+    if (host == "")
+        return false;
+
+    let port = core_url.port(value);
+    if (port != "" && (match(port, /^[0-9]+$/) == null || int(port) < 1 || int(port) > 65535))
+        return false;
+
+    if (core_ip.valid_ip_with_zone(host))
+        return true;
+
+    return length(host) <= 253 &&
+        index(host, ".") > 0 &&
+        substr(host, 0, 1) != "." &&
+        substr(host, length(host) - 1, 1) != "." &&
+        match(host, /[\/:\[\]]/) == null;
+}
+
 function dns_server_value_valid(value) {
     value = trim(as_string(value));
-    if (value == "" || match(value, /[ \t\r\n@]/) != null)
+    if (value == "")
+        return false;
+    if (lc(substr(value, 0, 7)) == "tdns://")
+        return tdns_server_value_valid(value);
+    if (match(value, /[ \t\r\n@]/) != null)
         return false;
 
     let host = core_url.host(value);
