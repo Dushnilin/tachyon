@@ -11,6 +11,53 @@
 
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE || 'tachyon';
 
+function splitConditionTokensLine(lineText) {
+  const cleaned = String(lineText || '').trim();
+  if (!cleaned) return [];
+  if (/^(?:domain_)?regex:/i.test(cleaned)) {
+    const out = [];
+    let paren = 0;
+    let brace = 0;
+    let bracket = 0;
+    let escaped = false;
+    let start = 0;
+    for (let i = 0; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '(' && bracket === 0) paren++;
+      else if (ch === ')' && bracket === 0 && paren > 0) paren--;
+      else if (ch === '{' && bracket === 0) brace++;
+      else if (ch === '}' && bracket === 0 && brace > 0) brace--;
+      else if (ch === '[') bracket++;
+      else if (ch === ']' && bracket > 0) bracket--;
+      else if (
+        (ch === ',' || /\s/.test(ch)) &&
+        paren === 0 &&
+        brace === 0 &&
+        bracket === 0
+      ) {
+        const tok = cleaned.slice(start, i).trim();
+        if (tok) out.push(tok);
+        start = i + 1;
+      }
+    }
+    const tail = cleaned.slice(start).trim();
+    if (tail) out.push(tail);
+    return out;
+  }
+  return cleaned
+    .split(/[\s,]+/)
+    .map((tok) => tok.trim())
+    .filter(Boolean);
+}
+
 function asArray(val) {
   if (!val) return [];
   const lines = Array.isArray(val) ? val : String(val).split(/[\r\n]+/);
@@ -22,8 +69,7 @@ function asArray(val) {
       .split('#')[0]
       .trim();
     if (!cleaned) return;
-    cleaned.split(/[\s,]+/).forEach((tok) => {
-      const t = tok.trim();
+    splitConditionTokensLine(cleaned).forEach((t) => {
       if (
         t &&
         !t.startsWith('//') &&
@@ -1056,10 +1102,7 @@ function deduplicateTextListPreservingComments(value, normalizeFn) {
     const bodyPart = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
     const commentPart = commentIdx >= 0 ? line.slice(commentIdx) : '';
 
-    const tokens = bodyPart
-      .split(/[\s,]+/)
-      .map((t) => t.trim())
-      .filter(Boolean);
+    const tokens = splitConditionTokensLine(bodyPart);
     const uniqueTokens = [];
     tokens.forEach((tok) => {
       const key = normalizeFn ? normalizeFn(tok) : tok.toLowerCase();
@@ -2135,8 +2178,10 @@ function createConditionsContent(section) {
     'network',
     form.DynamicList,
     'excluded_ips',
-    _('Excluded Destination IPs / Subnets'),
-    _('Destination IPs or CIDR blocks to exclude from this condition.'),
+    _('Excluded Source Devices (Client IP / MAC)'),
+    _(
+      'LAN client IP addresses, CIDRs, or MACs (source_ip_cidr) excluded from this condition. To exclude destination IPs/subnets, use "Excluded Destination Subnets (CIDR)" below.',
+    ),
   );
   o.modalonly = true;
   o.depends('condition_type', 'atomic');
@@ -2169,6 +2214,35 @@ function createConditionsContent(section) {
       );
     };
   }
+
+  o = section.taboption(
+    'network',
+    form.DynamicList,
+    'exclude_subnets',
+    _('Excluded Destination Subnets (CIDR)'),
+    _(
+      'Destination IP addresses or CIDR blocks (ip_cidr, e.g. 141.0.184.86/32) excluded from this condition even if matched by rule-sets.',
+    ),
+  );
+  o.modalonly = true;
+  o.depends('condition_type', 'atomic');
+  o.validate = function (_sectionId, value) {
+    if (!value || !String(value).trim()) return true;
+    if (typeof main.validateSubnet === 'function') {
+      const res = main.validateSubnet(String(value).trim());
+      return res.valid ? true : res.message;
+    }
+    return true;
+  };
+  o.write = function (sectionId, value) {
+    const arr = Array.from(new Set(asArray(value)));
+    setArrayIfChanged(sectionId, 'exclude_subnets', arr);
+    syncConditionOptionToParentSection(sectionId, 'exclude_subnets', arr);
+  };
+  o.remove = function (sectionId) {
+    unsetIfPresent(sectionId, 'exclude_subnets');
+    syncConditionOptionToParentSection(sectionId, 'exclude_subnets', null);
+  };
 
   o = section.taboption(
     'network',

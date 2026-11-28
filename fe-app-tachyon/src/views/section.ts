@@ -7633,6 +7633,7 @@ const LINKED_CONDITION_OPTION_KEYS = new Set([
   'excluded_ips',
   'excluded_ips_text',
   'excluded_ips_text_mode',
+  'exclude_subnets',
   'excluded_domains',
   'excluded_domains_text',
   'excluded_domains_text_mode',
@@ -17976,12 +17977,43 @@ function createSectionContent(section) {
 
   const excludedIpsOption = addLocalDeviceSubnetDynamicField(section, {
     key: 'excluded_ips',
-    label: _('Excluded devices'),
+    label: _('Excluded Source Devices (Client IP / MAC)'),
     description: _(
-      'Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match.',
+      'Traffic from these client IP addresses, CIDRs, or MAC addresses (source_ip_cidr) will never be routed through this section. To exclude destination IPs/subnets, use "Excluded Destination Subnets (CIDR)" below.',
     ),
   });
   dependsOnRoutingAction(excludedIpsOption);
+
+  const excludeSubnetsOption = section.taboption(
+    'conditions',
+    form.DynamicList,
+    'exclude_subnets',
+    _('Excluded Destination Subnets (CIDR)'),
+    _(
+      'Destination IP addresses or CIDR blocks (ip_cidr, e.g. 141.0.184.86/32) excluded from this section even if matched by domain lists or rules.',
+    ),
+  );
+  excludeSubnetsOption.modalonly = true;
+  excludeSubnetsOption.placeholder = '141.0.184.86/32';
+  dependsOnRoutingAction(excludeSubnetsOption);
+  excludeSubnetsOption.validate = function (_section_id, value) {
+    if (!value || !String(value).trim()) return true;
+    const validation = main.validateSubnet(String(value).trim());
+    return validation.valid ? true : validation.message;
+  };
+  excludeSubnetsOption.load = function (section_id) {
+    return getConfigListValues(section_id, 'exclude_subnets');
+  };
+  excludeSubnetsOption.cfgvalue = function (section_id) {
+    return getConfigListValues(section_id, 'exclude_subnets');
+  };
+  excludeSubnetsOption.write = function (section_id, value) {
+    writeListOption(section_id, 'exclude_subnets', value);
+  };
+  excludeSubnetsOption.remove = function (section_id) {
+    unsetIfPresent(section_id, 'exclude_subnets');
+    syncLinkedConditionOption(section_id, 'exclude_subnets', null);
+  };
 
   const excludedDomainsOption = addTextConditionField(section, {
     key: 'excluded_domains',

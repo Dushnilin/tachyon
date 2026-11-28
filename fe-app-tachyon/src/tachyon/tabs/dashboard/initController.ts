@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { TACHYON_UCI_PACKAGE } from '../../../constants';
 import {
   canUseDirectClashApi,
   getClashWsUrl,
@@ -5561,9 +5562,11 @@ const GENERIC_OUTBOUND_TAGS = new Set([
   'dns-out',
 ]);
 
-function collectSectionOwnedTags(section?: Tachyon.OutboundGroup): Set<string> {
+function collectSectionOwnedTags(
+  section?: Tachyon.OutboundGroup,
+  sectionName?: string,
+): Set<string> {
   const tags = new Set<string>();
-  if (!section) return tags;
   const pushTag = (raw?: string) => {
     const normalized = String(raw || '')
       .trim()
@@ -5572,16 +5575,76 @@ function collectSectionOwnedTags(section?: Tachyon.OutboundGroup): Set<string> {
       tags.add(normalized);
     }
   };
-  pushTag(section.code);
-  for (const ob of section.outbounds || []) {
-    if (!ob) continue;
-    pushTag(ob.code);
-    for (const child of ob.urlTestInfo?.outbounds || []) {
-      pushTag(child?.code);
+  const sid = String(section?.sectionName || sectionName || '').trim();
+  let hasExplicitDesyncTag = false;
+  let isDesyncSection =
+    String((section as any)?.connectionType || '').toLowerCase() === 'desync';
+
+  if (section) {
+    pushTag(section.code);
+    for (const ob of section.outbounds || []) {
+      if (!ob) continue;
+      if (String(ob.type || '').toLowerCase() === 'desync') {
+        isDesyncSection = true;
+      }
+      if (
+        String(ob.code || '')
+          .toLowerCase()
+          .startsWith('desync-')
+      ) {
+        hasExplicitDesyncTag = true;
+      }
+      pushTag(ob.code);
+      for (const child of ob.urlTestInfo?.outbounds || []) {
+        pushTag(child?.code);
+      }
+      for (const child of ob.priorityInfo?.outbounds || []) {
+        pushTag(child?.code);
+      }
     }
-    for (const child of ob.priorityInfo?.outbounds || []) {
-      pushTag(child?.code);
+  }
+
+  const uciSec =
+    sid && typeof uci !== 'undefined' && typeof uci.get === 'function'
+      ? uci.get(TACHYON_UCI_PACKAGE, sid)
+      : null;
+  if (uciSec) {
+    const action = String(uciSec.action || '').toLowerCase();
+    const connType = String(uciSec.connection_type || '').toLowerCase();
+    if (
+      action === 'desync' ||
+      action === 'zapret' ||
+      action === 'zapret2' ||
+      connType === 'desync' ||
+      connType === 'zapret' ||
+      connType === 'zapret2'
+    ) {
+      isDesyncSection = true;
     }
+  }
+
+  const sourceRefsRaw =
+    (section as any)?.outbound_source_refs ?? uciSec?.outbound_source_refs;
+  const sourceRefs = Array.isArray(sourceRefsRaw)
+    ? sourceRefsRaw.map((v: unknown) => String(v || '').trim()).filter(Boolean)
+    : typeof sourceRefsRaw === 'string'
+      ? sourceRefsRaw.split(/\s+/).filter(Boolean)
+      : [];
+  for (const srcId of sourceRefs) {
+    const srcSec =
+      typeof uci !== 'undefined' && typeof uci.get === 'function'
+        ? uci.get(TACHYON_UCI_PACKAGE, srcId)
+        : null;
+    const stype = String(srcSec?.source_type || '').toLowerCase();
+    if (stype === 'desync' || stype === 'zapret' || stype === 'zapret2') {
+      isDesyncSection = true;
+      hasExplicitDesyncTag = true;
+      pushTag(`desync-${srcId}`);
+    }
+  }
+
+  if (isDesyncSection && !hasExplicitDesyncTag) {
+    pushTag('adaptive-desync-default');
   }
   return tags;
 }
@@ -5615,7 +5678,7 @@ export function getSectionConnectionStats(
   const ruleSetPrefix = `rule_set=${target}-`;
   const bracketPrefix = `[${target}-`;
   const spacePrefix = ` ${target}-`;
-  const sectionOwnedTags = collectSectionOwnedTags(section);
+  const sectionOwnedTags = collectSectionOwnedTags(section, sectionName);
 
   const isOtherSectionGroupTag = (chain: string): boolean =>
     (chain.startsWith('sel-') && chain !== selectorTag) ||

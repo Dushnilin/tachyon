@@ -1887,24 +1887,28 @@ function openStudioCreateModal(
 
       ui.hideModal();
 
-      try {
-        const mapNode =
-          typeof sectionRef.getPreviousModalMap === 'function'
-            ? sectionRef.getPreviousModalMap()
-            : null;
-        const prevMap =
-          mapNode &&
-          typeof (globalThis as any).L !== 'undefined' &&
-          (globalThis as any).L.dom &&
-          typeof (globalThis as any).L.dom.findClassInstance === 'function'
-            ? (globalThis as any).L.dom.findClassInstance(mapNode)
-            : sectionRef.map;
-        if (prevMap) {
-          prevMap.addedSection = uciId;
-        }
-      } catch {
-        if (sectionRef.map) {
-          sectionRef.map.addedSection = uciId;
+      const keepOnModalCancel =
+        type === 'outbound_source' && selectedTemplate.id === 'tor';
+      if (!keepOnModalCancel) {
+        try {
+          const mapNode =
+            typeof sectionRef.getPreviousModalMap === 'function'
+              ? sectionRef.getPreviousModalMap()
+              : null;
+          const prevMap =
+            mapNode &&
+            typeof (globalThis as any).L !== 'undefined' &&
+            (globalThis as any).L.dom &&
+            typeof (globalThis as any).L.dom.findClassInstance === 'function'
+              ? (globalThis as any).L.dom.findClassInstance(mapNode)
+              : sectionRef.map;
+          if (prevMap) {
+            prevMap.addedSection = uciId;
+          }
+        } catch {
+          if (sectionRef.map) {
+            sectionRef.map.addedSection = uciId;
+          }
         }
       }
 

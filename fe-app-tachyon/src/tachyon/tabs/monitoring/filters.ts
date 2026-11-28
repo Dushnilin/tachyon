@@ -468,6 +468,22 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
       }
     });
 
+  const defaultDesyncSecs = sections.filter(
+    (s) =>
+      s['.type'] === 'section' &&
+      s.enabled !== '0' &&
+      (normalizeString(s.action).toLowerCase() === 'desync' ||
+        normalizeString(s.connection_type).toLowerCase() === 'desync') &&
+      getListValues(s.outbound_source_refs).length === 0,
+  );
+  if (defaultDesyncSecs.length === 1) {
+    const dSec = defaultDesyncSecs[0];
+    const dLabel = normalizeString(dSec.label || dSec.name || dSec['.name']);
+    if (dLabel && !map['adaptive-desync-default']) {
+      map['adaptive-desync-default'] = dLabel;
+    }
+  }
+
   sections
     .filter((section) => section['.type'] === 'server')
     .filter((section) => section.enabled !== '0')

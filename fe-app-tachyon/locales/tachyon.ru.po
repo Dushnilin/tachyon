@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-28 12:36+0300\n"
-"PO-Revision-Date: 2026-11-28 12:36+0300\n"
+"POT-Creation-Date: 2026-11-28 13:04+0300\n"
+"PO-Revision-Date: 2026-11-28 13:04+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3125,8 +3125,11 @@ msgstr "IP назначения (dest_ip)"
 msgid "Destination IP / CIDR Subnets"
 msgstr "IP-адреса и подсети назначения (CIDR)"
 
-msgid "Destination IPs or CIDR blocks to exclude from this condition."
-msgstr "Целевые IP-адреса или подсети CIDR, исключаемые из этого условия."
+msgid "Destination IP addresses or CIDR blocks (ip_cidr, e.g. 141.0.184.86/32) excluded from this condition even if matched by rule-sets."
+msgstr ""
+
+msgid "Destination IP addresses or CIDR blocks (ip_cidr, e.g. 141.0.184.86/32) excluded from this section even if matched by domain lists or rules."
+msgstr ""
 
 msgid "Destination Port (dest_port)"
 msgstr "Порт назначения (dest_port)"
@@ -3989,14 +3992,14 @@ msgstr "Исключить типы трафика"
 msgid "Excluded"
 msgstr "Исключено"
 
-msgid "Excluded Destination IPs / Subnets"
-msgstr "Исключённые целевые IP / подсети"
+msgid "Excluded Destination Subnets (CIDR)"
+msgstr ""
 
 msgid "Excluded Domains"
 msgstr "Исключённые домены"
 
-msgid "Excluded devices"
-msgstr "Исключённые устройства"
+msgid "Excluded Source Devices (Client IP / MAC)"
+msgstr ""
 
 msgid "Excluded domains from Smart Detect"
 msgstr "Исключенные из Smart Detect домены"
@@ -6271,6 +6274,9 @@ msgstr "Устройства LAN"
 
 msgid "LAN client IP addresses or subnets (e.g. 192.168.1.50/32)."
 msgstr "IP-адреса или подсети устройств в локальной сети (например, 192.168.1.50/32)."
+
+msgid "LAN client IP addresses, CIDRs, or MACs (source_ip_cidr) excluded from this condition. To exclude destination IPs/subnets, use \"Excluded Destination Subnets (CIDR)\" below."
+msgstr ""
 
 msgid "LAN client MAC addresses (e.g. AA:BB:CC:DD:EE:FF). Resolved automatically via DHCP leases and ARP."
 msgstr "MAC-адреса устройств в локальной сети (например, AA:BB:CC:DD:EE:FF). Автоматически сопоставляются с IP через DHCP и ARP."
@@ -11555,8 +11561,8 @@ msgstr "Блокировка трафика (Reject)"
 msgid "Traffic for this level goes directly."
 msgstr "Трафик этого уровня идёт напрямую."
 
-msgid "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match."
-msgstr "Трафик от этих IP-адресов, CIDR или MAC-адресов никогда не будет маршрутизирован через эту секцию, даже если другие условия совпадают."
+msgid "Traffic from these client IP addresses, CIDRs, or MAC addresses (source_ip_cidr) will never be routed through this section. To exclude destination IPs/subnets, use \"Excluded Destination Subnets (CIDR)\" below."
+msgstr ""
 
 msgid "Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section."
 msgstr "Трафик указанных протоколов (например BitTorrent, QUIC, STUN) будет обходить эту секцию."
@@ -13150,6 +13156,18 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Destination IPs or CIDR blocks to exclude from this condition."
+msgstr "Целевые IP-адреса или подсети CIDR, исключаемые из этого условия."
+
+msgid "Excluded Destination IPs / Subnets"
+msgstr "Исключённые целевые IP / подсети"
+
+msgid "Excluded devices"
+msgstr "Исключённые устройства"
+
+msgid "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match."
+msgstr "Трафик от этих IP-адресов, CIDR или MAC-адресов никогда не будет маршрутизирован через эту секцию, даже если другие условия совпадают."
 
 msgid "Search servers in pool..."
 msgstr "Поиск серверов в пуле..."

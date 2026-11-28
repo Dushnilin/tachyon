@@ -743,6 +743,120 @@ describe('dashboard initController', () => {
         upSpeed: 0,
       });
     });
+
+    it('matches desync-<source_id> and adaptive-desync-default tags without double-counting (#557, #558)', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+      const ytDesyncSec = {
+        code: 'desync-sec-Youtube',
+        sectionName: 'Youtube',
+        connectionType: 'desync',
+        outbound_source_refs: ['Youtube_2'],
+        outbounds: [
+          {
+            code: 'desync-Youtube_2',
+            displayName: 'Youtube',
+            latency: 0,
+            type: 'desync',
+            selected: true,
+          },
+        ],
+      } as any;
+      const socksDesyncSec = {
+        code: 'desync-sec-YOUTUBE',
+        sectionName: 'YOUTUBE',
+        connectionType: 'desync',
+        outbounds: [],
+      } as any;
+      const otherDesyncSec = {
+        code: 'desync-sec-Discord',
+        sectionName: 'Discord',
+        connectionType: 'desync',
+        outbound_source_refs: ['Discord_2'],
+        outbounds: [
+          {
+            code: 'desync-Discord_2',
+            displayName: 'Discord',
+            latency: 0,
+            type: 'desync',
+            selected: true,
+          },
+        ],
+      } as any;
+
+      const conns = [
+        {
+          id: 'd1',
+          chains: ['tproxy-in', 'desync-Youtube_2'],
+          rule: 'rule_set=trs-youtube => route(desync-Youtube_2)',
+          upload: 120,
+          download: 13500,
+        },
+        {
+          id: 'd2',
+          chains: ['srv-socks', 'adaptive-desync-default'],
+          rule: 'route(adaptive-desync-default)',
+          upload: 80,
+          download: 2048,
+        },
+        {
+          id: 'd3',
+          chains: ['desync-Discord_2'],
+          upload: 40,
+          download: 400,
+        },
+      ];
+
+      expect(
+        getSectionConnectionStats(
+          'Youtube',
+          3,
+          conns,
+          {},
+          new Map(),
+          ytDesyncSec,
+        ),
+      ).toEqual({
+        conns: 1,
+        upload: 120,
+        download: 13500,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+
+      expect(
+        getSectionConnectionStats(
+          'YOUTUBE',
+          3,
+          conns,
+          {},
+          new Map(),
+          socksDesyncSec,
+        ),
+      ).toEqual({
+        conns: 1,
+        upload: 80,
+        download: 2048,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+
+      expect(
+        getSectionConnectionStats(
+          'Discord',
+          3,
+          conns,
+          {},
+          new Map(),
+          otherDesyncSec,
+        ),
+      ).toEqual({
+        conns: 1,
+        upload: 40,
+        download: 400,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+    });
   });
 
   it('keeps #dashboard-widget-tailscale hidden during initial loading when no native Tailscale server is enabled', async () => {

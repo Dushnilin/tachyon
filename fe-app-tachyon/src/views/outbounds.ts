@@ -7152,6 +7152,7 @@ function createOutboundsContent(section) {
     _('Local Tor SOCKS5 port on router (default: 9050).'),
   );
   o.modalonly = true;
+  o.rmempty = false;
   o.default = '9050';
   o.placeholder = '9050';
   o.depends('source_type', 'tor');

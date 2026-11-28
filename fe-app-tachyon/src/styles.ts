@@ -1308,6 +1308,7 @@ input.cbi-button-action:hover:not(:disabled),
     display: flex !important;
     align-items: center !important;
     flex-wrap: nowrap !important;
+    min-width: 0 !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
 }
@@ -1316,7 +1317,7 @@ input.cbi-button-action:hover:not(:disabled),
 .tachyon-view .cbi-dropdown[open],
 #modal_overlay .cbi-dropdown[open],
 .cbi-modal .cbi-dropdown[open] {
-    z-index: 2500 !important;
+    z-index: 3400 !important;
 }
 
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-value:has(.cbi-dropdown[open]),
@@ -1328,7 +1329,7 @@ input.cbi-button-action:hover:not(:disabled),
 #modal_overlay .cbi-value:has(.tachyon-ms.is-open),
 .cbi-modal .cbi-value:has(.tachyon-ms.is-open) {
     position: relative !important;
-    z-index: 2600 !important;
+    z-index: 3500 !important;
 }
 
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown[multiple]:not([open]) > ul.dropdown,
@@ -1353,7 +1354,7 @@ input.cbi-button-action:hover:not(:disabled),
     max-width: 100% !important;
     max-height: none !important;
     margin: 0 !important;
-    padding: 0 28px 0 0 !important;
+    padding: 0 30px 0 0 !important;
     overflow: hidden !important;
     list-style: none !important;
     background: transparent !important;
@@ -1361,6 +1362,7 @@ input.cbi-button-action:hover:not(:disabled),
     box-shadow: none !important;
     z-index: auto !important;
     transform: none !important;
+    box-sizing: border-box !important;
 }
 
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown:not([open]) > ul:not(.dropdown) > li,
@@ -1372,6 +1374,9 @@ input.cbi-button-action:hover:not(:disabled),
 #modal_overlay .cbi-dropdown > ul.preview > li,
 .cbi-modal .cbi-dropdown > ul.preview > li {
     position: static !important;
+    display: block !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
     max-width: 100% !important;
     min-height: 0 !important;
     margin: 0 !important;
@@ -1380,6 +1385,20 @@ input.cbi-button-action:hover:not(:disabled),
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
     transform: none !important;
+    box-sizing: border-box !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown input[type="text"],
+.tachyon-view .cbi-dropdown input[type="text"],
+#modal_overlay .cbi-dropdown input[type="text"],
+.cbi-modal .cbi-dropdown input[type="text"] {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding-right: 30px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    box-sizing: border-box !important;
 }
 
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown > .open,
@@ -1460,13 +1479,95 @@ input.cbi-button-action:hover:not(:disabled),
 #modal_overlay .cbi-dropdown[open] > ul.preview > li,
 .cbi-modal .cbi-dropdown[open] > ul.preview > li,
 .tachyon-view .cbi-dropdown[open] > ul.preview > li {
-    display: inline-flex !important;
+    display: block !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     width: auto !important;
     min-height: 0 !important;
     padding: 0 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+}
+
+/* Issue #552: iOS Safari / narrow screen alignment for multi-selects, comboboxes, rule-sets & dropdown panels */
+@media (max-width: 640px) {
+    #modal_overlay > .modal .cbi-value-field,
+    .cbi-modal .cbi-value-field,
+    .tachyon-workspace-body .cbi-value-field {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    #modal_overlay > .modal .cbi-dynlist,
+    .cbi-modal .cbi-dynlist,
+    .tachyon-workspace-body .cbi-dynlist {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    #modal_overlay > .modal .cbi-dynlist > .item,
+    .cbi-modal .cbi-dynlist > .item,
+    .tachyon-workspace-body .cbi-dynlist > .item,
+    #modal_overlay > .modal .cbi-dynlist > .add-item,
+    .cbi-modal .cbi-dynlist > .add-item,
+    .tachyon-workspace-body .cbi-dynlist > .add-item {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    #modal_overlay .cbi-dropdown[multiple] > ul.preview,
+    .cbi-modal .cbi-dropdown[multiple] > ul.preview,
+    .tachyon-view .cbi-dropdown[multiple] > ul.preview {
+        padding-right: 32px !important;
+    }
+
+    #modal_overlay .cbi-dropdown[multiple] > ul.preview > li,
+    .cbi-modal .cbi-dropdown[multiple] > ul.preview > li,
+    .tachyon-view .cbi-dropdown[multiple] > ul.preview > li {
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        line-height: 1.35 !important;
+    }
+
+    #modal_overlay .cbi-dropdown[open] > ul:not(.preview),
+    .cbi-modal .cbi-dropdown[open] > ul:not(.preview),
+    .tachyon-view .cbi-dropdown[open] > ul:not(.preview),
+    .cbi-dropdown[open] > ul.dropdown {
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: calc(100vw - 24px) !important;
+        max-height: min(280px, 42vh) !important;
+        z-index: 3600 !important;
+    }
+
+    .tachyon-ms__panel {
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: calc(100vw - 24px) !important;
+        z-index: 3600 !important;
+    }
+
+    .tachyon-ms__trigger {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        gap: 6px !important;
+    }
+
+    .tachyon-ms__chip {
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .tachyon-ms__chip-label {
+        min-width: 0 !important;
+    }
 }
 
 /* Tachyon modal sizing by content type */

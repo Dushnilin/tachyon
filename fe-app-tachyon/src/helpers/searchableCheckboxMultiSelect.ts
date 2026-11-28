@@ -90,6 +90,8 @@ const FALLBACK_STYLES = `
   flex-direction: column;
   gap: 8px;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
 }
 .tachyon-ms__chips {
@@ -97,6 +99,8 @@ const FALLBACK_STYLES = `
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
 }
 .tachyon-ms__chips[hidden] {
   display: none !important;
@@ -105,6 +109,7 @@ const FALLBACK_STYLES = `
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
   max-width: 100%;
   padding: 2px 6px 2px 8px;
   border-radius: 6px;
@@ -116,6 +121,7 @@ const FALLBACK_STYLES = `
   box-sizing: border-box;
 }
 .tachyon-ms__chip-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

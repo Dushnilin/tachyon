@@ -60,6 +60,8 @@ interface UciSectionRecord {
   '.name'?: unknown;
   label?: unknown;
   name?: unknown;
+  action?: unknown;
+  connection_type?: unknown;
   outbound_source_refs?: unknown;
   id?: unknown;
   source_type?: unknown;
@@ -136,6 +138,23 @@ export function buildRuntimeTagDisplayContextFromUci(): RuntimeTagDisplayContext
         uniqueSourceOwner.set(sref, null);
       }
     }
+  }
+
+  const defaultDesyncSections = sectionRecords.filter((sec) => {
+    const act = String(sec?.action || '').toLowerCase();
+    const ct = String(sec?.connection_type || '').toLowerCase();
+    const refsRaw = sec?.outbound_source_refs;
+    const hasRefs = Array.isArray(refsRaw)
+      ? refsRaw.some((v) => String(v || '').trim().length > 0)
+      : typeof refsRaw === 'string' && refsRaw.trim().length > 0;
+    return sec && (act === 'desync' || ct === 'desync') && !hasRefs;
+  });
+  if (defaultDesyncSections.length === 1) {
+    const dSec = defaultDesyncSections[0];
+    const dLbl =
+      String(dSec?.label || dSec?.name || dSec?.['.name'] || '').trim() ||
+      'Desync';
+    setTag('adaptive-desync-default', dLbl);
   }
 
   for (const bal of balancerRecords) {
