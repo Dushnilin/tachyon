@@ -12303,8 +12303,19 @@ async fn execute_cli_part_dns_fuzzer(
                     let doms = domains.clone();
                     let boot_ips = bootstrap_ips.clone();
                     join_set.spawn(async move {
+                        let lower_srv = srv_val.trim().to_ascii_lowercase();
+                        let use_udp = proto == "udp"
+                            && !lower_srv.starts_with("tdns://")
+                            && !lower_srv.starts_with("https://")
+                            && !lower_srv.starts_with("http://")
+                            && !lower_srv.starts_with("tls://")
+                            && !lower_srv.starts_with("dot://")
+                            && !lower_srv.starts_with("quic://")
+                            && !lower_srv.starts_with("doq://")
+                            && !lower_srv.starts_with("h3://")
+                            && !lower_srv.starts_with("doh://");
                         let target = resolve_dns_bench_target(&srv_val, &proto);
-                        let resolved_sock = if proto != "udp" {
+                        let resolved_sock = if !use_udp {
                             resolve_dns_bench_socket_addr(&target, &boot_ips).await
                         } else {
                             None
@@ -12312,7 +12323,7 @@ async fn execute_cli_part_dns_fuzzer(
                         let mut samples = Vec::with_capacity(doms.len());
                         let mut vals = Vec::with_capacity(doms.len());
                         for dom in &doms {
-                            let res: Result<f64, Value> = if proto == "udp" {
+                            let res: Result<f64, Value> = if use_udp {
                                 probe_udp_dns_rtt_ms(&target, dom)
                                     .await
                                     .map_err(|err_msg| dns_speed_test_error_json(None, &err_msg))
@@ -16429,23 +16440,27 @@ fn extract_string_list(val: Option<&Value>) -> Vec<String> {
 
 fn resolve_dns_bench_target(srv_val: &str, proto: &str) -> String {
     let trimmed = srv_val.trim();
-    let stripped = trimmed
-        .strip_prefix("https://")
-        .or_else(|| trimmed.strip_prefix("http://"))
-        .or_else(|| trimmed.strip_prefix("h3://"))
-        .or_else(|| trimmed.strip_prefix("tls://"))
-        .or_else(|| trimmed.strip_prefix("quic://"))
-        .or_else(|| trimmed.strip_prefix("udp://"))
-        .or_else(|| trimmed.strip_prefix("tcp://"))
-        .unwrap_or(trimmed);
-    let host_port = stripped.split('/').next().unwrap_or(stripped);
+    let lower = trimmed.to_ascii_lowercase();
+    let stripped = trimmed.split_once("://").map_or(trimmed, |(_, rest)| rest);
+    let authority_with_userinfo = stripped.split(['/', '?', '#']).next().unwrap_or(stripped);
+    let host_port = authority_with_userinfo
+        .rsplit_once('@')
+        .map_or(authority_with_userinfo, |(_, hp)| hp);
     let default_port = if proto == "doh"
-        || trimmed.starts_with("https://")
-        || trimmed.starts_with("h3://")
+        || lower.starts_with("https://")
+        || lower.starts_with("h3://")
+        || lower.starts_with("tdns://")
+        || lower.starts_with("doh://")
         || stripped.contains('/')
     {
         443
-    } else if proto == "dot" || proto == "doq" {
+    } else if proto == "dot"
+        || proto == "doq"
+        || lower.starts_with("tls://")
+        || lower.starts_with("dot://")
+        || lower.starts_with("quic://")
+        || lower.starts_with("doq://")
+    {
         853
     } else {
         53
@@ -17281,6 +17296,20 @@ mod tests {
         assert_eq!(
             resolve_dns_bench_target("1.1.1.1:5353", "udp"),
             "1.1.1.1:5353"
+        );
+        assert_eq!(
+            resolve_dns_bench_target(
+                "tdns://7d080ee486b233d9:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@48.102.165.41:2053/api/v2/telemetry/collect?mode=h2&pin=0123",
+                "doh"
+            ),
+            "48.102.165.41:2053"
+        );
+        assert_eq!(
+            resolve_dns_bench_target(
+                "tdns://7d080ee486b233d9:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@[2001:db8::1]:8443/path",
+                "doh"
+            ),
+            "[2001:db8::1]:8443"
         );
     }
 

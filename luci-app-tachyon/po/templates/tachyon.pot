@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-28 12:54+0300\n"
-"PO-Revision-Date: 2026-11-28 12:54+0300\n"
+"POT-Creation-Date: 2026-11-28 15:10+0300\n"
+"PO-Revision-Date: 2026-11-28 15:10+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -81,9 +81,9 @@ msgstr ""
 msgid "-- Add tier from this section --"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1784
+#: src/helpers/searchableCheckboxMultiSelect.ts:1787
 #: src/helpers/searchableCheckboxMultiSelect.ts:649
-#: src/helpers/searchableCheckboxMultiSelect.ts:826
+#: src/helpers/searchableCheckboxMultiSelect.ts:829
 #: src/views/section.ts:16002
 #: src/views/section.ts:4788
 #: src/views/section.ts:5450
@@ -661,7 +661,7 @@ msgstr ""
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1084
+#: src/helpers/searchableCheckboxMultiSelect.ts:1087
 msgid "Add"
 msgstr ""
 
@@ -2830,13 +2830,13 @@ msgstr ""
 msgid "Clear History"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:715
+#: src/helpers/searchableCheckboxMultiSelect.ts:718
 #: src/views/outbounds.ts:1249
 msgid "Clear all"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:689
-#: src/helpers/searchableCheckboxMultiSelect.ts:690
+#: src/helpers/searchableCheckboxMultiSelect.ts:692
+#: src/helpers/searchableCheckboxMultiSelect.ts:693
 msgid "Clear search"
 msgstr ""
 
@@ -5061,7 +5061,7 @@ msgstr ""
 msgid "Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories."
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:725
+#: src/helpers/searchableCheckboxMultiSelect.ts:728
 #: src/tachyon/tabs/dashboard/dashboardLayout.ts:2029
 #: src/tachyon/tabs/dashboard/dashboardLayout.ts:2105
 #: src/views/section.ts:13215
@@ -8851,8 +8851,8 @@ msgstr ""
 msgid "Invalid transfer code"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1213
-#: src/helpers/searchableCheckboxMultiSelect.ts:1423
+#: src/helpers/searchableCheckboxMultiSelect.ts:1216
+#: src/helpers/searchableCheckboxMultiSelect.ts:1426
 #: src/views/conditions.ts:907
 msgid "Invalid value"
 msgstr ""
@@ -10469,7 +10469,7 @@ msgstr ""
 msgid "No matchers set"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1117
+#: src/helpers/searchableCheckboxMultiSelect.ts:1120
 msgid "No matches found"
 msgstr ""
 
@@ -10485,7 +10485,7 @@ msgstr ""
 msgid "No more versions found"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1118
+#: src/helpers/searchableCheckboxMultiSelect.ts:1121
 msgid "No options available"
 msgstr ""
 
@@ -12888,8 +12888,8 @@ msgstr ""
 msgid "Removal completed successfully!"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:877
-#: src/helpers/searchableCheckboxMultiSelect.ts:878
+#: src/helpers/searchableCheckboxMultiSelect.ts:880
+#: src/helpers/searchableCheckboxMultiSelect.ts:881
 #: src/views/section.ts:12443
 msgid "Remove"
 msgstr ""
@@ -13913,12 +13913,15 @@ msgstr ""
 msgid "Search domain, IP, rule or client..."
 msgstr ""
 
+#: src/helpers/searchableCheckboxMultiSelect.ts:678
+msgid "Search or enter custom value..."
+msgstr ""
+
 #: src/tachyon/commandPalette.ts:561
 msgid "Search tabs, nodes, settings, themes or actions..."
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:680
-#: src/helpers/searchableCheckboxMultiSelect.ts:681
+#: src/helpers/searchableCheckboxMultiSelect.ts:679
 msgid "Search..."
 msgstr ""
 
@@ -14284,7 +14287,7 @@ msgstr ""
 msgid "Select the section to route router's own traffic through."
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:705
+#: src/helpers/searchableCheckboxMultiSelect.ts:708
 msgid "Select visible"
 msgstr ""
 
@@ -14304,7 +14307,7 @@ msgstr ""
 msgid "Select which routing Sections use this Condition (automatically updates the section's Attached Conditions)."
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:836
+#: src/helpers/searchableCheckboxMultiSelect.ts:839
 #: src/tachyon/tabs/dashboard/initController.ts:3122
 #: src/tachyon/tabs/dashboard/initController.ts:3770
 msgid "Selected"
@@ -14834,7 +14837,7 @@ msgstr ""
 msgid "Show hidden sections, subscriptions, and servers"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:912
+#: src/helpers/searchableCheckboxMultiSelect.ts:915
 msgid "Show less"
 msgstr ""
 
@@ -14846,7 +14849,7 @@ msgstr ""
 msgid "Show metadata on dashboard"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1041
+#: src/helpers/searchableCheckboxMultiSelect.ts:1044
 #: src/tachyon/studioDeck.ts:4932
 #: src/tachyon/studioDeck.ts:4958
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:976
@@ -18710,7 +18713,7 @@ msgstr ""
 msgid "min/day"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:913
+#: src/helpers/searchableCheckboxMultiSelect.ts:916
 msgid "more"
 msgstr ""
 
@@ -18803,7 +18806,7 @@ msgstr ""
 msgid "quarantine"
 msgstr ""
 
-#: src/helpers/searchableCheckboxMultiSelect.ts:1041
+#: src/helpers/searchableCheckboxMultiSelect.ts:1044
 msgid "remaining"
 msgstr ""
 

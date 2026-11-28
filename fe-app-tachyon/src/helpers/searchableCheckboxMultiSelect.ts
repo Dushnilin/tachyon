@@ -674,11 +674,14 @@ export function createSearchableCheckboxMultiSelect(
     ],
   ) as HTMLButtonElement;
 
+  const defaultSearchPlaceholder = allowCustom
+    ? tr('Поиск или ввод своего значения...', 'Search or enter custom value...')
+    : tr('Поиск...', 'Search...');
   const searchInput = createDomEl('input', {
     type: 'text',
     class: 'tachyon-ms__search-input',
-    placeholder: options.searchPlaceholder || tr('Поиск...', 'Search...'),
-    'aria-label': options.searchPlaceholder || tr('Поиск...', 'Search...'),
+    placeholder: options.searchPlaceholder || defaultSearchPlaceholder,
+    'aria-label': options.searchPlaceholder || defaultSearchPlaceholder,
   }) as HTMLInputElement;
 
   const searchClearBtn = createDomEl(

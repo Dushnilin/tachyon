@@ -18337,6 +18337,8 @@ fn parse_tdns_dns_server_entry(tag: &str, raw: &str, detour: Option<&str>) -> Op
     let mut fp = "chrome".to_string();
     let mut padding: u64 = 512;
     let mut batch_ms: u64 = 6;
+    let mut pin: Option<String> = None;
+    let mut insecure = false;
     for pair in query_part.split('&') {
         let Some((k, v)) = pair.split_once('=') else {
             continue;
@@ -18366,11 +18368,44 @@ fn parse_tdns_dns_server_entry(tag: &str, raw: &str, detour: Option<&str>) -> Op
                     batch_ms = n.min(50);
                 }
             }
+            "pin" | "cert_sha256" | "certificate_sha256" => {
+                let lower_val = val.to_ascii_lowercase();
+                let norm = lower_val
+                    .strip_prefix("sha256:")
+                    .or_else(|| lower_val.strip_prefix("sha256/"))
+                    .unwrap_or(&lower_val)
+                    .trim()
+                    .to_string();
+                if norm.len() == 64 && norm.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    pin = Some(norm);
+                }
+            }
+            "insecure" | "allow_insecure" => {
+                insecure = matches!(
+                    val.to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                );
+            }
             _ => {}
         }
     }
     if mode != "h2" {
         return None;
+    }
+
+    let mut tls_obj = json!({
+        "enabled": true,
+        "server_name": sni,
+        "utls": {
+            "enabled": true,
+            "fingerprint": fp
+        }
+    });
+    if let Some(p) = pin {
+        tls_obj["certificate_sha256"] = json!(p);
+    }
+    if insecure {
+        tls_obj["insecure"] = json!(true);
     }
 
     let mut obj = json!({
@@ -18385,14 +18420,7 @@ fn parse_tdns_dns_server_entry(tag: &str, raw: &str, detour: Option<&str>) -> Op
         "psk": psk,
         "padding": padding,
         "batch_ms": batch_ms,
-        "tls": {
-            "enabled": true,
-            "server_name": sni,
-            "utls": {
-                "enabled": true,
-                "fingerprint": fp
-            }
-        }
+        "tls": tls_obj
     });
     if !crate::store::valid_ip_with_zone(host) {
         obj["domain_resolver"] = json!("dns-bootstrap");
@@ -34309,5 +34337,24 @@ proxies:
         assert_eq!(tdns["domain_resolver"], "dns-bootstrap");
         assert_eq!(tdns["tls"]["server_name"], "cdn.example.com");
         assert_eq!(tdns["tls"]["utls"]["fingerprint"], "chrome");
+    }
+
+    #[test]
+    fn tdns_uri_pin_and_insecure_compile_into_tls() {
+        let mut store = RouterStoreData::default();
+        let pin = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        store.settings.dns_servers = vec![format!(
+            "tdns://0123456789abcdef:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@48.102.165.41:2053/api/v2/telemetry/collect?mode=h2&codec=json&sni=48.102.165.41&fp=chrome&pad=512&batch=6&pin=SHA256:{pin}&insecure=1"
+        )];
+        let cfg = compile_core_config(&store).expect("compile tdns pinned core config");
+        let servers = cfg["dns"]["servers"].as_array().expect("dns servers");
+        let tdns = servers
+            .iter()
+            .find(|s| s["type"] == "tdns")
+            .expect("tdns server present");
+        assert_eq!(tdns["server"], "48.102.165.41");
+        assert_eq!(tdns["server_port"], 2053);
+        assert_eq!(tdns["tls"]["certificate_sha256"], pin);
+        assert_eq!(tdns["tls"]["insecure"], true);
     }
 }
