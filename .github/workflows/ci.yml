@@ -84,6 +84,13 @@ jobs:
           cargo check --locked --target arm-unknown-linux-musleabi
           cargo check --locked --target riscv64gc-unknown-linux-musl
 
+      - name: Build and package real ARMv6/ARMv7 release binaries
+        env:
+          TACHYON_TARGETS: "armv7-unknown-linux-musleabihf:armv7 arm-unknown-linux-musleabi:armv6"
+          TACHYON_BUILD_STD: "0"
+          SKIP_FE_BUILD: "1"
+        run: bash ./build.sh 2.0.0-ci /tmp/tachyon-arm-packages
+
   frontend:
     name: Frontend CI & Locale Sync
     runs-on: ubuntu-latest
@@ -128,6 +135,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify OpenWrt package service hooks
+        run: python3 tools/test_openwrt_service_state.py
+
       - name: Run ShellCheck on scripts
         run: |
           shellcheck --severity=error \
@@ -141,7 +151,8 @@ jobs:
             entware/ndm/fs.d/100-tachyon.sh \
             .githooks/pre-push
 
-      - name: Verify packager script syntax and Entware packaging tests
+      - name: Verify packager script syntax and packaging tests
         run: |
           python3 -m py_compile tools/build_openwrt_pkg.py tools/build_entware_pkg.py
           python3 tools/test_entware_pkg.py
+          python3 tools/test_openwrt_pkg.py
