@@ -11122,13 +11122,13 @@ impl AppState {
     /// Re-read and validate store JSON from disk (e.g. after an external edit via SSH/script).
     /// Preserves rejected file on error without silently rolling back to `known_good`.
     pub async fn reload_from_disk(&self) -> anyhow::Result<bool> {
+        // Read and publish under the same lock used by in-process store writers.
+        let mut current = self.data.write().await;
         let raw = std::fs::read_to_string(&self.path)?;
         let (mut parsed, normalized) = match parse_store_from_str_tolerant(&raw) {
             Ok(res) => res,
             Err(e) => {
-                if let Ok(bytes) = std::fs::read(&self.path) {
-                    let _ = save_rejected_store_backup(&self.path, &bytes);
-                }
+                let _ = save_rejected_store_backup(&self.path, raw.as_bytes());
                 anyhow::bail!("Failed to parse {}: {e:#}", self.path.display());
             }
         };
@@ -11136,13 +11136,11 @@ impl AppState {
         if migrated {
             let _ = write_store_json_if_changed(&self.path, &parsed);
         }
-        {
-            let mut guard = self.data.write().await;
-            *guard = parsed;
-        }
+        *current = parsed;
         self.dirty.store(false, Ordering::Release);
         self.bump_generation();
         self.refresh_disk_fingerprint();
+        drop(current);
         self.live.write().await.push_event(
             "info",
             "store",
@@ -13970,6 +13968,40 @@ config outbound_source 'awg31_src'
             assert_eq!(d.settings.log_level, "debug");
         });
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_store_reload_reads_disk_after_pending_writer_finishes() {
+        use std::future::{Future, poll_fn};
+        use std::task::Poll;
+
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon-reload-order-{}-{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let state = AppState::load_or_create(tmp_dir.join("tachyon.json")).expect("init store");
+
+        let mut writer = state.data.write().await;
+        writer.settings.log_level = "debug".to_owned();
+        write_store_json_if_changed(&state.path, &writer).expect("save first version");
+
+        // Poll while the writer holds the lock, so the ordering is deterministic.
+        let mut reload = std::pin::pin!(state.reload_from_disk());
+        poll_fn(|cx| {
+            assert!(reload.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+
+        writer.settings.log_level = "warn".to_owned();
+        write_store_json_if_changed(&state.path, &writer).expect("save newer version");
+        drop(writer);
+
+        assert!(reload.await.expect("reload"));
+        assert_eq!(state.data.read().await.settings.log_level, "warn");
+        assert!(!state.is_disk_modified_externally());
+        std::fs::remove_dir_all(tmp_dir).expect("clean test files");
     }
 
     #[test]
