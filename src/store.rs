@@ -12178,11 +12178,12 @@ config guest_mode 'guest'
         assert!(!write_store_json_if_changed(&path, &data).expect("identical write"));
         assert_eq!(std::fs::metadata(&path).unwrap().ino(), original.ino());
 
-        data.settings.log_level = "warn".into();
+        assert_ne!(data.settings.log_level, "info");
+        data.settings.log_level = "info".into();
         assert!(write_store_json_if_changed(&path, &data).expect("changed write"));
         let actual: RouterStoreData =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).expect("read store");
-        assert_eq!(actual.settings.log_level, "warn");
+        assert_eq!(actual.settings.log_level, "info");
         assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
         std::fs::remove_dir_all(dir).expect("clean test files");
     }
