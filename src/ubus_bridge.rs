@@ -5592,6 +5592,7 @@ fn lookup_uri_by_tag<'a>(
 fn build_outbound_metadata_and_links(
     store: &crate::store::RouterStoreData,
     section: &str,
+    include_links: bool,
 ) -> (Value, Map<String, Value>, Map<String, Value>) {
     let mut names = Map::new();
     let mut countries = Map::new();
@@ -5638,30 +5639,32 @@ fn build_outbound_metadata_and_links(
 
         let mut uri_by_tag: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
-        for node in &src.cached_nodes {
-            if !node.raw_uri.trim().is_empty() {
-                uri_by_tag.insert(node.tag.clone(), node.raw_uri.clone());
-                if !src.node_prefix.trim().is_empty() {
-                    uri_by_tag.insert(
-                        format!("{}{}", src.node_prefix, node.tag),
-                        node.raw_uri.clone(),
-                    );
+        if include_links {
+            for node in &src.cached_nodes {
+                if !node.raw_uri.trim().is_empty() {
+                    uri_by_tag.insert(node.tag.clone(), node.raw_uri.clone());
+                    if !src.node_prefix.trim().is_empty() {
+                        uri_by_tag.insert(
+                            format!("{}{}", src.node_prefix, node.tag),
+                            node.raw_uri.clone(),
+                        );
+                    }
                 }
             }
-        }
-        for (idx, raw) in src.proxy_links.iter().enumerate() {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            if let Some(parsed) = crate::config_gen::parse_proxy_uri(trimmed, idx) {
-                uri_by_tag
-                    .entry(parsed.tag.clone())
-                    .or_insert_with(|| trimmed.to_string());
-                if !src.node_prefix.trim().is_empty() {
+            for (idx, raw) in src.proxy_links.iter().enumerate() {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                if let Some(parsed) = crate::config_gen::parse_proxy_uri(trimmed, idx) {
                     uri_by_tag
-                        .entry(format!("{}{}", src.node_prefix, parsed.tag))
+                        .entry(parsed.tag.clone())
                         .or_insert_with(|| trimmed.to_string());
+                    if !src.node_prefix.trim().is_empty() {
+                        uri_by_tag
+                            .entry(format!("{}{}", src.node_prefix, parsed.tag))
+                            .or_insert_with(|| trimmed.to_string());
+                    }
                 }
             }
         }
@@ -5850,7 +5853,7 @@ async fn get_subscription_metadata_cached_json(state: &AppState, section: &str) 
 }
 
 fn read_pure_rust_outbound_metadata(store: &crate::store::RouterStoreData, section: &str) -> Value {
-    let (mut meta_val, _, _) = build_outbound_metadata_and_links(store, section);
+    let (mut meta_val, _, _) = build_outbound_metadata_and_links(store, section, false);
     let has_any = meta_val
         .get("names")
         .and_then(Value::as_object)
@@ -6027,7 +6030,8 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
         }
         let fname = format!("{}.json", sec.id);
         active_files.insert(fname.clone());
-        let (outbound_meta, links, hidden) = build_outbound_metadata_and_links(store, &sec.id);
+        let (outbound_meta, links, hidden) =
+            build_outbound_metadata_and_links(store, &sec.id, true);
         let sub_meta = read_pure_rust_subscription_metadata(store, &sec.id);
         let (urltest_groups, priority_groups) = balancer_caches
             .remove(&sec.id)
@@ -6047,7 +6051,7 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
     // Aggregate all sources (including unassigned subscriptions/nodes) in `_sources.json`
     active_files.insert("_sources.json".to_string());
     let (all_outbound_meta, all_links, all_hidden) =
-        build_outbound_metadata_and_links(store, "_sources");
+        build_outbound_metadata_and_links(store, "_sources", true);
     let all_sub_meta = read_pure_rust_subscription_metadata(store, "_sources");
     let sources_payload = json!({
         "section": "_sources",
@@ -7916,7 +7920,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         .collect();
 
     // Aggregate outbounds & protocols from /connections and /tachyon/flight
-    let mut outbound_map: std::collections::HashMap<String, (u64, u64, u64, u64)> =
+    let mut outbound_map: std::collections::HashMap<&str, (u64, u64, u64, u64)> =
         std::collections::HashMap::new();
     let mut tcp_count = 0u64;
     let mut udp_count = 0u64;
@@ -7933,14 +7937,17 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                 .get("metadata")
                 .and_then(|m| m.get("network"))
                 .and_then(Value::as_str)
-                .unwrap_or("tcp")
-                .to_ascii_lowercase();
+                .unwrap_or("tcp");
             let dst_port = c
                 .get("metadata")
                 .and_then(|m| m.get("destinationPort"))
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            if net.contains("udp") {
+            if net
+                .as_bytes()
+                .windows(3)
+                .any(|part| part.eq_ignore_ascii_case(b"udp"))
+            {
                 if dst_port == "443" {
                     quic_count += 1;
                 } else {
@@ -7954,8 +7961,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                 .and_then(Value::as_array)
                 .and_then(|a| a.first())
                 .and_then(Value::as_str)
-                .unwrap_or("direct-out")
-                .to_string();
+                .unwrap_or("direct-out");
             let up = c.get("upload").and_then(Value::as_u64).unwrap_or(0);
             let down = c.get("download").and_then(Value::as_u64).unwrap_or(0);
             let entry = outbound_map.entry(chain).or_insert((0, 0, 0, 0));
@@ -7974,11 +7980,10 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                 let outbound = e
                     .get("outbound")
                     .and_then(Value::as_str)
-                    .unwrap_or("direct-out")
-                    .to_string();
+                    .unwrap_or("direct-out");
                 let up = e.get("upload").and_then(Value::as_u64).unwrap_or(0);
                 let down = e.get("download").and_then(Value::as_u64).unwrap_or(0);
-                let entry = outbound_map.entry(outbound.clone()).or_insert((0, 0, 0, 0));
+                let entry = outbound_map.entry(outbound).or_insert((0, 0, 0, 0));
                 entry.1 = entry.1.saturating_add(up);
                 entry.2 = entry.2.saturating_add(down);
                 entry.3 += 1;
@@ -7998,7 +8003,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                     "host": e.get("host").and_then(Value::as_str).unwrap_or(""),
                     "destination": e.get("destination").and_then(Value::as_str).unwrap_or(""),
                     "outbound": outbound,
-                    "outbound_display_name": resolve_telemetry_tag_display_name(&outbound, &tag_display_map, &store_snap),
+                    "outbound_display_name": resolve_telemetry_tag_display_name(outbound, &tag_display_map, &store_snap),
                     "rule": short_rule,
                     "upload": up,
                     "download": down,
@@ -8009,7 +8014,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         }
     }
 
-    let mut outbounds_vec: Vec<(String, u64, u64, u64, u64)> = outbound_map
+    let mut outbounds_vec: Vec<(&str, u64, u64, u64, u64)> = outbound_map
         .into_iter()
         .map(|(k, (act, up, down, hits))| (k, act, up, down, hits))
         .collect();
@@ -8019,7 +8024,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         .take(8)
         .map(|(tag, act, up, down, hits)| {
             let display_name =
-                resolve_telemetry_tag_display_name(&tag, &tag_display_map, &store_snap);
+                resolve_telemetry_tag_display_name(tag, &tag_display_map, &store_snap);
             json!({
                 "tag": tag,
                 "display_name": display_name,
@@ -19848,7 +19853,7 @@ tls=TLSv1.3
             make_src("sub_three", false),
         ];
 
-        let (meta1, links1, hidden1) = build_outbound_metadata_and_links(&store, "Main");
+        let (meta1, links1, hidden1) = build_outbound_metadata_and_links(&store, "Main", true);
         let names1 = meta1["names"].as_object().unwrap();
         assert!(names1.contains_key("🇪🇪 Эстония"));
         assert!(names1.contains_key("🇪🇪 Эстония-1"));
@@ -19862,7 +19867,7 @@ tls=TLSv1.3
         assert!(meta1["internal_hidden"].get("Авто").is_none());
 
         store.sections[0].outbound_source_refs.reverse();
-        let (meta2, _, _) = build_outbound_metadata_and_links(&store, "Main");
+        let (meta2, _, _) = build_outbound_metadata_and_links(&store, "Main", false);
         let ee_count = meta2["names"]
             .as_object()
             .unwrap()

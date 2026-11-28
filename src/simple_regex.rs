@@ -688,74 +688,92 @@ fn parse_pattern_and_flags(raw: &str) -> Option<(&str, bool)> {
 /// Defaults to case-insensitive matching; `(?-i)` disables it and `/pat/i` wrappers
 /// are unwrapped automatically. Malformed or overly complex patterns return `false`.
 pub fn regex_is_match(pattern: &str, text: &str) -> bool {
-    let Some((pat, case_insensitive)) = parse_pattern_and_flags(pattern) else {
-        return false;
-    };
+    CompiledRegex::new(pattern).is_some_and(|regex| regex.is_match(text))
+}
 
-    let pat_chars: Vec<char> = pat.chars().collect();
-    let mut parser = Parser {
-        chars: &pat_chars,
-        pos: 0,
-    };
-    let Ok(ast) = parser.parse_alt(0) else {
-        return false;
-    };
-    if parser.pos != pat_chars.len() {
-        return false;
+pub(crate) struct CompiledRegex {
+    states: Vec<State>,
+    start: usize,
+    case_insensitive: bool,
+}
+
+impl CompiledRegex {
+    pub(crate) fn new(pattern: &str) -> Option<Self> {
+        let (pat, case_insensitive) = parse_pattern_and_flags(pattern)?;
+
+        let pat_chars: Vec<char> = pat.chars().collect();
+        let mut parser = Parser {
+            chars: &pat_chars,
+            pos: 0,
+        };
+        let Ok(ast) = parser.parse_alt(0) else {
+            return None;
+        };
+        if parser.pos != pat_chars.len() {
+            return None;
+        }
+
+        let mut builder = NfaBuilder::new();
+        let Ok(frag) = builder.compile(&ast) else {
+            return None;
+        };
+        let Ok(match_state) = builder.push(State::Match) else {
+            return None;
+        };
+        builder.patch_end(frag.end, match_state);
+
+        Some(Self {
+            states: builder.states,
+            start: frag.start,
+            case_insensitive,
+        })
     }
 
-    let mut builder = NfaBuilder::new();
-    let Ok(frag) = builder.compile(&ast) else {
-        return false;
-    };
-    let Ok(match_state) = builder.push(State::Match) else {
-        return false;
-    };
-    builder.patch_end(frag.end, match_state);
+    pub(crate) fn is_match(&self, text: &str) -> bool {
+        let states = &self.states;
+        let text_chars: Vec<char> = text.chars().collect();
 
-    let states = builder.states;
-    let text_chars: Vec<char> = text.chars().collect();
+        let mut current = Vec::with_capacity(16);
+        let mut active_steps = Vec::with_capacity(16);
+        let mut next_states = Vec::with_capacity(16);
+        let mut stack = Vec::with_capacity(states.len());
+        let mut visited = vec![false; states.len()];
 
-    let mut current = Vec::with_capacity(16);
-    let mut active_steps = Vec::with_capacity(16);
-    let mut next_states = Vec::with_capacity(16);
-    let mut stack = Vec::with_capacity(states.len());
-    let mut visited = vec![false; states.len()];
-
-    for pos in 0..=text_chars.len() {
-        if !current.contains(&frag.start) {
-            current.push(frag.start);
-        }
-        if expand_epsilon(
-            &states,
-            &current,
-            pos,
-            &text_chars,
-            &mut visited,
-            &mut stack,
-            &mut active_steps,
-        ) {
-            return true;
-        }
-        if pos == text_chars.len() {
-            break;
-        }
-
-        let ch = text_chars[pos];
-        next_states.clear();
-        for &step_idx in &active_steps {
-            if let State::Step(matcher, out) = &states[step_idx]
-                && matcher.matches(ch, case_insensitive)
-                && *out != UNSET
-                && !next_states.contains(out)
-            {
-                next_states.push(*out);
+        for pos in 0..=text_chars.len() {
+            if !current.contains(&self.start) {
+                current.push(self.start);
             }
-        }
-        std::mem::swap(&mut current, &mut next_states);
-    }
+            if expand_epsilon(
+                states,
+                &current,
+                pos,
+                &text_chars,
+                &mut visited,
+                &mut stack,
+                &mut active_steps,
+            ) {
+                return true;
+            }
+            if pos == text_chars.len() {
+                break;
+            }
 
-    false
+            let ch = text_chars[pos];
+            next_states.clear();
+            for &step_idx in &active_steps {
+                if let State::Step(matcher, out) = &states[step_idx]
+                    && matcher.matches(ch, self.case_insensitive)
+                    && *out != UNSET
+                    && !next_states.contains(out)
+                {
+                    next_states.push(*out);
+                }
+            }
+            std::mem::swap(&mut current, &mut next_states);
+        }
+
+        false
+    }
 }
 
 #[cfg(test)]

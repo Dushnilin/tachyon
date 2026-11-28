@@ -13766,7 +13766,7 @@ pub fn resolve_section_allowed_member_tags(
     }
 
     candidate_tags = filter_section_subscription_keywords(
-        &candidate_tags,
+        candidate_tags,
         sec,
         &store.outbound_sources,
         &source_tag_map,
@@ -18769,7 +18769,8 @@ struct OutboundFilterMeta {
 struct FilterCriteria<'a> {
     prefixes: &'a [String],
     outbounds_filter: &'a [String],
-    regexes: &'a [String],
+    regexes: &'a [crate::simple_regex::CompiledRegex],
+    regex_configured: bool,
     countries_upper: &'a [String],
     proxy_params_enabled: bool,
     proxy_operator_or: bool,
@@ -19072,17 +19073,15 @@ fn candidate_matches_criteria(
             .outbounds_filter
             .iter()
             .any(|flt| server_tag_matches(tag, flt, known_prefixes)))
-        || criteria.regexes.iter().any(|pat| {
-            let p = pat.trim();
-            !p.is_empty()
-                && (crate::simple_regex::regex_is_match(p, tag)
-                    || crate::simple_regex::regex_is_match(p, display_name))
-        });
+        || criteria
+            .regexes
+            .iter()
+            .any(|regex| regex.is_match(tag) || regex.is_match(display_name));
     let country_matched =
         !country_upper.is_empty() && criteria.countries_upper.iter().any(|c| c == country_upper);
     let base_configured = !criteria.prefixes.is_empty()
         || !criteria.outbounds_filter.is_empty()
-        || criteria.regexes.iter().any(|r| !r.trim().is_empty())
+        || criteria.regex_configured
         || !criteria.countries_upper.is_empty();
     let base_matches = prefix_matched || name_matched || country_matched;
 
@@ -19156,7 +19155,6 @@ fn apply_server_filter_spec(
             }
         }
     }
-    let outbound_meta = build_outbound_filter_meta_map(outbounds);
 
     let inc_countries_upper: Vec<String> = spec
         .include_countries
@@ -19171,10 +19169,22 @@ fn apply_server_filter_spec(
         .filter(|c| !c.is_empty())
         .collect();
 
+    let compile_regexes = |patterns: &[String]| {
+        patterns
+            .iter()
+            .filter_map(|pattern| crate::simple_regex::CompiledRegex::new(pattern.trim()))
+            .collect::<Vec<_>>()
+    };
+    let inc_regexes = compile_regexes(&spec.include_regex);
+    let exc_regexes = compile_regexes(&spec.exclude_regex);
     let inc_criteria = FilterCriteria {
         prefixes: &spec.include_prefixes,
         outbounds_filter: &spec.include_outbounds,
-        regexes: &spec.include_regex,
+        regexes: &inc_regexes,
+        regex_configured: spec
+            .include_regex
+            .iter()
+            .any(|pattern| !pattern.trim().is_empty()),
         countries_upper: &inc_countries_upper,
         proxy_params_enabled: spec.include_proxy_parameters,
         proxy_operator_or: false,
@@ -19186,7 +19196,11 @@ fn apply_server_filter_spec(
     let exc_criteria = FilterCriteria {
         prefixes: &spec.exclude_prefixes,
         outbounds_filter: &spec.exclude_outbounds,
-        regexes: &spec.exclude_regex,
+        regexes: &exc_regexes,
+        regex_configured: spec
+            .exclude_regex
+            .iter()
+            .any(|pattern| !pattern.trim().is_empty()),
         countries_upper: &exc_countries_upper,
         proxy_params_enabled: spec.exclude_proxy_parameters,
         proxy_operator_or: true,
@@ -19196,6 +19210,15 @@ fn apply_server_filter_spec(
         ports: &spec.exclude_ports,
     };
 
+    let needs_outbound_meta = [&inc_criteria, &exc_criteria].into_iter().any(|criteria| {
+        criteria.proxy_params_enabled
+            && !(criteria.protocols.is_empty()
+                && criteria.transports.is_empty()
+                && criteria.securities.is_empty()
+                && criteria.ports.is_empty())
+    });
+    let outbound_meta = needs_outbound_meta.then(|| build_outbound_filter_meta_map(outbounds));
+    let needs_country = !inc_countries_upper.is_empty() || !exc_countries_upper.is_empty();
     let has_inc = spec.has_include_rules();
     let detect_mode_lc = spec.detect_server_country.trim().to_ascii_lowercase();
     let disable_country_detect = matches!(
@@ -19216,7 +19239,7 @@ fn apply_server_filter_spec(
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
             let display_name = display_name_for_filter(tag, tag_srcs, &known_prefixes);
-            let cc = if disable_country_detect {
+            let cc = if !needs_country || disable_country_detect {
                 String::new()
             } else if use_flag_only {
                 extract_flag_emoji_country_code(display_name)
@@ -19225,7 +19248,9 @@ fn apply_server_filter_spec(
                 detect_country_code(tag)
             }
             .to_ascii_uppercase();
-            let ob_meta = outbound_meta.get(tag.as_str());
+            let ob_meta = outbound_meta
+                .as_ref()
+                .and_then(|meta| meta.get(tag.as_str()));
 
             let is_included = candidate_matches_criteria(
                 tag,
@@ -19561,7 +19586,7 @@ fn push_legacy_pipe_or_regex(target: &mut Vec<String>, raw: &str) {
 }
 
 fn filter_section_subscription_keywords(
-    candidate_tags: &[String],
+    candidate_tags: Vec<String>,
     sec: &RoutingSection,
     sources: &[OutboundSource],
     source_tag_map: &HashMap<String, Vec<String>>,
@@ -19570,7 +19595,7 @@ fn filter_section_subscription_keywords(
     if sec.subscription_filter_include_keywords.is_empty()
         && sec.subscription_filter_exclude_keywords.is_empty()
     {
-        return candidate_tags.to_vec();
+        return candidate_tags;
     }
     let mut sub_tags: HashSet<&str> = HashSet::new();
     for src in sources {
@@ -19591,7 +19616,7 @@ fn filter_section_subscription_keywords(
         })
         .collect();
     candidate_tags
-        .iter()
+        .into_iter()
         .filter(|tag| {
             if !sub_tags.contains(tag.as_str()) {
                 return true;
@@ -19606,7 +19631,6 @@ fn filter_section_subscription_keywords(
                 )
             }
         })
-        .cloned()
         .collect()
 }
 
@@ -19909,7 +19933,7 @@ fn resolve_section_outbound(
     visited.pop();
 
     candidate_tags = filter_section_subscription_keywords(
-        &candidate_tags,
+        candidate_tags,
         sec,
         sources,
         source_tag_map,
@@ -20761,7 +20785,7 @@ pub fn build_all_section_balancer_caches(
             }
         }
         candidate_tags = filter_section_subscription_keywords(
-            &candidate_tags,
+            candidate_tags,
             sec,
             &store.outbound_sources,
             &source_tag_map,

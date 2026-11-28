@@ -4705,8 +4705,7 @@ impl CoreManager {
 
             // Check if `tachyon-core` `/providers/proxies` has `subscriptionInfo` for this source
             if let Some(pmap) = fresh_providers.as_ref().or(providers_map.as_ref())
-                && let Some(prov) = pmap.pointer(&format!("/providers/{}", src.id))
-                && let Some(sub_info) = prov.get("subscriptionInfo")
+                && let Some(sub_info) = subscription_info_for_source(pmap, &src.id)
             {
                 if let Some(u) = sub_info.get("Upload").and_then(Value::as_u64) {
                     src.sub_upload_bytes = u;
@@ -4868,12 +4867,6 @@ impl CoreManager {
 
         // Re-read fresh state right before committing so concurrent config edits are preserved.
         let finish_ts = unix_now_secs().max(now);
-        {
-            let mut attempts = self.sub_last_attempt.lock().await;
-            for res in &fetched_results {
-                attempts.insert(res.id.clone(), finish_ts);
-            }
-        }
         let mut candidate = self.state.data.read().await.clone();
         let mut updated_sources = 0usize;
         let mut persist_needed = false;
@@ -4888,6 +4881,15 @@ impl CoreManager {
             else {
                 continue;
             };
+            // The ID alone is not enough: a request may have been in flight
+            // while its source was edited. Do not apply old nodes or metadata.
+            if !snapshot
+                .outbound_sources
+                .iter()
+                .any(|original| subscription_request_unchanged(original, src))
+            {
+                continue;
+            }
             let static_meta_changed = src.sub_title != res.updated_src.sub_title
                 || src.sub_support_url != res.updated_src.sub_support_url
                 || src.sub_web_page_url != res.updated_src.sub_web_page_url
@@ -4953,6 +4955,14 @@ impl CoreManager {
             ));
         }
 
+        // A discarded response must not delay the next refresh of the edited source.
+        {
+            let mut attempts = self.sub_last_attempt.lock().await;
+            for (id, ..) in &mem_updates {
+                attempts.insert(id.clone(), finish_ts);
+            }
+        }
+
         if persist_needed {
             if let Err(e) = transaction::commit_transaction_with_source(
                 &self.state,
@@ -4979,6 +4989,10 @@ impl CoreManager {
                     .outbound_sources
                     .iter_mut()
                     .find(|s| s.id == id && s.source_type == "subscription")
+                    && snapshot
+                        .outbound_sources
+                        .iter()
+                        .any(|original| subscription_request_unchanged(original, src))
                 {
                     src.last_updated_unix = ts;
                     src.sub_last_error = err;
@@ -7326,6 +7340,51 @@ fn extract_semver_token(raw: &str) -> Option<String> {
     None
 }
 
+// Provider IDs are literal object keys, not JSON Pointer path components.
+fn subscription_info_for_source<'a>(listing: &'a Value, source_id: &str) -> Option<&'a Value> {
+    listing
+        .get("providers")?
+        .as_object()?
+        .get(source_id)?
+        .get("subscriptionInfo")
+}
+
+// Compare the source inputs captured before network I/O, not the fetched
+// metadata or the lossy node-reload fingerprint. This is a source-level
+// guard; it does not replace transaction-level concurrency control.
+fn subscription_request_unchanged(
+    original: &crate::store::OutboundSource,
+    current: &crate::store::OutboundSource,
+) -> bool {
+    original.id == current.id
+        && original.source_type == current.source_type
+        && original.enabled == current.enabled
+        && original.subscription_urls == current.subscription_urls
+        && original.subscription_update_interval == current.subscription_update_interval
+        && original.subscription_update_jitter == current.subscription_update_jitter
+        && original.subscription_update_enabled == current.subscription_update_enabled
+        && original.subscription_engine == current.subscription_engine
+        && original.subscription_insecure == current.subscription_insecure
+        && original.subscription_filter_include_keywords
+            == current.subscription_filter_include_keywords
+        && original.subscription_filter_exclude_keywords
+            == current.subscription_filter_exclude_keywords
+        && original.download_via_proxy_enabled == current.download_via_proxy_enabled
+        && original.download_via_proxy_section == current.download_via_proxy_section
+        && original.auto_user_agent == current.auto_user_agent
+        && original.user_agent == current.user_agent
+        && original.sub_preferred_user_agent == current.sub_preferred_user_agent
+        && original.auto_hwid == current.auto_hwid
+        && original.hwid == current.hwid
+        && original.custom_device_headers == current.custom_device_headers
+        && original.device_os == current.device_os
+        && original.ver_os == current.ver_os
+        && original.device_model == current.device_model
+        && original.device_locale == current.device_locale
+        && original.app_version == current.app_version
+        && original.accept_language == current.accept_language
+}
+
 /// Strip volatile `tls.reality.short_id` rotation and dynamic traffic/expiry telemetry
 /// from node tags before comparing fetched subscription nodes against cached nodes,
 /// avoiding pointless core hot-reloads that drop active client connections.
@@ -7637,6 +7696,87 @@ fn parse_subscription_interval_secs(raw: &str) -> u64 {
 mod core_mgr_tests {
     use super::*;
     use crate::store::ParsedProxyNode;
+
+    #[test]
+    fn test_subscription_info_uses_literal_provider_key() {
+        let listing = json!({
+            "providers": {
+                "plain": {"subscriptionInfo": {"Upload": 1}},
+                "a/b": {"subscriptionInfo": {"Upload": 2}},
+                "a~1b": {"subscriptionInfo": {"Upload": 3}},
+                "a": {"b": {"subscriptionInfo": {"Upload": 99}}},
+                "no_info": {}
+            }
+        });
+        for (id, upload) in [("plain", 1), ("a/b", 2), ("a~1b", 3)] {
+            assert_eq!(
+                subscription_info_for_source(&listing, id),
+                Some(&json!({"Upload": upload}))
+            );
+        }
+        assert!(subscription_info_for_source(&listing, "missing").is_none());
+        assert!(subscription_info_for_source(&listing, "no_info").is_none());
+        assert!(subscription_info_for_source(&json!({"providers": []}), "0").is_none());
+    }
+
+    #[test]
+    fn test_subscription_request_unchanged_rejects_source_edits() {
+        let original = crate::store::OutboundSource {
+            id: "fixture".into(),
+            source_type: "subscription".into(),
+            enabled: true,
+            subscription_urls: vec!["https://example.invalid/a".into()],
+            ..Default::default()
+        };
+        assert!(subscription_request_unchanged(&original, &original));
+
+        let mut changed = original.clone();
+        changed.subscription_urls = vec!["https://example.invalid/b".into()];
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.hwid = "different".into();
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.user_agent = "different".into();
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.enabled = false;
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.download_via_proxy_section = "other".into();
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.subscription_insecure = true;
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.device_model = "different".into();
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.subscription_filter_exclude_keywords = vec!["other".into()];
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.id = "other".into();
+        assert!(!subscription_request_unchanged(&original, &changed));
+        changed = original.clone();
+        changed.source_type = "proxy_links".into();
+        assert!(!subscription_request_unchanged(&original, &changed));
+    }
+
+    #[test]
+    fn test_subscription_request_unchanged_ignores_response_telemetry() {
+        let original = crate::store::OutboundSource {
+            id: "fixture".into(),
+            source_type: "subscription".into(),
+            ..Default::default()
+        };
+        let mut updated = original.clone();
+        updated.sub_title = "new metadata".into();
+        updated.sub_upload_bytes = 12;
+        updated.sub_download_bytes = 34;
+        updated.sub_last_error = "old error".into();
+        updated.last_updated_unix = 123;
+        assert!(subscription_request_unchanged(&original, &updated));
+    }
 
     #[test]
     fn test_extract_semver_token_and_short_id_ignore() {
