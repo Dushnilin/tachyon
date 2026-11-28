@@ -21055,12 +21055,19 @@ fn find_local_initial_ruleset_path(
         let mut roots: Vec<&std::path::Path> = vec![std::path::Path::new(dir_str)];
         #[cfg(target_os = "linux")]
         {
-            let tmp = std::path::Path::new("/tmp/tachyon-core/rulesets");
-            if tmp != std::path::Path::new(dir_str) {
-                roots.push(tmp);
+            for extra in ["/tmp/tachyon-core/rulesets", "/etc/tachyon/rulesets"] {
+                let ep = std::path::Path::new(extra);
+                if !roots.contains(&ep) {
+                    roots.push(ep);
+                }
             }
         }
         let mut candidates: Vec<String> = Vec::new();
+        let mut push_cand = |c: String| {
+            if !c.is_empty() && !candidates.contains(&c) {
+                candidates.push(c);
+            }
+        };
         if let Some(file_name) = base_url
             .split(['?', '#'])
             .next()
@@ -21068,16 +21075,30 @@ fn find_local_initial_ruleset_path(
             .map(str::trim)
             .filter(|n| !n.is_empty() && !n.contains(".."))
         {
-            candidates.push(file_name.to_string());
+            push_cand(file_name.to_string());
+            if !file_name.starts_with("community-") {
+                push_cand(format!("community-{file_name}"));
+            }
         }
         if let Some(rest) = rs_tag.strip_prefix("trs-")
             && !rest.is_empty()
         {
-            candidates.push(format!("{rest}.trs"));
-        } else if (rs_tag.starts_with("geoip-") || rs_tag.starts_with("geosite-"))
-            && !rs_tag.is_empty()
+            push_cand(format!("{rest}.trs"));
+            if !rest.starts_with("community-") {
+                push_cand(format!("community-{rest}.trs"));
+            }
+        } else if let Some(code) = rs_tag.strip_prefix("geoip-")
+            && !code.is_empty()
         {
-            candidates.push(format!("{rs_tag}.srs"));
+            push_cand(format!("geoip-{code}.srs"));
+            push_cand(format!("community-geoip_{code}.trs"));
+            push_cand(format!("geoip_{code}.trs"));
+        } else if let Some(code) = rs_tag.strip_prefix("geosite-")
+            && !code.is_empty()
+        {
+            push_cand(format!("geosite-{code}.srs"));
+            push_cand(format!("community-geosite_{code}.trs"));
+            push_cand(format!("geosite_{code}.trs"));
         }
         for root in roots {
             for name in &candidates {
@@ -27988,6 +28009,12 @@ AllowedIPs = 0.0.0.0/0
             b"TSRS\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
         )
         .unwrap();
+        let community_yt = tmp_dir.join("community-youtube.trs");
+        std::fs::write(
+            &community_yt,
+            b"TSRS\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+        )
+        .unwrap();
 
         let mut store = RouterStoreData::default();
         store.settings.rulesets_dir = tmp_dir.to_string_lossy().into_owned();
@@ -28064,6 +28091,17 @@ AllowedIPs = 0.0.0.0/0
         assert_eq!(
             rs_whitelist["initial_path"],
             json!(trs_path.to_string_lossy().replace('\\', "/"))
+        );
+
+        let rs_yt = cfg["route"]["rule_set"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["tag"] == "trs-youtube")
+            .expect("trs-youtube rule_set");
+        assert_eq!(
+            rs_yt["initial_path"],
+            json!(community_yt.to_string_lossy().replace('\\', "/"))
         );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);

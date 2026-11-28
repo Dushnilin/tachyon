@@ -3395,7 +3395,7 @@ fn list_interval_disabled(spec: &str) -> bool {
     )
 }
 
-fn extract_url_host(url: &str) -> String {
+pub(crate) fn extract_url_host(url: &str) -> String {
     url.split("://")
         .nth(1)
         .unwrap_or(url)

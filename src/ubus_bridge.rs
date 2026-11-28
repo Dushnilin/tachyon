@@ -2877,6 +2877,58 @@ fn is_fresh_non_empty_file(path: &Path, max_age_secs: u64) -> bool {
         .is_some_and(|age| age.as_secs() < max_age_secs)
 }
 
+async fn fetch_ruleset_candidates_bytes(
+    core: &CoreManager,
+    candidates: &[String],
+    ext: &str,
+    primary_proxy: Option<&str>,
+    fallback_proxy: Option<&str>,
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    let mut dead_hosts: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut last_err: Option<String> = None;
+    for cand in candidates {
+        let host = crate::updater::extract_url_host(cand);
+        if !host.is_empty() && dead_hosts.contains(&host) {
+            continue;
+        }
+        match Box::pin(core.curl_fetch_detailed(
+            cand,
+            false,
+            6,
+            primary_proxy,
+            fallback_proxy,
+            None,
+            &[],
+            false,
+        ))
+        .await
+        {
+            Ok(res) if res.status_code < 400 => {
+                if is_valid_ruleset_bytes_for_ext(&res.raw, ext) {
+                    return Ok(res.raw);
+                }
+                last_err = Some(format!(
+                    "downloaded ruleset payload invalid for {label} from {cand}"
+                ));
+            }
+            Ok(res) => {
+                if !host.is_empty() && res.status_code >= 500 {
+                    dead_hosts.insert(host);
+                }
+                last_err = Some(format!("HTTP {} for {cand}", res.status_code));
+            }
+            Err(e) => {
+                if !host.is_empty() {
+                    dead_hosts.insert(host);
+                }
+                last_err = Some(e.message);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| format!("all sources unreachable for {label}")))
+}
+
 async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Result<String, String> {
     let trimmed = raw_ref.trim();
     if trimmed.is_empty() {
@@ -2925,52 +2977,37 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
             return Ok(cache_path.to_string_lossy().into_owned());
         }
         if let Some(fname) = extract_safe_url_ruleset_filename(trimmed) {
+            let mut local_names = vec![fname.clone()];
+            if !fname.starts_with("community-") {
+                local_names.push(format!("community-{fname}"));
+            }
             for root in roots {
-                let local_p = root.join(&fname);
-                if local_p.is_file() && is_valid_ruleset_file_for_ext(&local_p, ext) {
-                    return Ok(local_p.to_string_lossy().into_owned());
+                for name in &local_names {
+                    let local_p = root.join(name);
+                    if local_p.is_file() && is_valid_ruleset_file_for_ext(&local_p, ext) {
+                        return Ok(local_p.to_string_lossy().into_owned());
+                    }
                 }
             }
         }
         let candidates = crate::updater::build_ruleset_fetch_candidates(trimmed, &github_mirror);
-        let mut fetched_bytes: Option<Vec<u8>> = None;
-        let mut last_err: Option<String> = None;
-        for cand in &candidates {
-            match Box::pin(core.curl_fetch_detailed(
-                cand,
-                false,
-                15,
-                primary_proxy.as_deref(),
-                fallback_proxy.as_deref(),
-                None,
-                &[],
-                false,
-            ))
-            .await
-            {
-                Ok(res) if res.status_code < 400 => {
-                    if is_valid_ruleset_bytes_for_ext(&res.raw, ext) {
-                        fetched_bytes = Some(res.raw);
-                        break;
-                    }
-                    last_err = Some(format!("downloaded ruleset payload invalid from {cand}"));
+        let bytes = match fetch_ruleset_candidates_bytes(
+            core,
+            &candidates,
+            ext,
+            primary_proxy.as_deref(),
+            fallback_proxy.as_deref(),
+            trimmed,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(err) => {
+                if cache_path.is_file() && is_valid_ruleset_file_for_ext(&cache_path, ext) {
+                    return Ok(cache_path.to_string_lossy().into_owned());
                 }
-                Ok(res) => {
-                    last_err = Some(format!("HTTP {} for {cand}", res.status_code));
-                }
-                Err(e) => {
-                    last_err = Some(e.message);
-                }
+                return Err(format!("failed to fetch remote ruleset: {err}"));
             }
-        }
-        let Some(bytes) = fetched_bytes else {
-            if cache_path.is_file() && is_valid_ruleset_file_for_ext(&cache_path, ext) {
-                return Ok(cache_path.to_string_lossy().into_owned());
-            }
-            return Err(format!(
-                "failed to fetch remote ruleset: {}",
-                last_err.unwrap_or_else(|| format!("unreachable {trimmed}"))
-            ));
         };
         std::fs::create_dir_all(cache_dir)
             .map_err(|e| format!("failed to create ruleset cache dir: {e}"))?;
@@ -3018,46 +3055,23 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
         "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{clean_name}.trs"
     );
     let candidates = crate::updater::build_ruleset_fetch_candidates(&primary_url, &github_mirror);
-    let mut fetched_bytes: Option<Vec<u8>> = None;
-    let mut last_err: Option<String> = None;
-    for cand in &candidates {
-        match Box::pin(core.curl_fetch_detailed(
-            cand,
-            false,
-            15,
-            primary_proxy.as_deref(),
-            fallback_proxy.as_deref(),
-            None,
-            &[],
-            false,
-        ))
-        .await
-        {
-            Ok(res) if res.status_code < 400 => {
-                if res.raw.len() <= MAX_RULESET_EXTRACT_BYTES
-                    && CoreManager::bytes_have_valid_trs_magic(&res.raw)
-                {
-                    fetched_bytes = Some(res.raw);
-                    break;
-                }
-                last_err = Some(format!("resolved ruleset '{alias}' has invalid payload"));
+    let bytes = match fetch_ruleset_candidates_bytes(
+        core,
+        &candidates,
+        ".trs",
+        primary_proxy.as_deref(),
+        fallback_proxy.as_deref(),
+        alias,
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(err) => {
+            if dest.is_file() && CoreManager::file_has_valid_trs_magic(&dest) {
+                return Ok(dest.to_string_lossy().into_owned());
             }
-            Ok(res) => {
-                last_err = Some(format!("HTTP {} for {cand}", res.status_code));
-            }
-            Err(e) => {
-                last_err = Some(e.message);
-            }
+            return Err(format!("failed to resolve ruleset '{alias}': {err}"));
         }
-    }
-    let Some(bytes) = fetched_bytes else {
-        if dest.is_file() && CoreManager::file_has_valid_trs_magic(&dest) {
-            return Ok(dest.to_string_lossy().into_owned());
-        }
-        return Err(format!(
-            "failed to resolve ruleset '{alias}': {}",
-            last_err.unwrap_or_else(|| "all sources unreachable".to_string())
-        ));
     };
     std::fs::create_dir_all(cache_dir)
         .map_err(|e| format!("failed to create ruleset cache dir: {e}"))?;
@@ -19593,6 +19607,12 @@ tls=TLSv1.3
             b"TSRS\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
         )
         .unwrap();
+        let community_block = rulesets_dir.join("community-block.trs");
+        std::fs::write(
+            &community_block,
+            b"TSRS\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+        )
+        .unwrap();
 
         let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
         {
@@ -19606,6 +19626,12 @@ tls=TLSv1.3
             .await
             .expect("must resolve local cached ru_whitelist.trs without hitting network");
         assert_eq!(PathBuf::from(resolved), trs_path);
+
+        let block_url = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/block.trs";
+        let resolved_block = resolve_and_extract_ruleset(block_url, &core)
+            .await
+            .expect("must resolve community-block.trs for block.trs URL");
+        assert_eq!(PathBuf::from(resolved_block), community_block);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
