@@ -718,6 +718,14 @@ pub fn write_file_if_changed_durable(path: &Path, content: &[u8]) -> std::io::Re
     }
 
     #[cfg(unix)]
+    sync_parent_dir(path);
+
+    Ok(true)
+}
+
+/// Best-effort persistence of a renamed directory entry on Unix filesystems.
+#[cfg(unix)]
+pub(crate) fn sync_parent_dir(path: &Path) {
     if let Some(parent) = path.parent() {
         let dir_path = if parent.as_os_str().is_empty() {
             Path::new(".")
@@ -728,8 +736,6 @@ pub fn write_file_if_changed_durable(path: &Path, content: &[u8]) -> std::io::Re
             let _ = dir.sync_all();
         }
     }
-
-    Ok(true)
 }
 
 #[cfg(test)]

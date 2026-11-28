@@ -648,6 +648,7 @@ pub fn promote_to_known_good(lkg_path: &Path, data: &RouterStoreData) -> anyhow:
 }
 
 /// Clone `RouterStoreData` onto the heap without keeping temporary stack copies in async futures.
+#[cfg(test)]
 #[inline(never)]
 fn clone_store_boxed(src: &RouterStoreData) -> Box<RouterStoreData> {
     Box::new(src.clone())
@@ -696,37 +697,28 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
         .await
         .map_err(|e| anyhow::anyhow!("Transaction compile task failed: {e}"))??;
 
-        // Phase 3: SNAPSHOT (capture current state on heap for instant LIFO rollback)
-        let mut previous = {
-            let guard = state.data.read().await;
-            clone_store_boxed(&guard)
-        };
-        if !state.lkg_path.exists() {
-            let _ = promote_to_known_good(&state.lkg_path, &previous);
-        }
+        // Keep the data lock through persistence, rollback and history. No other
+        // in-process writer may interleave with publication of these two files.
+        let recorded_id = {
+            let mut committed = state.data.write().await;
+            if !state.lkg_path.exists() {
+                let _ = promote_to_known_good(&state.lkg_path, &committed);
+            }
+            // Reuse the heap candidate as the rollback snapshot.
+            std::mem::swap(&mut *committed, &mut *candidate);
+            let mut previous = candidate;
 
-        // Phase 4: MUTATE (persist store JSON before writing compiled core config)
-        {
-            let mut d = state.data.write().await;
-            std::mem::swap(&mut *d, &mut *candidate);
-        }
-        drop(candidate);
+            if let Err(e) = state.save_locked(&committed) {
+                std::mem::swap(&mut *committed, &mut *previous);
+                state.bump_generation();
+                anyhow::bail!("Transaction commit failed, rolled back in-memory state: {e}");
+            }
 
-        if let Err(e) = state.save().await {
-            let mut d = state.data.write().await;
-            std::mem::swap(&mut *d, &mut *previous);
-            drop(d);
-            state.bump_generation();
-            anyhow::bail!("Transaction commit failed, rolled back in-memory state: {e}");
-        }
-
-        let core_cfg_res = {
-            let committed = state.data.read().await;
             let core_cfg_path = Path::new(&committed.settings.core_config_path);
-            crypto_gen::write_json_if_changed(core_cfg_path, &core_cfg)
+            let core_cfg_res = crypto_gen::write_json_if_changed(core_cfg_path, &core_cfg)
                 .map(|_| ())
                 .or_else(|e| {
-                    // Non-fatal on dev hosts where `/etc/tachyon-core` is not writable; fallback to local data dir
+                    // Preserve the existing development-host fallback.
                     if let Some(parent) = state.path.parent() {
                         let fallback_core = parent.join("tachyon-core-config.json");
                         crypto_gen::write_json_if_changed(&fallback_core, &core_cfg)
@@ -737,19 +729,20 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
                     } else {
                         Err(anyhow::anyhow!("{e}"))
                     }
-                })
-        };
-        if let Err(e) = core_cfg_res {
-            {
-                let mut d = state.data.write().await;
-                std::mem::swap(&mut *d, &mut *previous);
+                });
+            if let Err(e) = core_cfg_res {
+                std::mem::swap(&mut *committed, &mut *previous);
+                state.bump_generation();
+                if let Err(rollback) = state.save_locked(&committed) {
+                    anyhow::bail!(
+                        "Transaction commit failed writing core config: {e}; store rollback failed: {rollback}"
+                    );
+                }
+                anyhow::bail!(
+                    "Transaction commit failed writing core config, rolled back state: {e}"
+                );
             }
-            let _ = state.save().await;
-            anyhow::bail!("Transaction commit failed writing core config, rolled back state: {e}");
-        }
 
-        let recorded_id = {
-            let committed = state.data.read().await;
             match hist_dir.as_deref() {
                 Some(dir) => crate::config_history::record_commit_revision_in(
                     dir, &previous, &committed, source,
@@ -760,7 +753,6 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
             }
             .map(|s| s.id)
         };
-        drop(previous);
 
         // Phase 6-8: ACTIVATE & COMMIT (start LKG 180s observation window unless auto_rollback)
         {
@@ -833,6 +825,105 @@ pub async fn commit_transaction(
 mod tests {
     use super::*;
     use crate::store::{InboundServer, OutboundSource};
+
+    #[tokio::test]
+    async fn test_locked_transaction_core_write_failure_rolls_back_store() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon_tx_core_write_fail_{}_{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        std::fs::create_dir_all(&tmp_dir).expect("mkdir");
+        let store_path = tmp_dir.join("store.json");
+        let core_path = tmp_dir.join("blocked-core.json");
+        // Both the primary and fallback destination are directories, so
+        // atomic rename cannot publish a Core configuration at either path.
+        std::fs::create_dir(&core_path).expect("block primary");
+        std::fs::create_dir(tmp_dir.join("tachyon-core-config.json")).expect("block fallback");
+        let state = AppState::load_or_create(&store_path).expect("load store");
+        let mut candidate = {
+            let current = state.data.read().await;
+            clone_store_boxed(&current)
+        };
+        let original_label = candidate.sections[0].label.clone();
+        let original_bytes = std::fs::read(&store_path).expect("read original store");
+        candidate.settings.core_config_path = core_path.to_string_lossy().into_owned();
+        candidate.settings.tun_inet4 = "172.19.0.1/30".into();
+        candidate.settings.fakeip_inet4_range = "198.18.0.0/15".into();
+        candidate.settings.tun_inet6 = "fdfe:dcba:9876::1/126".into();
+        candidate.settings.fakeip_inet6_range = "fc00::/18".into();
+        candidate.sections[0].label = "must roll back".into();
+        let history_dir = tmp_dir.join("history");
+        let result = commit_transaction_boxed_in_history_dir(
+            &state,
+            candidate,
+            "subscription",
+            Some(history_dir.clone()),
+        )
+        .await;
+        let error = result.expect_err("blocked Core destinations must fail");
+        assert!(
+            error.to_string().contains("rolled back state"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(state.data.read().await.sections[0].label, original_label);
+        assert_eq!(std::fs::read(&store_path).unwrap(), original_bytes);
+        assert!(!history_dir.exists());
+        assert!(core_path.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_locked_transaction_commits_current_candidate() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon_tx_current_{}_{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        std::fs::create_dir_all(&tmp_dir).expect("mkdir");
+        let store_path = tmp_dir.join("store.json");
+        let core_path = tmp_dir.join("tachyon-core-config.json");
+        let state = AppState::load_or_create(&store_path).expect("load store");
+        let mut candidate = {
+            let current = state.data.read().await;
+            clone_store_boxed(&current)
+        };
+        let original_label = candidate.sections[0].label.clone();
+        let generation = state.store_generation();
+        candidate.settings.core_config_path = core_path.to_string_lossy().into_owned();
+        candidate.settings.tun_inet4 = "172.19.0.1/30".into();
+        candidate.settings.fakeip_inet4_range = "198.18.0.0/15".into();
+        candidate.settings.tun_inet6 = "fdfe:dcba:9876::1/126".into();
+        candidate.settings.fakeip_inet6_range = "fc00::/18".into();
+        candidate.sections[0].label = "guarded candidate".into();
+        let report = commit_transaction_boxed_in_history_dir(
+            &state,
+            candidate,
+            "subscription",
+            Some(tmp_dir.join("history")),
+        )
+        .await
+        .expect("current candidate commits");
+        assert!(report.valid);
+        assert!(state.store_generation() > generation);
+        assert_eq!(
+            state.data.read().await.sections[0].label,
+            "guarded candidate"
+        );
+        let persisted = AppState::load_or_create(&store_path).expect("reload committed store");
+        assert_eq!(
+            persisted.data.read().await.sections[0].label,
+            "guarded candidate"
+        );
+        let known_good: RouterStoreData =
+            serde_json::from_slice(&std::fs::read(&state.lkg_path).expect("read LKG"))
+                .expect("parse LKG");
+        assert_eq!(known_good.sections[0].label, original_label);
+        let core: Value = serde_json::from_slice(&std::fs::read(&core_path).expect("read core"))
+            .expect("parse compiled core");
+        assert!(core.is_object());
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
 
     #[test]
     fn test_section_disable_cascades_to_bound_server() {

@@ -10871,7 +10871,7 @@ fn recover_or_load_existing_store(
                     .map(|p| format!("; отвергнутый файл сохранён в {}", p.display()))
                     .unwrap_or_default();
                 let warn_msg = format!(
-                    "Хранилище {} повреждено ({primary_err:#}); выполнен откат на {}{saved_hint}",
+                    "Хранилище {} недоступно или повреждено ({primary_err:#}); выполнен откат на {}{saved_hint}",
                     path.display(),
                     lkg_path.display()
                 );
@@ -11047,7 +11047,12 @@ fn write_store_json_if_changed(path: &Path, data: &RouterStoreData) -> anyhow::R
         }
         Ok(written)
     } else {
-        crypto_gen::write_json_if_changed(path, data)
+        let written = crypto_gen::write_json_if_changed(path, data)?;
+        #[cfg(unix)]
+        if written {
+            crate::platform::sync_parent_dir(path);
+        }
+        Ok(written)
     }
 }
 
@@ -11062,7 +11067,8 @@ impl AppState {
         let lkg_path = path.with_file_name("tachyon.known_good.json");
 
         let mut recovery_warning: Option<String> = None;
-        let data = if path.exists() {
+        // Bootstrap defaults only on a fresh installation, where neither store exists.
+        let data = if path.try_exists()? || lkg_path.try_exists()? {
             let (raw, mut parsed, needs_rewrite, warn_opt) =
                 recover_or_load_existing_store(&path, &lkg_path)?;
             recovery_warning = warn_opt;
@@ -11122,13 +11128,13 @@ impl AppState {
     /// Re-read and validate store JSON from disk (e.g. after an external edit via SSH/script).
     /// Preserves rejected file on error without silently rolling back to `known_good`.
     pub async fn reload_from_disk(&self) -> anyhow::Result<bool> {
+        // Read and publish under the same lock used by in-process store writers.
+        let mut current = self.data.write().await;
         let raw = std::fs::read_to_string(&self.path)?;
         let (mut parsed, normalized) = match parse_store_from_str_tolerant(&raw) {
             Ok(res) => res,
             Err(e) => {
-                if let Ok(bytes) = std::fs::read(&self.path) {
-                    let _ = save_rejected_store_backup(&self.path, &bytes);
-                }
+                let _ = save_rejected_store_backup(&self.path, raw.as_bytes());
                 anyhow::bail!("Failed to parse {}: {e:#}", self.path.display());
             }
         };
@@ -11136,13 +11142,11 @@ impl AppState {
         if migrated {
             let _ = write_store_json_if_changed(&self.path, &parsed);
         }
-        {
-            let mut guard = self.data.write().await;
-            *guard = parsed;
-        }
+        *current = parsed;
         self.dirty.store(false, Ordering::Release);
         self.bump_generation();
         self.refresh_disk_fingerprint();
+        drop(current);
         self.live.write().await.push_event(
             "info",
             "store",
@@ -11154,7 +11158,12 @@ impl AppState {
     /// Save current configuration to disk only if bytes changed (NAND flash wear protection).
     pub async fn save(&self) -> anyhow::Result<bool> {
         let d = self.data.read().await;
-        let written = write_store_json_if_changed(&self.path, &d)?;
+        self.save_locked(&d)
+    }
+
+    /// Persist the store while the caller holds its data lock.
+    pub(crate) fn save_locked(&self, data: &RouterStoreData) -> anyhow::Result<bool> {
+        let written = write_store_json_if_changed(&self.path, data)?;
         self.dirty.store(false, Ordering::Release);
         if written {
             self.bump_generation();
@@ -12153,6 +12162,34 @@ config guest_mode 'guest'
         assert_eq!(fb.load(Ordering::Acquire), 1);
         fb.store(99, Ordering::Release);
         assert_eq!(fb.load(Ordering::Acquire), 99);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_store_write_preserves_private_mode_and_skips_identical_bytes() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon-store-write-{}-{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let path = dir.join("tachyon.json");
+        let mut data = RouterStoreData::default();
+        assert!(write_store_json_if_changed(&path, &data).expect("initial write"));
+        let original = std::fs::metadata(&path).expect("metadata");
+        assert_eq!(original.mode() & 0o777, 0o600);
+        assert!(!write_store_json_if_changed(&path, &data).expect("identical write"));
+        assert_eq!(std::fs::metadata(&path).unwrap().ino(), original.ino());
+
+        assert_ne!(data.settings.log_level, "info");
+        data.settings.log_level = "info".into();
+        assert!(write_store_json_if_changed(&path, &data).expect("changed write"));
+        let actual: RouterStoreData =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).expect("read store");
+        assert_eq!(actual.settings.log_level, "info");
+        assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+        std::fs::remove_dir_all(dir).expect("clean test files");
     }
 
     #[test]
@@ -13342,6 +13379,46 @@ config outbound_source 'awg31_src'
     }
 
     #[test]
+    fn test_load_or_create_recovers_missing_store_without_overwriting_invalid_backup() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_lkg_missing_primary_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store_path = dir.join("tachyon.json");
+        let lkg_path = dir.join("tachyon.known_good.json");
+
+        let broken_backup = "{corrupt json";
+        std::fs::write(&lkg_path, broken_backup).unwrap();
+        assert!(AppState::load_or_create(&store_path).is_err());
+        assert!(!store_path.exists());
+        assert_eq!(std::fs::read_to_string(&lkg_path).unwrap(), broken_backup);
+
+        let mut backup = RouterStoreData::default();
+        backup.settings.listen_port = 1777;
+        let backup_json = serde_json::to_string_pretty(&backup).unwrap();
+        std::fs::write(&lkg_path, &backup_json).unwrap();
+
+        let state = AppState::load_or_create(&store_path).expect("restore missing store");
+        assert_eq!(state.data.blocking_read().settings.listen_port, 1777);
+        assert!(
+            state
+                .live
+                .blocking_read()
+                .last_store_recovery_warning
+                .is_some()
+        );
+        assert!(!dir.join("tachyon.json.corrupt").exists());
+        let restored: RouterStoreData =
+            serde_json::from_slice(&std::fs::read(&store_path).unwrap()).unwrap();
+        assert_eq!(restored.settings.listen_port, 1777);
+        assert_eq!(std::fs::read_to_string(&lkg_path).unwrap(), backup_json);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_fptn_access_token_uci_json_roundtrip_section_and_source() {
         let store = RouterStoreData {
             sections: vec![RoutingSection {
@@ -13970,6 +14047,40 @@ config outbound_source 'awg31_src'
             assert_eq!(d.settings.log_level, "debug");
         });
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_store_reload_reads_disk_after_pending_writer_finishes() {
+        use std::future::{Future, poll_fn};
+        use std::task::Poll;
+
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon-reload-order-{}-{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let state = AppState::load_or_create(tmp_dir.join("tachyon.json")).expect("init store");
+
+        let mut writer = state.data.write().await;
+        writer.settings.log_level = "debug".to_owned();
+        write_store_json_if_changed(&state.path, &writer).expect("save first version");
+
+        // Poll while the writer holds the lock, so the ordering is deterministic.
+        let mut reload = std::pin::pin!(state.reload_from_disk());
+        poll_fn(|cx| {
+            assert!(reload.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+
+        writer.settings.log_level = "warn".to_owned();
+        write_store_json_if_changed(&state.path, &writer).expect("save newer version");
+        drop(writer);
+
+        assert!(reload.await.expect("reload"));
+        assert_eq!(state.data.read().await.settings.log_level, "warn");
+        assert!(!state.is_disk_modified_externally());
+        std::fs::remove_dir_all(tmp_dir).expect("clean test files");
     }
 
     #[test]
