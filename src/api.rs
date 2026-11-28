@@ -977,23 +977,14 @@ async fn dispatch_api(
                 return send_json(stream, 400, &json!({"error": "invalid store schema"})).await;
             };
             let mut subs_to_refresh = Vec::new();
-            for src in &mut candidate.outbound_sources {
+            let mut inline_links_to_parse: Vec<(usize, Vec<String>)> = Vec::new();
+            for (src_idx, src) in candidate.outbound_sources.iter_mut().enumerate() {
                 if !src.proxy_links.is_empty() {
                     if let Err(err) = validate_source_proxy_links(&src.proxy_links) {
                         return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
                     }
                     if src.cached_nodes.is_empty() {
-                        let mut taken_tags = std::collections::HashSet::new();
-                        for link_or_b64 in &src.proxy_links {
-                            for mut node in CoreManager::parse_subscription_payload(link_or_b64) {
-                                crate::config_gen::assign_unique_node_tag(
-                                    &mut node,
-                                    &mut taken_tags,
-                                );
-                                src.cached_nodes.push(node);
-                            }
-                        }
-                        src.last_updated_unix = unix_now_secs();
+                        inline_links_to_parse.push((src_idx, src.proxy_links.clone()));
                     }
                 } else if src.source_type == "subscription"
                     && !src.subscription_urls.is_empty()
@@ -1001,6 +992,19 @@ async fn dispatch_api(
                 {
                     subs_to_refresh.push(src.id.clone());
                 }
+            }
+            for (src_idx, links) in inline_links_to_parse {
+                let mut taken_tags = std::collections::HashSet::new();
+                for link_or_b64 in &links {
+                    for mut node in core
+                        .parse_subscription_payload_via_core_or_fallback(link_or_b64)
+                        .await
+                    {
+                        crate::config_gen::assign_unique_node_tag(&mut node, &mut taken_tags);
+                        candidate.outbound_sources[src_idx].cached_nodes.push(node);
+                    }
+                }
+                candidate.outbound_sources[src_idx].last_updated_unix = unix_now_secs();
             }
             match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
@@ -1209,7 +1213,10 @@ async fn dispatch_api(
                 src.cached_nodes.clear();
                 let mut taken_tags = std::collections::HashSet::new();
                 for link_or_b64 in &src.proxy_links {
-                    for mut node in CoreManager::parse_subscription_payload(link_or_b64) {
+                    for mut node in core
+                        .parse_subscription_payload_via_core_or_fallback(link_or_b64)
+                        .await
+                    {
                         crate::config_gen::assign_unique_node_tag(&mut node, &mut taken_tags);
                         src.cached_nodes.push(node);
                     }
