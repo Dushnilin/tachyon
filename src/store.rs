@@ -11047,7 +11047,12 @@ fn write_store_json_if_changed(path: &Path, data: &RouterStoreData) -> anyhow::R
         }
         Ok(written)
     } else {
-        crypto_gen::write_json_if_changed(path, data)
+        let written = crypto_gen::write_json_if_changed(path, data)?;
+        #[cfg(unix)]
+        if written {
+            crate::platform::sync_parent_dir(path);
+        }
+        Ok(written)
     }
 }
 
@@ -12153,6 +12158,33 @@ config guest_mode 'guest'
         assert_eq!(fb.load(Ordering::Acquire), 1);
         fb.store(99, Ordering::Release);
         assert_eq!(fb.load(Ordering::Acquire), 99);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_store_write_preserves_private_mode_and_skips_identical_bytes() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon-store-write-{}-{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let path = dir.join("tachyon.json");
+        let mut data = RouterStoreData::default();
+        assert!(write_store_json_if_changed(&path, &data).expect("initial write"));
+        let original = std::fs::metadata(&path).expect("metadata");
+        assert_eq!(original.mode() & 0o777, 0o600);
+        assert!(!write_store_json_if_changed(&path, &data).expect("identical write"));
+        assert_eq!(std::fs::metadata(&path).unwrap().ino(), original.ino());
+
+        data.settings.log_level = "warn".into();
+        assert!(write_store_json_if_changed(&path, &data).expect("changed write"));
+        let actual: RouterStoreData =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).expect("read store");
+        assert_eq!(actual.settings.log_level, "warn");
+        assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+        std::fs::remove_dir_all(dir).expect("clean test files");
     }
 
     #[test]
