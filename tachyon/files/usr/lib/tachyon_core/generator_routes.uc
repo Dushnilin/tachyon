@@ -3774,7 +3774,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
             [],
             query_rule_set_tags,
             response_rule_set_tags,
-            list_option(section, "domain_ip_lists"),
+            connections.effective_domain_ip_lists(section),
             true
         );
     }
@@ -4895,7 +4895,7 @@ function add_combined_route_for_clause(config, section) {
         rule_set_tags,
         dns_query_rule_set_tags,
         dns_response_rule_set_tags,
-        list_option(section, "domain_ip_lists"),
+        connections.effective_domain_ip_lists(section),
         false
     );
 
@@ -5229,9 +5229,7 @@ function add_combined_route_for_section(config, section) {
 
 function unsupported_matcher_key(section) {
     let unsupported_options = [
-        "subnet", "subnet_text",
-        "local_domain_lists", "local_subnet_lists",
-        "remote_domain_lists", "remote_subnet_lists"
+        "subnet", "subnet_text"
     ];
     for (let key in unsupported_options) {
         if (length(list_option(section, key)) > 0 || option(section, key, "") != "")

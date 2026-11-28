@@ -1210,6 +1210,8 @@ function expand_check_error_reason(reason) {
         hint = "Причина: правило маршрутизации или каскадирования ссылается на несуществующий или изолированный прокси-выход. Решение: проверьте настройки источника серверов и каскадирования.";
     else if (index(clean, "no such file or directory") >= 0)
         hint = "Причина: не найден файл сертификата, ключа или локального списка правил (ruleset). Решение: проверьте пути к файлам в настройках.";
+    else if (index(clean, "unsupported matcher") >= 0)
+        hint = "Причина: в секции указан неподдерживаемый параметр фильтрации трафика. Решение: используйте rule_set, domain_ip_lists, ip_cidr или community_lists в условиях маршрутизации.";
     else if (index(clean, "manual proxy link") >= 0 || index(clean, "not supported") >= 0 || index(clean, "unsupported") >= 0)
         hint = "Причина: неподдерживаемый формат прокси-ссылки или параметра секции. Решение: проверьте синтаксис ссылок во вкладке «Пул серверов» или настройках секции.";
     else if (index(clean, "invalid") >= 0 || index(clean, "parse") >= 0 || index(clean, "decode") >= 0)
@@ -1239,8 +1241,11 @@ function section_from_tag(tag) {
 // guard keeps repeat writes silent.
 function write_section_errors(quarantined) {
     let errors = {};
-    for (let name in quarantined)
+    for (let name in quarantined) {
         errors[name] = as_string(quarantined[name] || "");
+        if (name != "" && substr(name, 0, 1) != "_")
+            remove_file(SECTION_CACHE_DIR + "/" + name + ".json");
+    }
     if (length(errors) == 0) {
         remove_file(SECTION_ERRORS_FILE);
         return;
@@ -2212,6 +2217,9 @@ else if (mode == "dangling-dependency-fixture") {
 }
 else if (mode == "expand-check-reason-fixture") {
     printf("%s\n", expand_check_error_reason(ARGV[1] || ""));
+}
+else if (mode == "write-section-errors-fixture") {
+    write_section_errors(json(ARGV[1] || "{}"));
 }
 else if (mode == "patch-dns-config")
     patch_dns_config(ARGV[1] || "");

@@ -39,7 +39,7 @@ const ITEM_TYPES = [
 const GLOBAL_RULE_OPTIONS = {
     community_lists: [ "community_lists" ],
     rule_set: [ "rule_set", "rule_set_with_subnets" ],
-    domain_ip_lists: [ "domain_ip_lists" ],
+    domain_ip_lists: [ "domain_ip_lists", "remote_subnet_lists", "remote_domain_lists", "local_subnet_lists", "local_domain_lists" ],
     geoip_country: [ "geoip_country" ],
     ports: [ "ports" ],
     dscp: [ "dscp" ],
@@ -3502,6 +3502,14 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
                     push_unique_str(acc, seen, mac);
             }
         }
+        if (key == "domain_ip_lists") {
+            for (let extra_key in [ "remote_subnet_lists", "remote_domain_lists", "local_subnet_lists", "local_domain_lists" ]) {
+                for (let src in key_sources) {
+                    for (let item in clean_condition_tokens(src, extra_key))
+                        push_unique_str(acc, seen, item);
+                }
+            }
+        }
         if (length(acc) > 0)
             merged[key] = acc;
     }
@@ -3617,6 +3625,20 @@ function domain_ip_lists(section) {
     for (let cond in section_leaf_conditions(section))
         for (let item in whitespace_list_value(cond, "domain_ip_lists"))
             push_unique_str(result, seen, item);
+    return result;
+}
+
+function effective_domain_ip_lists(section) {
+    let result = [];
+    let seen = {};
+    let keys_list = [ "domain_ip_lists", "remote_subnet_lists", "remote_domain_lists", "local_subnet_lists", "local_domain_lists" ];
+    for (let key in keys_list) {
+        for (let item in whitespace_list_value(section, key))
+            push_unique_str(result, seen, item);
+        for (let cond in section_leaf_conditions(section))
+            for (let item in whitespace_list_value(cond, key))
+                push_unique_str(result, seen, item);
+    }
     return result;
 }
 
@@ -3876,6 +3898,10 @@ function has_dns_matchers_single(section) {
         length(whitespace_list_value(section, "rule_set")) > 0 ||
         length(whitespace_list_value(section, "rule_set_with_subnets")) > 0 ||
         option(section, "domain_ip_lists", "") != "" ||
+        option(section, "remote_subnet_lists", "") != "" ||
+        option(section, "remote_domain_lists", "") != "" ||
+        option(section, "local_subnet_lists", "") != "" ||
+        option(section, "local_domain_lists", "") != "" ||
         rule_condition_csv(section, "domain", "domains") != "" ||
         rule_condition_csv(section, "domain_suffix", "domains") != "" ||
         rule_condition_csv(section, "domain_keyword", "generic") != "" ||
@@ -7112,6 +7138,7 @@ return {
     rule_sets,
     rule_sets_with_subnets,
     domain_ip_lists,
+    effective_domain_ip_lists,
     dscp_list,
     dscp_value,
     community_lists_value,

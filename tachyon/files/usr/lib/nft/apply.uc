@@ -1087,7 +1087,7 @@ function section_has_destination_matchers(section) {
         length(connections.community_lists(section)) > 0 ||
         length(connections.rule_sets(section)) > 0 ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
-        length(section_leaf_list_option(section, "domain_ip_lists")) > 0;
+        length(connections.effective_domain_ip_lists(section)) > 0;
 }
 
 function section_action(section) {
@@ -1259,7 +1259,7 @@ function section_plain_rule_sets(section) {
         if (core_rulesets.is_plain_list_reference(ref))
             push(result, ref);
     }
-    for (let ref in section_leaf_list_option(section, "domain_ip_lists")) {
+    for (let ref in connections.effective_domain_ip_lists(section)) {
         if (core_rulesets.is_plain_list_reference(ref) && index(result, ref) < 0)
             push(result, ref);
     }
@@ -1272,7 +1272,7 @@ function section_has_subnet_update_sources(section) {
     return has_community ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
         length(section_plain_rule_sets(section)) > 0 ||
-        length(section_leaf_list_option(section, "domain_ip_lists")) > 0 ||
+        length(connections.effective_domain_ip_lists(section)) > 0 ||
         helpers.file_is_usable("/tmp/tachyon-core/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
         helpers.file_is_usable("/etc/tachyon/rulesets/" + sec_name + "-lists-ruleset.json", 10) ||
         helpers.file_is_usable("/tmp/tachyon-core/rulesets/" + sec_name + "-remote-subnets-ruleset.json", 10) ||
@@ -5709,7 +5709,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
 
         // Load subnets from domain_ip_lists into nftables (local files and compiled rulesets)
         let sec_name = as_string(section[".name"]);
-        for (let ref in section_leaf_list_option(section, "domain_ip_lists")) {
+        for (let ref in connections.effective_domain_ip_lists(section)) {
             ref = as_string(ref);
             if (ref == "" || substr(ref, 0, 1) != "/") continue;
             if (!helpers.file_is_usable(ref, 0)) continue;
@@ -5878,7 +5878,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                 add_bypass_dom(d);
             for (let d in section_leaf_list_option(section, "user_domains"))
                 add_bypass_dom(d);
-            for (let ref in section_leaf_list_option(section, "domain_ip_lists")) {
+            for (let ref in connections.effective_domain_ip_lists(section)) {
                 if (length(bypass_domains) >= 64) break;
                 ref = as_string(ref);
                 if (ref != "" && substr(ref, 0, 1) == "/" && helpers.file_is_usable(ref, 0)) {
