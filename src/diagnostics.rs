@@ -636,6 +636,125 @@ async fn build_doctor_report(
     )
 }
 
+/// WireGuard endpoints can be inbound listeners. Core health currently exposes their
+/// peer handshake under `outbounds`; suppress an outbound-stale warning only when the
+/// active config proves the endpoint is inbound-only. If config cannot be read, keep
+/// the warning (fail open) rather than silently suppressing a real outbound failure.
+fn json_value_references_tag(value: Option<&Value>, tag: &str) -> bool {
+    match value {
+        Some(Value::String(value)) => value == tag,
+        Some(Value::Array(values)) => values.iter().any(|value| value.as_str() == Some(tag)),
+        _ => false,
+    }
+}
+
+/// Search nested config objects for a tag-valued reference field. This deliberately
+/// scans all supported dialer locations: outbounds, endpoints, DNS servers, NTP,
+/// HTTP clients, Cloudflared and inbound detours. A conservative match keeps the
+/// outbound warning rather than suppressing it incorrectly.
+fn json_tree_references_tag(value: Option<&Value>, field: &str, tag: &str) -> bool {
+    match value {
+        Some(Value::Object(object)) => object.iter().any(|(key, value)| {
+            (key == field && json_value_references_tag(Some(value), tag))
+                || json_tree_references_tag(Some(value), field, tag)
+        }),
+        Some(Value::Array(values)) => values
+            .iter()
+            .any(|value| json_tree_references_tag(Some(value), field, tag)),
+        _ => false,
+    }
+}
+
+fn inbound_only_wireguard_endpoint_tags(config: &Value) -> Vec<String> {
+    let Some(endpoints) = config.get("endpoints").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let outbounds = config
+        .get("outbounds")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let route = config.get("route");
+    let rules = route.and_then(|route| route.get("rules"));
+    let final_outbound = route.and_then(|route| route.get("final"));
+
+    endpoints
+        .iter()
+        .filter_map(|endpoint| {
+            if endpoint.get("type").and_then(Value::as_str) != Some("wireguard") {
+                return None;
+            }
+            let tag = endpoint.get("tag").and_then(Value::as_str)?;
+            if tag.is_empty() {
+                return None;
+            }
+
+            let direct_outbound = outbounds
+                .iter()
+                .any(|outbound| outbound.get("tag").and_then(Value::as_str) == Some(tag));
+            let selector_member =
+                json_tree_references_tag(config.get("outbounds"), "outbounds", tag);
+            let route_outbound = json_tree_references_tag(rules, "outbound", tag);
+            let final_outbound = json_value_references_tag(final_outbound, tag);
+            let route_inbound = json_tree_references_tag(rules, "inbound", tag);
+            let detour_reference = json_tree_references_tag(Some(config), "detour", tag);
+
+            (route_inbound
+                && !direct_outbound
+                && !selector_member
+                && !route_outbound
+                && !final_outbound
+                && !detour_reference)
+                .then(|| tag.to_string())
+        })
+        .collect()
+}
+
+fn read_inbound_only_wireguard_endpoint_tags(config_path: &str) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(config_path) else {
+        return Vec::new();
+    };
+    let Ok(config) = serde_json::from_str::<Value>(&raw) else {
+        return Vec::new();
+    };
+    inbound_only_wireguard_endpoint_tags(&config)
+}
+
+/// Sum the cumulative counters for upstreams with a recent error. Core's
+/// last-seen timestamp also advances on failed queries.
+fn dns_upstream_error_total(servers: &[Value], now: i64) -> u64 {
+    const RECENT_ERROR_WINDOW_SECS: i64 = 10 * 60;
+
+    servers
+        .iter()
+        .map(|server| {
+            let total = server
+                .get("errors_total")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            if total == 0 {
+                return 0;
+            }
+
+            let Some(last_error) = server
+                .get("last_error_unix")
+                .and_then(Value::as_i64)
+                .filter(|timestamp| *timestamp > 0)
+            else {
+                // Older Core builds may not expose timestamps; preserve the
+                // previous cumulative-counter behavior for compatibility.
+                return total;
+            };
+
+            if last_error > now || now.saturating_sub(last_error) > RECENT_ERROR_WINDOW_SECS {
+                return 0;
+            }
+
+            total
+        })
+        .fold(0, u64::saturating_add)
+}
+
 #[inline(never)]
 #[cfg_attr(not(test), allow(dead_code))]
 #[allow(clippy::too_many_arguments)]
@@ -685,6 +804,8 @@ fn assemble_doctor_report_with_platform(
     fw4_guard_ok: bool,
     pctx: &PlatformDoctorContext,
 ) -> DoctorReport {
+    let inbound_only_wireguard_tags =
+        read_inbound_only_wireguard_endpoint_tags(&d.settings.core_config_path);
     let is_entware = pctx.platform.is_entware();
     let is_iptables = pctx.firewall_kind == crate::platform::FirewallKind::Iptables;
     let dns_probe_addr = local_dns_probe_addr_for(pctx.platform, &d.settings);
@@ -1019,20 +1140,20 @@ fn assemble_doctor_report_with_platform(
         .as_ref()
         .and_then(|h| h.pointer("/dns/servers"))
         .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .map(|s| s.get("errors_total").and_then(Value::as_u64).unwrap_or(0))
-                .sum::<u64>()
-        })
+        .map(|arr| dns_upstream_error_total(arr, unix_now_secs()))
         .unwrap_or(live.dns_upstream_errors);
-    if dns_up_err >= 5 {
+    let dns_upstream_warning = dns_up_err >= 5;
+    if dns_upstream_warning {
         findings.push(DoctorFinding {
             id: "dns_upstream_errors".to_string(),
             severity: "warning".to_string(),
             subsystem: "dns".to_string(),
             title: format!("Ошибки и таймауты DNS-апстримов ({dns_up_err})"),
-            detail: "Запросы к настроенным DNS-апстримам завершаются сбоем или SERVFAIL."
-                .to_string(),
+            detail: concat!(
+                "Учитываются накопительные счётчики апстримов с последней ошибкой за 10 минут. ",
+                "Если время ошибки недоступно, учитывается весь накопительный счётчик."
+            )
+            .to_string(),
             quick_fix_id: "switch_to_doh".to_string(),
             quick_fix_label: "Переключить на DoH".to_string(),
             evidence: json!({ "dns_upstream_errors": dns_up_err }),
@@ -1299,6 +1420,12 @@ fn assemble_doctor_report_with_platform(
     {
         for o in out_arr {
             let tag = o.get("tag").and_then(Value::as_str).unwrap_or("");
+            if inbound_only_wireguard_tags
+                .iter()
+                .any(|inbound_tag| inbound_tag == tag)
+            {
+                continue;
+            }
             let err_detail = o
                 .get("last_err_detail")
                 .and_then(Value::as_str)
@@ -2095,7 +2222,7 @@ fn assemble_doctor_report_with_platform(
     };
     let dns_status = if live.core_running && !live.dns_healthy && live.dns_fail_streak > 0 {
         "err"
-    } else if dns_up_err >= 5 || (fip_cap > 0 && fip_used * 100 / fip_cap >= 85) {
+    } else if dns_upstream_warning || (fip_cap > 0 && fip_used * 100 / fip_cap >= 85) {
         "warn"
     } else {
         "ok"
@@ -5223,9 +5350,12 @@ pub async fn run_dns_speed_test() -> Vec<DnsBenchmarkEntry> {
     for (addr, label) in candidates {
         handles.push(tokio::spawn(async move {
             let start = Instant::now();
-            let ok = tokio::time::timeout(Duration::from_millis(1500), TcpStream::connect(addr))
-                .await
-                .is_ok_and(|r| r.is_ok());
+            let ok = tokio::time::timeout(
+                Duration::from_millis(1500),
+                crate::net_stack::connect_tcp_bypass_host(addr),
+            )
+            .await
+            .is_ok_and(|r| r.is_ok());
             let latency_ms = if ok {
                 start.elapsed().as_millis() as u32
             } else {
@@ -8175,6 +8305,327 @@ pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
 mod tests {
     use super::*;
     use crate::store::{RoutingSection, TrafficCondition};
+
+    #[test]
+    fn inbound_only_wireguard_endpoint_is_not_classified_as_outbound() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{
+                "type": "wireguard",
+                "tag": tag,
+                "address": ["10.253.0.1/32"],
+                "listen_port": 51821,
+                "peers": [{
+                    "allowed_ips": ["10.253.0.2/32"],
+                    "persistent_keepalive_interval": 25
+                }]
+            }],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [
+                    {"inbound": [tag], "action": "hijack-dns"},
+                    {"inbound": [tag], "action": "route", "outbound": "direct"}
+                ],
+                "final": "direct"
+            }
+        });
+
+        assert_eq!(
+            inbound_only_wireguard_endpoint_tags(&config),
+            vec![tag.to_string()]
+        );
+    }
+
+    #[test]
+    fn wireguard_endpoint_in_selector_group_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{
+                "type": "selector",
+                "tag": "sel-vpn",
+                "outbounds": [tag, "direct"]
+            }],
+            "route": {
+                "rules": [{"inbound": [tag], "outbound": "sel-vpn"}],
+                "final": "sel-vpn"
+            }
+        });
+
+        assert!(inbound_only_wireguard_endpoint_tags(&config).is_empty());
+    }
+
+    #[test]
+    fn wireguard_endpoint_used_as_direct_route_outbound_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [{"inbound": [tag], "outbound": tag}],
+                "final": "direct"
+            }
+        });
+
+        assert!(inbound_only_wireguard_endpoint_tags(&config).is_empty());
+    }
+
+    #[test]
+    fn wireguard_endpoint_without_inbound_reference_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {"rules": [], "final": "direct"}
+        });
+
+        assert!(inbound_only_wireguard_endpoint_tags(&config).is_empty());
+    }
+
+    #[test]
+    fn wireguard_endpoint_referenced_by_supported_detour_is_not_suppressed() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let base = json!({
+            "endpoints": [{
+                "type": "wireguard",
+                "tag": tag,
+                "address": ["10.253.0.1/32"],
+                "listen_port": 51821
+            }],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [
+                    {"inbound": [tag], "action": "route", "outbound": "direct"}
+                ],
+                "final": "direct"
+            }
+        });
+        let cases = vec![
+            (
+                "outbounds",
+                json!({
+                    "outbounds": [
+                        {"type": "direct", "tag": "direct"},
+                        {"type": "vless", "tag": "proxy", "detour": tag}
+                    ]
+                }),
+            ),
+            (
+                "endpoints",
+                json!({
+                    "endpoints": [{"type": "tailscale", "tag": "ts", "detour": tag}]
+                }),
+            ),
+            (
+                "dns.servers",
+                json!({
+                    "dns": {"servers": [{"type": "udp", "tag": "dns", "detour": tag}]}
+                }),
+            ),
+            ("ntp", json!({"ntp": {"detour": tag}})),
+            ("http_clients", json!({"http_clients": [{"detour": tag}]})),
+            (
+                "cloudflared",
+                json!({
+                    "cloudflared": {
+                        "control_dialer": {"detour": tag},
+                        "tunnel_dialer": {"detour": tag}
+                    }
+                }),
+            ),
+            (
+                "inbounds",
+                json!({"inbounds": [{"type": "mixed", "tag": "in", "detour": tag}]}),
+            ),
+        ];
+
+        for (name, extra) in cases {
+            let mut config = base.clone();
+            for (key, value) in extra.as_object().expect("case object") {
+                if key == "endpoints" {
+                    let mut merged = config["endpoints"].as_array().unwrap().clone();
+                    merged.extend(value.as_array().unwrap().iter().cloned());
+                    config["endpoints"] = Value::Array(merged);
+                } else {
+                    config[key] = value.clone();
+                }
+            }
+            assert!(
+                inbound_only_wireguard_endpoint_tags(&config).is_empty(),
+                "endpoint must not be suppressed when referenced by {name} detour"
+            );
+        }
+    }
+
+    #[test]
+    fn wireguard_endpoint_nested_logical_route_references_are_detected() {
+        let tag = "srv-srv_AmneziaWG_2";
+        let outbound_config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [{
+                    "type": "logical",
+                    "mode": "and",
+                    "rules": [{"inbound": [tag], "outbound": tag}]
+                }],
+                "final": "direct"
+            }
+        });
+        assert!(inbound_only_wireguard_endpoint_tags(&outbound_config).is_empty());
+
+        let inbound_only_config = json!({
+            "endpoints": [{"type": "wireguard", "tag": tag}],
+            "outbounds": [{"type": "direct", "tag": "direct"}],
+            "route": {
+                "rules": [{
+                    "type": "logical",
+                    "mode": "and",
+                    "rules": [{"inbound": [tag]}]
+                }],
+                "final": "direct"
+            }
+        });
+        assert_eq!(
+            inbound_only_wireguard_endpoint_tags(&inbound_only_config),
+            vec![tag.to_string()]
+        );
+    }
+
+    #[test]
+    fn dns_upstream_errors_ignore_stale_cumulative_counters() {
+        let now = 1_000_000;
+        let servers = json!([
+            {
+                "errors_total": 9,
+                "last_error_unix": now - 2_964,
+                "last_seen_unix": now - 2_964
+            },
+            {
+                "errors_total": 2,
+                "last_error_unix": now - 110_664,
+                "last_seen_unix": now - 27
+            },
+            {
+                "errors_total": 0,
+                "last_error_unix": 0,
+                "last_seen_unix": now - 27
+            }
+        ]);
+
+        assert_eq!(
+            dns_upstream_error_total(servers.as_array().unwrap(), now),
+            0
+        );
+    }
+
+    #[test]
+    fn dns_upstream_errors_count_recent_failure_without_later_activity() {
+        let now = 1_000_000;
+        let servers = json!([{
+            "errors_total": 9,
+            "last_error_unix": now - 120,
+            "last_seen_unix": now - 120
+        }]);
+
+        assert_eq!(
+            dns_upstream_error_total(servers.as_array().unwrap(), now),
+            9
+        );
+    }
+
+    #[test]
+    fn dns_upstream_errors_keep_recent_failure_with_later_activity() {
+        let now = 1_000_000;
+        let last_error = now - 120;
+        // Core v0.6.6 advances last_seen_unix on both REFUSED and NOERROR,
+        // leaving last_error_unix and errors_total unchanged.
+        for (queries_total, last_seen) in [(6, last_error + 1), (7, last_error + 2)] {
+            let servers = [json!({
+                "queries_total": queries_total,
+                "errors_total": 5,
+                "servfail_total": 5,
+                "last_error_unix": last_error,
+                "last_seen_unix": last_seen,
+            })];
+            assert_eq!(dns_upstream_error_total(&servers, now), 5);
+        }
+    }
+
+    #[test]
+    fn dns_upstream_errors_respect_window_boundaries_across_servers() {
+        let now = 1_000_000;
+        let servers = [
+            json!({"errors_total": 2, "last_error_unix": now}),
+            json!({"errors_total": 3, "last_error_unix": now - 600}),
+            json!({"errors_total": 9, "last_error_unix": now - 601}),
+            json!({"errors_total": 9, "last_error_unix": now + 1}),
+        ];
+        assert_eq!(dns_upstream_error_total(&servers, now), 5);
+    }
+
+    #[test]
+    fn dns_upstream_errors_sum_cumulative_counters_without_overflow() {
+        let now = 1_000_000;
+        for total in [1, 2, 5] {
+            let servers = [json!({"errors_total": total, "last_error_unix": now})];
+            assert_eq!(dns_upstream_error_total(&servers, now), total);
+        }
+        let servers = [
+            json!({"errors_total": u64::MAX, "last_error_unix": now}),
+            json!({"errors_total": 1, "last_error_unix": now}),
+        ];
+        assert_eq!(dns_upstream_error_total(&servers, now), u64::MAX);
+    }
+
+    #[test]
+    fn dns_upstream_errors_keep_legacy_fallback_without_timestamps() {
+        let servers = [
+            json!({"errors_total": 2}),
+            json!({"errors_total": 1, "last_error_unix": 0}),
+            json!({"errors_total": 1, "last_error_unix": -1}),
+            json!({"errors_total": 1, "last_error_unix": null}),
+        ];
+        assert_eq!(dns_upstream_error_total(&servers, 1_000_000), 5);
+    }
+
+    #[test]
+    fn dns_upstream_errors_preserve_the_doctor_warning_threshold() {
+        let now = unix_now_secs();
+        let dir = std::env::temp_dir().join(format!("tachyon_diag_dns_{}", std::process::id()));
+        let state = AppState::load_or_create(dir.join("store.json")).unwrap();
+        let store = RouterStoreData::default();
+        let live = crate::store::LiveTelemetry {
+            core_running: true,
+            dns_healthy: true,
+            wan_healthy: true,
+            dns_upstream_errors: 9,
+            ..Default::default()
+        };
+        let report = |health| {
+            assemble_doctor_report(
+                &state, &store, &live, None, health, None, None, None, false, "", true,
+            )
+        };
+        for (total, expected_count) in [(4, None), (5, Some(5))] {
+            let result = report(Some(json!({"dns": {"servers": [
+                {"errors_total": total, "last_error_unix": now - 30, "last_seen_unix": now},
+                {"errors_total": 9, "last_error_unix": now - 601}
+            ]}})));
+            let count = result
+                .findings
+                .iter()
+                .find(|f| f.id == "dns_upstream_errors")
+                .and_then(|f| f.evidence["dns_upstream_errors"].as_u64());
+            assert_eq!(count, expected_count);
+        }
+        assert!(
+            report(None).findings.iter().any(|f| {
+                f.id == "dns_upstream_errors" && f.evidence["dns_upstream_errors"] == 9
+            })
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn route_trace_json_matches_main_telegram_and_reflects_nft_state() {

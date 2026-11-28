@@ -21,7 +21,7 @@ use tokio::process::Command;
 use crate::crypto_gen;
 use crate::store::{PortableAtomicU64, unix_now_secs};
 
-const SANDBOX_ROUTING_MARK: u32 = 0x4000_0000; // 1_073_741_824 — matches net_stack::BYPASS_FWMARK
+const SANDBOX_ROUTING_MARK: u32 = crate::net_stack::BYPASS_FWMARK_U32; // 1_073_741_824 — matches net_stack::BYPASS_FWMARK
 fn state_file() -> std::path::PathBuf {
     crate::store::runtime_state_dir().join("fuzzer-state.json")
 }
@@ -1921,6 +1921,7 @@ pub(crate) async fn query_dns_a_udp(server: IpAddr, domain: &str) -> Option<IpAd
         "[::]:0"
     };
     let sock = TokioUdpSocket::bind(bind_addr).await.ok()?;
+    let _ = crate::net_stack::set_bypass_fwmark(&sock);
     let target = SocketAddr::new(server, 53);
     tokio::time::timeout(Duration::from_millis(800), async {
         sock.send_to(&query, target).await?;
