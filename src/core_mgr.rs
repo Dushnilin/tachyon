@@ -7725,8 +7725,10 @@ fn subscription_request_unchanged(
         && original.subscription_update_enabled == current.subscription_update_enabled
         && original.subscription_engine == current.subscription_engine
         && original.subscription_insecure == current.subscription_insecure
-        && original.subscription_filter_include_keywords == current.subscription_filter_include_keywords
-        && original.subscription_filter_exclude_keywords == current.subscription_filter_exclude_keywords
+        && original.subscription_filter_include_keywords
+            == current.subscription_filter_include_keywords
+        && original.subscription_filter_exclude_keywords
+            == current.subscription_filter_exclude_keywords
         && original.download_via_proxy_enabled == current.download_via_proxy_enabled
         && original.download_via_proxy_section == current.download_via_proxy_section
         && original.auto_user_agent == current.auto_user_agent
