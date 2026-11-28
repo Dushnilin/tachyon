@@ -4627,8 +4627,7 @@ impl CoreManager {
 
             // Check if `tachyon-core` `/providers/proxies` has `subscriptionInfo` for this source
             if let Some(pmap) = fresh_providers.as_ref().or(providers_map.as_ref())
-                && let Some(prov) = pmap.pointer(&format!("/providers/{}", src.id))
-                && let Some(sub_info) = prov.get("subscriptionInfo")
+                && let Some(sub_info) = subscription_info_for_source(pmap, &src.id)
             {
                 if let Some(u) = sub_info.get("Upload").and_then(Value::as_u64) {
                     src.sub_upload_bytes = u;
@@ -7694,6 +7693,15 @@ fn canonical_node_fingerprint(node: &crate::store::ParsedProxyNode) -> Value {
     })
 }
 
+// Provider IDs are literal object keys, not JSON Pointer path components.
+fn subscription_info_for_source<'a>(listing: &'a Value, source_id: &str) -> Option<&'a Value> {
+    listing
+        .get("providers")?
+        .as_object()?
+        .get(source_id)?
+        .get("subscriptionInfo")
+}
+
 fn nodes_materially_equal(
     old_nodes: &[crate::store::ParsedProxyNode],
     new_nodes: &[crate::store::ParsedProxyNode],
@@ -7977,6 +7985,28 @@ fn parse_subscription_interval_secs(raw: &str) -> u64 {
 mod core_mgr_tests {
     use super::*;
     use crate::store::ParsedProxyNode;
+
+    #[test]
+    fn test_subscription_info_uses_literal_provider_key() {
+        let listing = json!({
+            "providers": {
+                "plain": {"subscriptionInfo": {"Upload": 1}},
+                "a/b": {"subscriptionInfo": {"Upload": 2}},
+                "a~1b": {"subscriptionInfo": {"Upload": 3}},
+                "a": {"b": {"subscriptionInfo": {"Upload": 99}}},
+                "no_info": {}
+            }
+        });
+        for (id, upload) in [("plain", 1), ("a/b", 2), ("a~1b", 3)] {
+            assert_eq!(
+                subscription_info_for_source(&listing, id),
+                Some(&json!({"Upload": upload}))
+            );
+        }
+        assert!(subscription_info_for_source(&listing, "missing").is_none());
+        assert!(subscription_info_for_source(&listing, "no_info").is_none());
+        assert!(subscription_info_for_source(&json!({"providers": []}), "0").is_none());
+    }
 
     #[test]
     fn test_extract_semver_token_and_short_id_ignore() {
