@@ -268,7 +268,11 @@ done
 
 chmod 755 /usr/bin/tachyon /etc/init.d/tachyon /www/cgi-bin/tachyon-sub 2>/dev/null || true
 if [ -x /etc/init.d/tachyon ]; then
-    /etc/init.d/tachyon enable >/dev/null 2>&1 || true
+    if [ "${PKG_UPGRADE:-}" = "1" ]; then
+        /etc/init.d/tachyon enabled >/dev/null 2>&1 || exit 0
+    else
+        /etc/init.d/tachyon enable >/dev/null 2>&1 || true
+    fi
     /etc/init.d/tachyon stop >/dev/null 2>&1 || true
     _wait_i=0
     while [ "$_wait_i" -lt 6 ]; do
@@ -621,6 +625,10 @@ def build_apk(
     preinst_bytes = PREINST_SCRIPT.replace("\r\n", "\n").encode("utf-8")
     postinst_bytes = POSTINST_SCRIPT.replace("\r\n", "\n").encode("utf-8")
     apk_prerm_bytes = APK_PRE_DEINSTALL_SCRIPT.replace("\r\n", "\n").encode("utf-8")
+    # Match the OpenWrt build system's upgrade hook and opkg's environment.
+    post_upgrade_bytes = postinst_bytes.replace(
+        b"#!/bin/sh\n", b"#!/bin/sh\nexport PKG_UPGRADE=1\n", 1
+    )
 
     ctrl_buf = io.BytesIO()
     with tarfile.open(fileobj=ctrl_buf, mode="w", format=tarfile.USTAR_FORMAT) as tf:
@@ -628,7 +636,7 @@ def build_apk(
         _add_apk_tar_entry(tf, ".pre-install", preinst_bytes, 0o755, is_dir=False, mtime=mtime)
         _add_apk_tar_entry(tf, ".pre-upgrade", preinst_bytes, 0o755, is_dir=False, mtime=mtime)
         _add_apk_tar_entry(tf, ".post-install", postinst_bytes, 0o755, is_dir=False, mtime=mtime)
-        _add_apk_tar_entry(tf, ".post-upgrade", postinst_bytes, 0o755, is_dir=False, mtime=mtime)
+        _add_apk_tar_entry(tf, ".post-upgrade", post_upgrade_bytes, 0o755, is_dir=False, mtime=mtime)
         _add_apk_tar_entry(tf, ".pre-deinstall", apk_prerm_bytes, 0o755, is_dir=False, mtime=mtime)
 
     ctrl_raw = _strip_tar_eof(ctrl_buf.getvalue())
