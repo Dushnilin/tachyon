@@ -3,7 +3,7 @@ import { isValidPort, parseHostPort, unbracketHost } from './hostPort';
 import { validateIP } from './validateIp';
 import { ValidationResult } from './types';
 
-const ALLOWED_DNS_SCHEMES = /^(https|tls|quic|h3|tcp|udp)$/i;
+const ALLOWED_DNS_SCHEMES = /^(https|tls|quic|h3|tcp|udp|tdns)$/i;
 
 export function validateDNS(value: string): ValidationResult {
   const trimmed = String(value || '').trim();
@@ -30,6 +30,37 @@ export function validateDNS(value: string): ValidationResult {
           'Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH',
         ),
       };
+    }
+    if (schemeMatch[1].toLowerCase() === 'tdns') {
+      const withoutFrag = target.split('#')[0];
+      const [beforeQuery] = withoutFrag.split('?');
+      const atIdx = beforeQuery.indexOf('@');
+      if (atIdx < 0) {
+        return {
+          valid: false,
+          message: _(
+            'Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH',
+          ),
+        };
+      }
+      const userinfo = beforeQuery.slice(0, atIdx);
+      const rest = beforeQuery.slice(atIdx + 1);
+      const creds = userinfo.split(':');
+      if (
+        creds.length !== 2 ||
+        !/^[0-9a-f]{16}$/i.test(creds[0]) ||
+        !/^[A-Za-z0-9_-]{43}$/.test(creds[1]) ||
+        !rest ||
+        rest.startsWith('/')
+      ) {
+        return {
+          valid: false,
+          message: _(
+            'Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH',
+          ),
+        };
+      }
+      target = rest;
     }
   }
 

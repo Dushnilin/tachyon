@@ -25,6 +25,14 @@ export const additionalValidDns = [
   ['DoT URL with port', 'tls://dns.google:853'],
   ['DoQ URL with port', 'quic://dns.adguard-dns.com:853'],
   ['DoH3 URL', 'h3://cloudflare-dns.com/dns-query'],
+  [
+    'TDNS URL with domain',
+    'tdns://0123456789abcdef:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dns.example.com:443/api/v2/telemetry/collect?mode=h2&codec=json',
+  ],
+  [
+    'TDNS URL with IPv6',
+    'tdns://0123456789abcdef:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@[2606:4700:4700::1111]:443/api/v2/telemetry/collect',
+  ],
 ];
 
 const presetDns = [
@@ -53,6 +61,14 @@ const invalidDns = [
   ['Empty https scheme', 'https://'],
   ['Scheme missing host', 'https:///dns-query'],
   ['Unsupported ftp scheme', 'ftp://dns.google'],
+  [
+    'TDNS invalid key_id',
+    'tdns://bad:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dns.example.com:443/api/v2/telemetry/collect',
+  ],
+  [
+    'TDNS invalid psk',
+    'tdns://0123456789abcdef:short@dns.example.com:443/api/v2/telemetry/collect',
+  ],
 ];
 
 describe('validateDns', () => {

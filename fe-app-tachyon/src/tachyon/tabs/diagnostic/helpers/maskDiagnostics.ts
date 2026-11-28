@@ -290,6 +290,7 @@ function maskGlobalCheckLine(line: string) {
   maskedLine = maskOptionPath(maskedLine, "option dns_server '");
   maskedLine = maskOptionPath(maskedLine, "list dns_server '");
   maskedLine = maskedLine.replace(WG_KEY_PATTERN, '$1*******');
+  maskedLine = maskedLine.replace(/tdns:\/\/[^\s'"`]+/gi, 'tdns://*******');
   return maskedLine;
 }
 

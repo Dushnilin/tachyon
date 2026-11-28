@@ -15910,6 +15910,14 @@ fn compile_core_config_with_rt_dir(
             seen_non_loopback_primary = true;
         }
         let lower_dns = main_dns.trim().to_ascii_lowercase();
+        if lower_dns.starts_with("tdns://")
+            && let Some(tdns_obj) = parse_tdns_dns_server_entry(&tag, main_dns, primary_detour)
+        {
+            has_encrypted_primary = true;
+            dns_servers_vec.push(tdns_obj);
+            remote_group_members.push(tag);
+            continue;
+        }
         let has_explicit_scheme = lower_dns.contains("://");
         let mut obj = if lower_dns.starts_with("tls://") || lower_dns.starts_with("dot://") {
             json!({
@@ -18256,7 +18264,9 @@ fn build_section_routed_dns_entries(
 
 fn infer_dns_entry_type<'a>(raw_server: &str, configured_type: &'a str) -> &'a str {
     let lower = raw_server.trim().to_ascii_lowercase();
-    if lower.starts_with("https://") {
+    if lower.starts_with("tdns://") {
+        "tdns"
+    } else if lower.starts_with("https://") {
         "doh"
     } else if lower.starts_with("tls://") || lower.starts_with("dot://") {
         "dot"
@@ -18268,6 +18278,131 @@ fn infer_dns_entry_type<'a>(raw_server: &str, configured_type: &'a str) -> &'a s
         let trimmed = configured_type.trim();
         if trimmed.is_empty() { "udp" } else { trimmed }
     }
+}
+
+fn parse_tdns_dns_server_entry(tag: &str, raw: &str, detour: Option<&str>) -> Option<Value> {
+    let clean = raw.trim().split('#').next()?.trim();
+    if !clean.to_ascii_lowercase().starts_with("tdns://") {
+        return None;
+    }
+    let rest = &clean["tdns://".len()..];
+    let (userinfo, after_at) = rest.split_once('@')?;
+    let (key_id, psk) = userinfo.split_once(':')?;
+    let key_id = key_id.trim();
+    let psk = psk.trim();
+    if key_id.len() != 16 || !key_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    if psk.len() != 43
+        || !psk
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return None;
+    }
+
+    let (base_part, query_part) = after_at
+        .split_once('?')
+        .map_or((after_at, ""), |(a, b)| (a, b));
+    let (authority, path_raw) = base_part
+        .split_once('/')
+        .map_or((base_part, ""), |(a, p)| (a, p));
+    let (host, port) = if let Some(v6_tail) = authority.strip_prefix('[') {
+        let (h, tail) = v6_tail.split_once(']')?;
+        let p = tail
+            .strip_prefix(':')
+            .and_then(|s| s.parse::<u16>().ok())
+            .filter(|&p| p > 0)
+            .unwrap_or(443);
+        (h.trim(), p)
+    } else if authority.matches(':').count() == 1 {
+        let (h, p_str) = authority.split_once(':')?;
+        let p = p_str.parse::<u16>().ok().filter(|&p| p > 0)?;
+        (h.trim(), p)
+    } else {
+        (authority.trim(), 443)
+    };
+    if host.is_empty() {
+        return None;
+    }
+    let path = if path_raw.trim().is_empty() {
+        "/api/v2/telemetry/collect".to_string()
+    } else {
+        format!("/{}", path_raw.trim().trim_start_matches('/'))
+    };
+
+    let mut mode = "h2".to_string();
+    let mut codec = "json".to_string();
+    let mut sni = host.to_string();
+    let mut fp = "chrome".to_string();
+    let mut padding: u64 = 512;
+    let mut batch_ms: u64 = 6;
+    for pair in query_part.split('&') {
+        let Some((k, v)) = pair.split_once('=') else {
+            continue;
+        };
+        let val = v.trim();
+        if val.is_empty() {
+            continue;
+        }
+        match k.trim().to_ascii_lowercase().as_str() {
+            "mode" => mode = val.to_ascii_lowercase(),
+            "codec" => {
+                codec = if matches!(val.to_ascii_lowercase().as_str(), "bin" | "binary" | "raw") {
+                    "bin".to_string()
+                } else {
+                    "json".to_string()
+                };
+            }
+            "sni" => sni = val.to_string(),
+            "fp" | "fingerprint" => fp = val.to_string(),
+            "pad" | "padding" => {
+                if let Ok(n) = val.parse::<u64>() {
+                    padding = n.min(4096);
+                }
+            }
+            "batch" | "batch_ms" => {
+                if let Ok(n) = val.parse::<u64>() {
+                    batch_ms = n.min(50);
+                }
+            }
+            _ => {}
+        }
+    }
+    if mode != "h2" {
+        return None;
+    }
+
+    let mut obj = json!({
+        "type": "tdns",
+        "tag": tag,
+        "server": host,
+        "server_port": port,
+        "path": path,
+        "mode": "h2",
+        "codec": codec,
+        "key_id": key_id,
+        "psk": psk,
+        "padding": padding,
+        "batch_ms": batch_ms,
+        "tls": {
+            "enabled": true,
+            "server_name": sni,
+            "utls": {
+                "enabled": true,
+                "fingerprint": fp
+            }
+        }
+    });
+    if !crate::store::valid_ip_with_zone(host) {
+        obj["domain_resolver"] = json!("dns-bootstrap");
+    }
+    if let Some(det) = detour
+        && !det.trim().is_empty()
+    {
+        obj["detour"] = json!(det.trim());
+    }
+    Some(obj)
 }
 
 fn expand_ipv4_mapped_cidr(cidr: &str) -> Option<String> {
@@ -18405,6 +18540,17 @@ fn build_dns_server_entry(
     };
 
     let mut obj = match eff_type.trim().to_ascii_lowercase().as_str() {
+        "tdns" => {
+            if let Some(tdns_obj) = parse_tdns_dns_server_entry(tag, raw_server, detour) {
+                return tdns_obj;
+            }
+            json!({
+                "type": "udp",
+                "tag": tag,
+                "server": host,
+                "server_port": extract_url_port(raw_server, 53),
+            })
+        }
         "doh" | "https" => {
             let mut o = json!({
                 "type": "https",
@@ -34138,5 +34284,30 @@ proxies:
                 );
             }
         }
+    }
+
+    #[test]
+    fn tdns_uri_compiles_into_canonical_dns_server() {
+        let mut store = RouterStoreData::default();
+        store.settings.dns_servers = vec![
+            "tdns://0123456789abcdef:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dns.example.com:8443/api/v2/telemetry/collect?mode=h2&codec=json&sni=cdn.example.com&fp=chrome&pad=512&batch=6".to_string(),
+        ];
+        let cfg = compile_core_config(&store).expect("compile tdns core config");
+        let servers = cfg["dns"]["servers"].as_array().expect("dns servers");
+        let tdns = servers
+            .iter()
+            .find(|s| s["type"] == "tdns")
+            .expect("tdns server present");
+        assert_eq!(tdns["server"], "dns.example.com");
+        assert_eq!(tdns["server_port"], 8443);
+        assert_eq!(tdns["path"], "/api/v2/telemetry/collect");
+        assert_eq!(tdns["mode"], "h2");
+        assert_eq!(tdns["codec"], "json");
+        assert_eq!(tdns["key_id"], "0123456789abcdef");
+        assert_eq!(tdns["padding"], 512);
+        assert_eq!(tdns["batch_ms"], 6);
+        assert_eq!(tdns["domain_resolver"], "dns-bootstrap");
+        assert_eq!(tdns["tls"]["server_name"], "cdn.example.com");
+        assert_eq!(tdns["tls"]["utls"]["fingerprint"], "chrome");
     }
 }

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-28 10:04+0300\n"
-"PO-Revision-Date: 2026-11-28 10:04+0300\n"
+"POT-Creation-Date: 2026-11-28 12:54+0300\n"
+"PO-Revision-Date: 2026-11-28 12:54+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -8402,11 +8402,13 @@ msgstr ""
 
 #: src/validators/validateDns.ts:20
 #: src/validators/validateDns.ts:29
-#: src/validators/validateDns.ts:59
+#: src/validators/validateDns.ts:41
+#: src/validators/validateDns.ts:58
+#: src/validators/validateDns.ts:90
 msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH"
 msgstr ""
 
-#: src/validators/validateDns.ts:46
+#: src/validators/validateDns.ts:77
 msgid "Invalid DNS server port"
 msgstr ""
 
@@ -17821,8 +17823,8 @@ msgstr ""
 msgid "VPN client flavor the inbound emulates"
 msgstr ""
 
-#: src/validators/validateDns.ts:50
-#: src/validators/validateDns.ts:54
+#: src/validators/validateDns.ts:81
+#: src/validators/validateDns.ts:85
 #: src/validators/validateDomain.ts:57
 #: src/validators/validateDomain.ts:76
 #: src/validators/validateFptnUrl.ts:30
