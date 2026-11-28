@@ -376,6 +376,26 @@ function module_capture(args) {
             }
             return { status: 1, output: res.output };
         }
+        if (action == "reset_outbound") {
+            let tag_name = as_string(args[1] || "");
+            if (tag_name == "")
+                return { status: 1, output: "" };
+            let curl_args = [
+                "curl", "-X", "POST", "-s", "-m", "4", "-w", "\n%{http_code}",
+                info.base_url + "/tachyon/outbound/reset",
+                "-H", "Content-Type: application/json"
+            ];
+            if (info.secret != "") {
+                push(curl_args, "-H");
+                push(curl_args, "Authorization: Bearer " + info.secret);
+            }
+            push(curl_args, "--data-raw");
+            push(curl_args, sprintf("%J", { tag: tag_name, close_sessions: true }));
+            let res = common.command_capture(command_from_args(curl_args));
+            if (res.status == 0 && match(res.output, /(^|\n)(200|204)\s*$/) != null)
+                return { status: 0, output: res.output };
+            return { status: 1, output: res.output };
+        }
     }
 
     let command = command_from_args([ "ucode", "-L", LIB_DIR, DIAGNOSTICS_UC, "clash-api" ]);
@@ -894,6 +914,8 @@ function init_group_state(group) {
         activeDelay: 0,
         activeFailStreak: 0,
         lastSwitchAt: 0,
+        recoveryFailCounts: {},
+        recoveryResetAt: {},
         guard: reachability_guard.create({
             fail_threshold: 2,
             recover_threshold: 2,
@@ -941,6 +963,52 @@ function warm_inactive_group_members(group, active_level_index, active_tag, prob
 
 function own_pid() {
     return trim(as_string(fs.readlink("/proc/self") || ""));
+}
+
+const RECOVERY_OUTBOUND_RESET_FAIL_THRESHOLD = 2;
+const RECOVERY_OUTBOUND_RESET_COOLDOWN_S = 60;
+
+function recovery_outbound_reset_cooldown() {
+    let raw = getenv("TACHYON_PRIORITY_RESET_COOLDOWN");
+    if (raw != null && as_string(raw) != "") {
+        let v = int(raw, 10);
+        if (v >= 0)
+            return v;
+    }
+    return RECOVERY_OUTBOUND_RESET_COOLDOWN_S;
+}
+
+function reset_stalled_higher_priority_outbounds(state, group, now) {
+    if (type(state.recoveryFailCounts) != "object")
+        state.recoveryFailCounts = {};
+    if (type(state.recoveryResetAt) != "object")
+        state.recoveryResetAt = {};
+    let levels = array_or_empty(group.levels);
+    let cooldown = recovery_outbound_reset_cooldown();
+    let any_reset = false;
+    for (let li = 0; li < state.levelIndex && li < length(levels); li++) {
+        let level = object_or_empty(levels[li]);
+        for (let raw_tag in array_or_empty(level.outbounds)) {
+            let tag_name = as_string(raw_tag || "");
+            if (tag_name == "" || tag_name == "direct-out" || tag_name == state.active)
+                continue;
+            if (index(tag_name, "-urltest") >= 0 || index(tag_name, "-priority") >= 0)
+                continue;
+            let fails = int(state.recoveryFailCounts[tag_name] || 0, 10) + 1;
+            state.recoveryFailCounts[tag_name] = fails;
+            let last_reset = int(state.recoveryResetAt[tag_name] || 0, 10);
+            if (fails >= RECOVERY_OUTBOUND_RESET_FAIL_THRESHOLD && (last_reset <= 0 || (now - last_reset) >= cooldown)) {
+                state.recoveryResetAt[tag_name] = now;
+                clear_probe_cache_for_tag(tag_name);
+                let res = module_capture([ "reset_outbound", tag_name ]);
+                if (res.status == 0) {
+                    any_reset = true;
+                    log_message("reset stalled higher-priority outbound " + tag_name + " during recovery", "info");
+                }
+            }
+        }
+    }
+    return any_reset;
 }
 
 function tick_group(state, group) {
@@ -1092,6 +1160,12 @@ function tick_group(state, group) {
 
     if (state.active != "" && state.levelIndex > 0 && now >= state.nextRecoveryCheck) {
         let selected = choose_from_level_range(group, 0, state.levelIndex - 1, clash_probe);
+        if (selected == null && fixture_delays_path == "") {
+            if (reset_stalled_higher_priority_outbounds(state, group, now))
+                selected = choose_from_level_range(group, 0, state.levelIndex - 1, clash_probe);
+        }
+        if (selected != null)
+            state.recoveryFailCounts = {};
         let ready_to_return = selected != null;
         if (state.guard) {
             let snap = reachability_guard.observe(state.guard, {
