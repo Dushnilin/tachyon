@@ -11154,7 +11154,12 @@ impl AppState {
     /// Save current configuration to disk only if bytes changed (NAND flash wear protection).
     pub async fn save(&self) -> anyhow::Result<bool> {
         let d = self.data.read().await;
-        let written = write_store_json_if_changed(&self.path, &d)?;
+        self.save_locked(&d)
+    }
+
+    /// Persist the store while the caller holds its data lock.
+    pub(crate) fn save_locked(&self, data: &RouterStoreData) -> anyhow::Result<bool> {
+        let written = write_store_json_if_changed(&self.path, data)?;
         self.dirty.store(false, Ordering::Release);
         if written {
             self.bump_generation();
