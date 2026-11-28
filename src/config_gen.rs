@@ -14957,6 +14957,7 @@ fn compile_core_config_with_rt_dir(
                         "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{clean}.srs"
                     ),
                     "24h",
+                    &store.settings.rulesets_dir,
                     &store.settings.github_mirror,
                     &mut rule_sets,
                     &mut seen_rule_sets,
@@ -15559,6 +15560,25 @@ fn compile_core_config_with_rt_dir(
             json!({
                 "inbound": ["diag-proxy-in"],
                 "outbound": diag_out
+            }),
+        );
+    }
+    let lists_proxy_outbound =
+        resolve_lists_download_outbound_tag(store, &section_outbound_tags, &section_order_ids)
+            .map(str::to_string);
+    if let Some(ref detour_tag) = lists_proxy_outbound {
+        let lists_proxy_port = allocate_loopback_port(4535, &mut used_ports);
+        inbounds.push(json!({
+            "type": "mixed",
+            "tag": "download-lists-mixed-in",
+            "listen": "127.0.0.1",
+            "listen_port": lists_proxy_port
+        }));
+        rules.insert(
+            ts_route_insert_idx,
+            json!({
+                "inbound": ["download-lists-mixed-in"],
+                "outbound": detour_tag
             }),
         );
     }
@@ -16722,22 +16742,72 @@ fn compile_core_config_with_rt_dir(
         }
     });
     if has_remote_rule_set {
-        let http_detour = if store.settings.download_lists_via_proxy {
-            let target = store.settings.download_lists_via_proxy_section.trim();
-            section_outbound_tags
-                .get(target)
-                .map(String::as_str)
-                .filter(|t| !t.is_empty() && *t != "direct" && *t != "block")
-                .unwrap_or("direct")
-        } else {
-            "direct"
-        };
+        let http_detour = lists_proxy_outbound.as_deref().unwrap_or("direct");
         root_cfg["http_clients"] = json!([{
             "tag": DIRECT_DOWNLOAD_HTTP_CLIENT_TAG,
             "detour": http_detour
         }]);
     }
     Ok(root_cfg)
+}
+
+fn is_valid_lists_download_outbound(tag: &str) -> bool {
+    !tag.is_empty() && tag != "direct" && tag != "block"
+}
+
+fn resolve_lists_download_outbound_tag<'a>(
+    store: &RouterStoreData,
+    section_outbound_tags: &'a HashMap<String, String>,
+    section_order_ids: &[(String, String)],
+) -> Option<&'a str> {
+    if !store.settings.download_lists_via_proxy {
+        return None;
+    }
+    let target = store.settings.download_lists_via_proxy_section.trim();
+    if !target.is_empty() {
+        if let Some(tag) = section_outbound_tags
+            .get(target)
+            .map(String::as_str)
+            .filter(|t| is_valid_lists_download_outbound(t))
+        {
+            return Some(tag);
+        }
+        if let Some(sec) = store.sections.iter().find(|s| {
+            s.enabled
+                && (s.id.trim().eq_ignore_ascii_case(target)
+                    || s.label.trim().eq_ignore_ascii_case(target))
+        }) && let Some(tag) = section_outbound_tags
+            .get(&sec.id)
+            .map(String::as_str)
+            .filter(|t| is_valid_lists_download_outbound(t))
+        {
+            return Some(tag);
+        }
+    }
+    if let Some(preferred) = section_order_ids
+        .iter()
+        .filter(|(_, ctype)| {
+            let c = ctype.trim().to_ascii_lowercase();
+            !matches!(
+                c.as_str(),
+                "direct" | "bypass" | "hosts" | "block" | "reject" | "dns" | "desync"
+            )
+        })
+        .find_map(|(id, _)| {
+            section_outbound_tags
+                .get(id)
+                .map(String::as_str)
+                .filter(|t| is_valid_lists_download_outbound(t))
+        })
+    {
+        return Some(preferred);
+    }
+    section_order_ids.iter().find_map(|(id, _)| {
+        section_outbound_tags
+            .get(id)
+            .map(String::as_str)
+            .filter(|t| is_valid_lists_download_outbound(t))
+    })
 }
 
 fn apply_bootstrap_domain_resolver_to_transports(outbounds: &mut [Value], endpoints: &mut [Value]) {
@@ -20974,11 +21044,70 @@ fn insert_port_matchers(
     }
 }
 
+fn find_local_initial_ruleset_path(
+    rulesets_dir: &str,
+    rs_tag: &str,
+    base_url: &str,
+) -> Option<String> {
+    if !rulesets_dir.trim().is_empty() {
+        let dir_str = rulesets_dir.trim();
+        #[allow(unused_mut)]
+        let mut roots: Vec<&std::path::Path> = vec![std::path::Path::new(dir_str)];
+        #[cfg(target_os = "linux")]
+        {
+            let tmp = std::path::Path::new("/tmp/tachyon-core/rulesets");
+            if tmp != std::path::Path::new(dir_str) {
+                roots.push(tmp);
+            }
+        }
+        let mut candidates: Vec<String> = Vec::new();
+        if let Some(file_name) = base_url
+            .split(['?', '#'])
+            .next()
+            .and_then(|u| u.rsplit('/').next())
+            .map(str::trim)
+            .filter(|n| !n.is_empty() && !n.contains(".."))
+        {
+            candidates.push(file_name.to_string());
+        }
+        if let Some(rest) = rs_tag.strip_prefix("trs-")
+            && !rest.is_empty()
+        {
+            candidates.push(format!("{rest}.trs"));
+        } else if (rs_tag.starts_with("geoip-") || rs_tag.starts_with("geosite-"))
+            && !rs_tag.is_empty()
+        {
+            candidates.push(format!("{rs_tag}.srs"));
+        }
+        for root in roots {
+            for name in &candidates {
+                let p = root.join(name);
+                if !p.is_file() {
+                    continue;
+                }
+                let valid = if name.ends_with(".trs") {
+                    crate::core_mgr::CoreManager::file_has_valid_trs_magic(&p)
+                } else if name.ends_with(".srs") {
+                    std::fs::read(&p).is_ok_and(|b| b.len() >= 4 && b.starts_with(b"SRS"))
+                } else {
+                    std::fs::metadata(&p).is_ok_and(|m| m.len() > 0)
+                };
+                if valid {
+                    return Some(p.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
 fn register_remote_ruleset(
     rs_tags: &mut Vec<String>,
     rs_tag: String,
     base_url: String,
     update_interval: &str,
+    rulesets_dir: &str,
     github_mirror: &str,
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
@@ -20988,19 +21117,22 @@ fn register_remote_ruleset(
     }
     if !seen_rule_sets.contains_key(&rs_tag) {
         seen_rule_sets.insert(rs_tag.clone(), true);
-        let remote_url = if github_mirror.trim().is_empty() {
-            base_url
-        } else {
-            format!("{}/{}", github_mirror.trim_end_matches('/'), base_url)
-        };
-        rule_sets.push(json!({
+        let initial_path = find_local_initial_ruleset_path(rulesets_dir, &rs_tag, &base_url);
+        let remote_url = crate::updater::apply_github_mirror(github_mirror, &base_url);
+        let mut obj = json!({
             "tag": rs_tag,
             "type": "remote",
             "format": "binary",
             "url": remote_url,
             "http_client": DIRECT_DOWNLOAD_HTTP_CLIENT_TAG,
             "update_interval": update_interval
-        }));
+        });
+        if let Some(ip) = initial_path
+            && let Some(m) = obj.as_object_mut()
+        {
+            m.insert("initial_path".into(), json!(ip));
+        }
+        rule_sets.push(obj);
     }
 }
 
@@ -21272,6 +21404,7 @@ fn register_ruleset_reference(
                 "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{canonical}.trs"
             ),
             "6h",
+            rulesets_dir,
             github_mirror,
             rule_sets,
             seen_rule_sets,
@@ -21360,14 +21493,22 @@ fn register_ruleset_reference(
                 Some("adblock") => "adblock",
                 _ => "binary",
             };
-            rule_sets.push(json!({
+            let initial_path = find_local_initial_ruleset_path(rulesets_dir, &tag, clean);
+            let remote_url = crate::updater::apply_github_mirror(github_mirror, clean);
+            let mut obj = json!({
                 "tag": tag,
                 "type": "remote",
                 "format": fmt,
-                "url": clean,
+                "url": remote_url,
                 "http_client": DIRECT_DOWNLOAD_HTTP_CLIENT_TAG,
                 "update_interval": "6h"
-            }));
+            });
+            if let Some(ip) = initial_path
+                && let Some(m) = obj.as_object_mut()
+            {
+                m.insert("initial_path".into(), json!(ip));
+            }
+            rule_sets.push(obj);
         }
         return true;
     }
@@ -21520,6 +21661,7 @@ fn collect_atomic_condition_parts_with_tables(
                 "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{canonical}.trs"
             ),
             "6h",
+            rulesets_dir,
             github_mirror,
             rule_sets,
             seen_rule_sets,
@@ -21613,6 +21755,7 @@ fn collect_atomic_condition_parts_with_tables(
                 "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{norm_code}.srs"
             ),
             "24h",
+            rulesets_dir,
             github_mirror,
             rule_sets,
             seen_rule_sets,
@@ -21623,6 +21766,7 @@ fn collect_atomic_condition_parts_with_tables(
                 "trs-ru_domains".to_string(),
                 "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_domains.trs".to_string(),
                 "6h",
+                rulesets_dir,
                 github_mirror,
                 rule_sets,
                 seen_rule_sets,
@@ -21642,6 +21786,7 @@ fn collect_atomic_condition_parts_with_tables(
                 "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{clean}.srs"
             ),
             "24h",
+            rulesets_dir,
             github_mirror,
             rule_sets,
             seen_rule_sets,
@@ -27827,6 +27972,101 @@ AllowedIPs = 0.0.0.0/0
             cfg["route"]["default_http_client"],
             json!(DIRECT_DOWNLOAD_HTTP_CLIENT_TAG)
         );
+    }
+
+    #[test]
+    fn test_download_lists_via_proxy_routes_http_client_and_mixed_in_and_uses_initial_path() {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let tmp_dir = std::env::temp_dir().join(format!("tachyon_cfg_lists_px_{uniq}"));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let trs_path = tmp_dir.join("ru_whitelist.trs");
+        std::fs::write(
+            &trs_path,
+            b"TSRS\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+        )
+        .unwrap();
+
+        let mut store = RouterStoreData::default();
+        store.settings.rulesets_dir = tmp_dir.to_string_lossy().into_owned();
+        store.settings.download_lists_via_proxy = true;
+        // Stale/empty section reference must fall back to the active VPN section
+        store.settings.download_lists_via_proxy_section = "Main".to_string();
+        store.outbound_sources.push(OutboundSource {
+            id: "src_vpn".to_string(),
+            enabled: true,
+            source_type: "links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@1.1.1.1:443#Node".to_string(),
+            ],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "bypass".to_string(),
+            enabled: true,
+            label: "Bypass".to_string(),
+            action: "direct".to_string(),
+            connection_type: "direct".to_string(),
+            community_lists: vec!["ru_whitelist".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "vpn".to_string(),
+            enabled: true,
+            label: "vpn".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vpn".to_string()],
+            community_lists: vec!["youtube".to_string()],
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config(&store).expect("compile core config");
+        let expected_vpn_out = resolve_section_outbound_tags(&store)
+            .get("vpn")
+            .cloned()
+            .expect("vpn outbound tag");
+        assert_ne!(expected_vpn_out, "direct");
+        assert_eq!(
+            cfg["http_clients"],
+            json!([{
+                "tag": DIRECT_DOWNLOAD_HTTP_CLIENT_TAG,
+                "detour": expected_vpn_out
+            }])
+        );
+        assert!(
+            cfg["inbounds"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|i| i["tag"] == "download-lists-mixed-in"),
+            "download-lists-mixed-in inbound must be emitted when download_lists_via_proxy is enabled"
+        );
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let dl_rule = rules
+            .iter()
+            .find(|r| {
+                r.get("inbound")
+                    .and_then(Value::as_array)
+                    .is_some_and(|arr| arr.iter().any(|x| x == "download-lists-mixed-in"))
+            })
+            .expect("download-lists-mixed-in route rule");
+        assert_eq!(dl_rule["outbound"], json!(expected_vpn_out));
+
+        let rs_whitelist = cfg["route"]["rule_set"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["tag"] == "trs-ru_whitelist")
+            .expect("trs-ru_whitelist rule_set");
+        assert_eq!(
+            rs_whitelist["initial_path"],
+            json!(trs_path.to_string_lossy().replace('\\', "/"))
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
     #[test]

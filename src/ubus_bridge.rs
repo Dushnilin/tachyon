@@ -2780,6 +2780,34 @@ const MAX_RULESET_EXTRACT_BYTES: usize = 16 * 1024 * 1024;
 const RULESET_EXTRACT_CACHE_DIR: &str = "/tmp/tachyon-core/rulesets";
 const RULESET_EXTRACT_TTL_SECS: u64 = 300;
 
+fn is_valid_ruleset_file_for_ext(path: &Path, ext: &str) -> bool {
+    let lower = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| format!(".{}", s.to_ascii_lowercase()))
+        .unwrap_or_else(|| ext.to_string());
+    if lower == ".trs" {
+        CoreManager::file_has_valid_trs_magic(path)
+    } else if lower == ".srs" {
+        std::fs::read(path).is_ok_and(|b| b.len() >= 4 && b.starts_with(b"SRS"))
+    } else {
+        std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() > 0)
+    }
+}
+
+fn is_valid_ruleset_bytes_for_ext(bytes: &[u8], ext: &str) -> bool {
+    if bytes.is_empty() || bytes.len() > MAX_RULESET_EXTRACT_BYTES {
+        return false;
+    }
+    if ext == ".trs" {
+        CoreManager::bytes_have_valid_trs_magic(bytes)
+    } else if ext == ".srs" {
+        bytes.len() >= 4 && bytes.starts_with(b"SRS")
+    } else {
+        true
+    }
+}
+
 fn find_cached_ruleset_by_name_in_roots(clean_name: &str, roots: &[&Path]) -> Option<PathBuf> {
     let candidates = [
         format!("{clean_name}.trs"),
@@ -2798,6 +2826,30 @@ fn find_cached_ruleset_by_name_in_roots(clean_name: &str, roots: &[&Path]) -> Op
         }
     }
     None
+}
+
+fn extract_safe_url_ruleset_filename(url: &str) -> Option<String> {
+    let fname = url
+        .split(['?', '#'])
+        .next()
+        .and_then(|u| u.rsplit('/').next())
+        .map(str::trim)?;
+    if fname.is_empty()
+        || fname == "."
+        || fname == ".."
+        || fname.contains("..")
+        || !fname
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    {
+        return None;
+    }
+    let lower = fname.to_ascii_lowercase();
+    if lower.ends_with(".trs") || lower.ends_with(".srs") || lower.ends_with(".json") {
+        Some(fname.to_string())
+    } else {
+        None
+    }
 }
 
 fn ruleset_ext_from_url(url: &str) -> &'static str {
@@ -2842,25 +2894,84 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
         return Ok(trimmed.to_string());
     }
 
+    let (eff_rulesets_dir, github_mirror, primary_proxy, fallback_proxy) = {
+        let d = core.state.data.read().await;
+        (
+            crate::diagnostics::effective_rulesets_dir(&d.settings),
+            d.settings.github_mirror.clone(),
+            CoreManager::resolve_lists_download_proxy_url(&core.state, &d),
+            CoreManager::resolve_fallback_local_proxy_url(&core.state, &d),
+        )
+    };
+    let plat = crate::platform::paths();
+    let share_rulesets = plat.share_dir.join("rulesets");
+    let roots = [
+        eff_rulesets_dir.as_path(),
+        plat.rulesets_dir.as_path(),
+        Path::new("/etc/tachyon/rulesets"),
+        Path::new(RULESET_EXTRACT_CACHE_DIR),
+        share_rulesets.as_path(),
+        Path::new("/usr/share/tachyon/rulesets"),
+    ];
+
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         let ext = ruleset_ext_from_url(trimmed);
         let url_hash = crypto_gen::sha256_bytes_hex(trimmed.as_bytes());
         let cache_dir = Path::new(RULESET_EXTRACT_CACHE_DIR);
         let cache_path = cache_dir.join(format!("url-{url_hash}{ext}"));
-        if is_fresh_non_empty_file(&cache_path, RULESET_EXTRACT_TTL_SECS) {
+        if is_fresh_non_empty_file(&cache_path, RULESET_EXTRACT_TTL_SECS)
+            && is_valid_ruleset_file_for_ext(&cache_path, ext)
+        {
             return Ok(cache_path.to_string_lossy().into_owned());
         }
-        let bytes = Box::pin(core.curl_fetch_with_doh_fallback(trimmed, false, 15, None))
+        if let Some(fname) = extract_safe_url_ruleset_filename(trimmed) {
+            for root in roots {
+                let local_p = root.join(&fname);
+                if local_p.is_file() && is_valid_ruleset_file_for_ext(&local_p, ext) {
+                    return Ok(local_p.to_string_lossy().into_owned());
+                }
+            }
+        }
+        let candidates = crate::updater::build_ruleset_fetch_candidates(trimmed, &github_mirror);
+        let mut fetched_bytes: Option<Vec<u8>> = None;
+        let mut last_err: Option<String> = None;
+        for cand in &candidates {
+            match Box::pin(core.curl_fetch_detailed(
+                cand,
+                false,
+                15,
+                primary_proxy.as_deref(),
+                fallback_proxy.as_deref(),
+                None,
+                &[],
+                false,
+            ))
             .await
-            .map_err(|e| format!("failed to fetch remote ruleset: {e}"))?;
-        if bytes.is_empty() {
-            return Err("downloaded ruleset is empty".to_string());
+            {
+                Ok(res) if res.status_code < 400 => {
+                    if is_valid_ruleset_bytes_for_ext(&res.raw, ext) {
+                        fetched_bytes = Some(res.raw);
+                        break;
+                    }
+                    last_err = Some(format!("downloaded ruleset payload invalid from {cand}"));
+                }
+                Ok(res) => {
+                    last_err = Some(format!("HTTP {} for {cand}", res.status_code));
+                }
+                Err(e) => {
+                    last_err = Some(e.message);
+                }
+            }
         }
-        if bytes.len() > MAX_RULESET_EXTRACT_BYTES {
+        let Some(bytes) = fetched_bytes else {
+            if cache_path.is_file() && is_valid_ruleset_file_for_ext(&cache_path, ext) {
+                return Ok(cache_path.to_string_lossy().into_owned());
+            }
             return Err(format!(
-                "ruleset exceeds maximum allowed size ({MAX_RULESET_EXTRACT_BYTES} bytes)"
+                "failed to fetch remote ruleset: {}",
+                last_err.unwrap_or_else(|| format!("unreachable {trimmed}"))
             ));
-        }
+        };
         std::fs::create_dir_all(cache_dir)
             .map_err(|e| format!("failed to create ruleset cache dir: {e}"))?;
         crypto_gen::write_file_if_changed(&cache_path, &bytes)
@@ -2885,15 +2996,6 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
         return Err(format!("invalid ruleset reference: {trimmed}"));
     }
 
-    let plat = crate::platform::paths();
-    let share_rulesets = plat.share_dir.join("rulesets");
-    let roots = [
-        plat.rulesets_dir.as_path(),
-        Path::new("/etc/tachyon/rulesets"),
-        Path::new(RULESET_EXTRACT_CACHE_DIR),
-        share_rulesets.as_path(),
-        Path::new("/usr/share/tachyon/rulesets"),
-    ];
     if let Some(found) = find_cached_ruleset_by_name_in_roots(alias, &roots) {
         return Ok(found.to_string_lossy().into_owned());
     }
@@ -2906,31 +3008,57 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
         .trim_end_matches(".srs")
         .trim_end_matches(".json");
     let dest = cache_dir.join(format!("{clean_name}.trs"));
-    if is_fresh_non_empty_file(&dest, RULESET_EXTRACT_TTL_SECS) {
+    if is_fresh_non_empty_file(&dest, RULESET_EXTRACT_TTL_SECS)
+        && CoreManager::file_has_valid_trs_magic(&dest)
+    {
         return Ok(dest.to_string_lossy().into_owned());
     }
 
     let primary_url = format!(
         "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{clean_name}.trs"
     );
-    let fallback_url = format!(
-        "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean_name}.trs"
-    );
-    let bytes =
-        match Box::pin(core.curl_fetch_with_doh_fallback(&primary_url, false, 15, None)).await {
-            Ok(b) if !b.is_empty() => b,
-            _ => Box::pin(core.curl_fetch_with_doh_fallback(&fallback_url, false, 15, None))
-                .await
-                .map_err(|e| format!("failed to resolve ruleset '{alias}': {e}"))?,
-        };
-    if bytes.is_empty() {
-        return Err(format!("resolved ruleset '{alias}' is empty"));
+    let candidates = crate::updater::build_ruleset_fetch_candidates(&primary_url, &github_mirror);
+    let mut fetched_bytes: Option<Vec<u8>> = None;
+    let mut last_err: Option<String> = None;
+    for cand in &candidates {
+        match Box::pin(core.curl_fetch_detailed(
+            cand,
+            false,
+            15,
+            primary_proxy.as_deref(),
+            fallback_proxy.as_deref(),
+            None,
+            &[],
+            false,
+        ))
+        .await
+        {
+            Ok(res) if res.status_code < 400 => {
+                if res.raw.len() <= MAX_RULESET_EXTRACT_BYTES
+                    && CoreManager::bytes_have_valid_trs_magic(&res.raw)
+                {
+                    fetched_bytes = Some(res.raw);
+                    break;
+                }
+                last_err = Some(format!("resolved ruleset '{alias}' has invalid payload"));
+            }
+            Ok(res) => {
+                last_err = Some(format!("HTTP {} for {cand}", res.status_code));
+            }
+            Err(e) => {
+                last_err = Some(e.message);
+            }
+        }
     }
-    if bytes.len() > MAX_RULESET_EXTRACT_BYTES {
+    let Some(bytes) = fetched_bytes else {
+        if dest.is_file() && CoreManager::file_has_valid_trs_magic(&dest) {
+            return Ok(dest.to_string_lossy().into_owned());
+        }
         return Err(format!(
-            "ruleset exceeds maximum allowed size ({MAX_RULESET_EXTRACT_BYTES} bytes)"
+            "failed to resolve ruleset '{alias}': {}",
+            last_err.unwrap_or_else(|| "all sources unreachable".to_string())
         ));
-    }
+    };
     std::fs::create_dir_all(cache_dir)
         .map_err(|e| format!("failed to create ruleset cache dir: {e}"))?;
     crypto_gen::write_file_if_changed(&dest, &bytes)
@@ -19445,5 +19573,97 @@ tls=TLSv1.3
             },
         ];
         assert_eq!(compute_stability_event_counters(&events), (3, 1, 1, 1, 1));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_and_extract_ruleset_uses_local_cached_trs_for_github_url() {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_ruleset_extract_local_{}_{uniq}",
+            std::process::id()
+        ));
+        let rulesets_dir = dir.join("rulesets");
+        std::fs::create_dir_all(&rulesets_dir).unwrap();
+        let trs_path = rulesets_dir.join("ru_whitelist.trs");
+        std::fs::write(
+            &trs_path,
+            b"TSRS\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+        )
+        .unwrap();
+
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.rulesets_dir = rulesets_dir.to_string_lossy().into_owned();
+            d.settings.lite_mode = false;
+        }
+        let core = CoreManager::new(Arc::clone(&state));
+        let url = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_whitelist.trs";
+        let resolved = resolve_and_extract_ruleset(url, &core)
+            .await
+            .expect("must resolve local cached ru_whitelist.trs without hitting network");
+        assert_eq!(PathBuf::from(resolved), trs_path);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_lists_download_proxy_url_prefers_dedicated_inbound_and_falls_back() {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_lists_proxy_url_{}_{uniq}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_file = dir.join("core-cfg.json");
+        std::fs::write(
+            &cfg_file,
+            json!({
+                "inbounds": [
+                    { "type": "mixed", "tag": "service-mixed-in", "listen": "127.0.0.1", "listen_port": 4534 },
+                    { "type": "mixed", "tag": "download-lists-mixed-in", "listen": "127.0.0.1", "listen_port": 4535 }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.core_config_path = cfg_file.to_string_lossy().into_owned();
+            d.settings.download_lists_via_proxy = true;
+            d.settings.download_lists_via_proxy_section = "vpn".to_string();
+        }
+        {
+            let d = state.data.read().await;
+            assert_eq!(
+                CoreManager::resolve_lists_download_proxy_url(&state, &d).as_deref(),
+                Some("http://127.0.0.1:4535")
+            );
+        }
+        {
+            let mut d = state.data.write().await;
+            d.settings.download_lists_via_proxy = false;
+        }
+        {
+            let d = state.data.read().await;
+            assert_eq!(
+                CoreManager::resolve_lists_download_proxy_url(&state, &d),
+                None
+            );
+            assert_eq!(
+                CoreManager::resolve_fallback_local_proxy_url(&state, &d).as_deref(),
+                Some("http://127.0.0.1:4535")
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

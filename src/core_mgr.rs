@@ -458,6 +458,77 @@ impl CoreManager {
         hdr.starts_with(b"TRS") || hdr == *b"TSRS" || hdr == *b"TCRS"
     }
 
+    pub(crate) fn resolve_lists_download_proxy_url(
+        state: &AppState,
+        d: &crate::store::RouterStoreData,
+    ) -> Option<String> {
+        if !d.settings.download_lists_via_proxy {
+            return None;
+        }
+        let cfg_p = Self::effective_core_config_path_for(state, &d.settings);
+        let cfg_str = cfg_p.to_string_lossy();
+        if let Some(p) = read_inbound_port_from_config(&cfg_str, "download-lists-mixed-in") {
+            return Some(format!("http://127.0.0.1:{p}"));
+        }
+        let target = d.settings.download_lists_via_proxy_section.trim();
+        let find_sec_port = |pred: &dyn Fn(&crate::store::RoutingSection) -> bool| -> Option<u16> {
+            d.sections
+                .iter()
+                .find(|s| s.enabled && s.mixed_proxy_enabled && s.mixed_proxy_port > 0 && pred(s))
+                .map(|s| s.mixed_proxy_port)
+        };
+        if !target.is_empty()
+            && let Some(p) = find_sec_port(&|s| s.id == target).or_else(|| {
+                find_sec_port(&|s| {
+                    s.id.trim().eq_ignore_ascii_case(target)
+                        || s.label.trim().eq_ignore_ascii_case(target)
+                })
+            })
+        {
+            return Some(format!("http://127.0.0.1:{p}"));
+        }
+        if let Some(p) = read_service_mixed_port_from_config(&cfg_str) {
+            return Some(format!("http://127.0.0.1:{p}"));
+        }
+        find_sec_port(&|s| {
+            let c = s.connection_type.trim().to_ascii_lowercase();
+            !matches!(
+                c.as_str(),
+                "direct" | "bypass" | "hosts" | "block" | "reject" | "dns"
+            )
+        })
+        .map(|p| format!("http://127.0.0.1:{p}"))
+    }
+
+    pub(crate) fn resolve_fallback_local_proxy_url(
+        state: &AppState,
+        d: &crate::store::RouterStoreData,
+    ) -> Option<String> {
+        let cfg_p = Self::effective_core_config_path_for(state, &d.settings);
+        let cfg_str = cfg_p.to_string_lossy();
+        for tag in [
+            "download-lists-mixed-in",
+            "diag-proxy-in",
+            "service-mixed-in",
+        ] {
+            if let Some(p) = read_inbound_port_from_config(&cfg_str, tag) {
+                return Some(format!("http://127.0.0.1:{p}"));
+            }
+        }
+        d.sections
+            .iter()
+            .find(|s| {
+                s.enabled
+                    && s.mixed_proxy_enabled
+                    && s.mixed_proxy_port > 0
+                    && !matches!(
+                        s.connection_type.trim().to_ascii_lowercase().as_str(),
+                        "direct" | "bypass" | "hosts" | "block" | "reject" | "dns"
+                    )
+            })
+            .map(|s| format!("http://127.0.0.1:{}", s.mixed_proxy_port))
+    }
+
     fn write_empty_ruleset_stub(tag: &str, path_hint: Option<&str>) -> PathBuf {
         let tmp_rs_dir = std::env::temp_dir().join("tachyon-rulesets");
         let _ = std::fs::create_dir_all(&tmp_rs_dir);
@@ -4585,12 +4656,17 @@ impl CoreManager {
             .map(|s| (s.id.clone(), s.mixed_proxy_port))
             .collect();
         let eff_core_cfg = Self::effective_core_config_path_for(&self.state, &snapshot.settings);
-        let service_mixed_port =
-            read_service_mixed_port_from_config(&eff_core_cfg.to_string_lossy());
+        let eff_core_cfg_str = eff_core_cfg.to_string_lossy();
+        let lists_mixed_port =
+            read_inbound_port_from_config(&eff_core_cfg_str, "download-lists-mixed-in");
+        let service_mixed_port = read_service_mixed_port_from_config(&eff_core_cfg_str);
         let global_sub_proxy = if snapshot.settings.download_lists_via_proxy {
-            sec_proxy_ports
-                .get(&snapshot.settings.download_lists_via_proxy_section)
-                .copied()
+            lists_mixed_port
+                .or_else(|| {
+                    sec_proxy_ports
+                        .get(&snapshot.settings.download_lists_via_proxy_section)
+                        .copied()
+                })
                 .or(service_mixed_port)
         } else {
             None
@@ -6040,80 +6116,83 @@ impl CoreManager {
                 json!({ "ok": true, "component": component, "action": action, "updated_subscriptions": cnt, "message": format!("Обновлено подписок: {cnt}") })
             }
             ("lists" | "rulesets", _) => {
-                let (rulesets_dir, github_mirror, list_names, subnet_services, proxy_opt) = {
+                let (rulesets_dir, github_mirror, list_names, subnet_services, proxy_opt, low_ram) = {
                     let d = self.state.data.read().await;
                     let (names, subnets) = crate::updater::collect_community_sync_targets(&d);
-                    let px = if d.settings.download_lists_via_proxy {
-                        d.sections
-                            .iter()
-                            .find(|s| {
-                                s.enabled
-                                    && s.id == d.settings.download_lists_via_proxy_section
-                                    && s.mixed_proxy_enabled
-                                    && s.mixed_proxy_port > 0
-                            })
-                            .map(|s| format!("http://127.0.0.1:{}", s.mixed_proxy_port))
-                    } else {
-                        None
+                    let px = Self::resolve_lists_download_proxy_url(&self.state, &d);
+                    let low_ram = {
+                        #[cfg(target_os = "linux")]
+                        {
+                            std::fs::read_to_string("/proc/meminfo")
+                                .ok()
+                                .and_then(|raw| {
+                                    raw.lines()
+                                        .find_map(|l| l.strip_prefix("MemTotal:"))
+                                        .and_then(|rest| rest.split_whitespace().next())
+                                        .and_then(|tok| tok.parse::<u64>().ok())
+                                })
+                                .is_some_and(|kb| kb > 0 && kb < 256 * 1024)
+                        }
+                        #[cfg(not(target_os = "linux"))]
+                        {
+                            false
+                        }
                     };
                     (
-                        d.settings.rulesets_dir.clone(),
+                        crate::diagnostics::effective_rulesets_dir(&d.settings),
                         d.settings.github_mirror.clone(),
                         names,
                         subnets,
                         px,
+                        low_ram,
                     )
                 };
                 let mut any_changed = false;
-                if !rulesets_dir.trim().is_empty() {
-                    let _ = std::fs::create_dir_all(&rulesets_dir);
-                    for clean in &list_names {
-                        let base_url = format!(
-                            "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean}.trs"
-                        );
-                        let remote_url = if github_mirror.trim().is_empty() {
-                            base_url
-                        } else {
-                            format!("{}/{}", github_mirror.trim_end_matches('/'), base_url)
-                        };
-                        if let Ok(bytes) = self
-                            .curl_fetch_with_doh_fallback(
-                                &remote_url,
-                                false,
-                                15,
-                                proxy_opt.as_deref(),
-                            )
+                let mut dead_hosts = std::collections::HashSet::new();
+                let _ = std::fs::create_dir_all(&rulesets_dir);
+                for clean in &list_names {
+                    let canonical =
+                        crate::config_gen::resolve_tachyon_list_canonical_name(clean, low_ram);
+                    let base_url = format!(
+                        "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{canonical}.trs"
+                    );
+                    let candidates =
+                        crate::updater::build_ruleset_fetch_candidates(&base_url, &github_mirror);
+                    let mut fetched = None;
+                    for cand in &candidates {
+                        match self
+                            .curl_fetch_with_doh_fallback(cand, false, 15, proxy_opt.as_deref())
                             .await
-                            && Self::bytes_have_valid_trs_magic(&bytes)
                         {
-                            let dst = Path::new(&rulesets_dir).join(format!("{clean}.trs"));
-                            let stale_srs = Path::new(&rulesets_dir).join(format!("{clean}.srs"));
-                            let _ = std::fs::remove_file(&stale_srs);
-                            if matches!(crypto_gen::write_file_if_changed(dst, &bytes), Ok(true)) {
-                                any_changed = true;
+                            Ok(bytes) if Self::bytes_have_valid_trs_magic(&bytes) => {
+                                fetched = Some(bytes);
+                                break;
                             }
-                        } else {
-                            let dst = Path::new(&rulesets_dir).join(format!("{clean}.trs"));
-                            let stale_srs = Path::new(&rulesets_dir).join(format!("{clean}.srs"));
-                            let _ = std::fs::remove_file(&stale_srs);
-                            if !Self::file_has_valid_trs_magic(&dst) {
-                                let _ = std::fs::remove_file(&dst);
-                            }
+                            Ok(_) | Err(_) => {}
                         }
                     }
-                    let mut dead_hosts = std::collections::HashSet::new();
-                    let (sub_changed, _) = crate::updater::sync_community_subnet_lists(
-                        self,
-                        Path::new(&rulesets_dir),
-                        &github_mirror,
-                        proxy_opt.as_deref(),
-                        &subnet_services,
-                        &mut dead_hosts,
-                    )
-                    .await;
-                    if sub_changed {
-                        any_changed = true;
+                    let dst = rulesets_dir.join(format!("{clean}.trs"));
+                    let stale_srs = rulesets_dir.join(format!("{clean}.srs"));
+                    let _ = std::fs::remove_file(&stale_srs);
+                    if let Some(bytes) = fetched {
+                        if matches!(crypto_gen::write_file_if_changed(&dst, &bytes), Ok(true)) {
+                            any_changed = true;
+                        }
+                    } else if !Self::file_has_valid_trs_magic(&dst) {
+                        let _ = std::fs::remove_file(&dst);
                     }
+                }
+                let sub_outcome = crate::updater::sync_community_subnet_lists(
+                    self,
+                    &rulesets_dir,
+                    &github_mirror,
+                    proxy_opt.as_deref(),
+                    &subnet_services,
+                    &mut dead_hosts,
+                )
+                .await;
+                if sub_outcome.any_changed {
+                    any_changed = true;
                 }
                 if any_changed {
                     let _ = self.apply_or_reload().await;

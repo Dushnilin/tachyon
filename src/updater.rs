@@ -1022,10 +1022,65 @@ pub fn parse_expanded_assets_html(html: &str, repo: &str, tag: &str) -> Vec<Valu
 
 pub fn apply_github_mirror(mirror: &str, url: &str) -> String {
     let m = mirror.trim().trim_end_matches('/');
-    if m.is_empty() || !url.starts_with("https://github.com/") {
+    if m.is_empty() {
         return url.to_string();
     }
-    format!("{m}/{url}")
+    let already_prefixed = format!("{m}/");
+    if url.starts_with(&already_prefixed) {
+        return url.to_string();
+    }
+    if url.starts_with("https://github.com/")
+        || url.starts_with("https://raw.githubusercontent.com/")
+    {
+        return format!("{m}/{url}");
+    }
+    url.to_string()
+}
+
+pub(crate) fn build_ruleset_fetch_candidates(base_url: &str, github_mirror: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push_unique = |cand: String| {
+        if !cand.is_empty() && !out.contains(&cand) {
+            out.push(cand);
+        }
+    };
+
+    let mirrored = apply_github_mirror(github_mirror, base_url);
+    if mirrored != base_url {
+        push_unique(mirrored);
+    }
+    push_unique(base_url.to_string());
+
+    if let Some(raw_rest) = base_url.strip_prefix("https://raw.githubusercontent.com/") {
+        let mut parts = raw_rest.splitn(4, '/');
+        if let (Some(owner), Some(repo), Some(branch), Some(rel_path)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+            && !owner.is_empty()
+            && !repo.is_empty()
+            && !branch.is_empty()
+            && !rel_path.is_empty()
+        {
+            push_unique(format!(
+                "https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{rel_path}"
+            ));
+        }
+    }
+
+    if let Some(file) = base_url.strip_prefix(
+        "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/",
+    ) && !file.is_empty()
+        && !file.contains('/')
+    {
+        let gh_rel =
+            format!("https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{file}");
+        let gh_mirrored = apply_github_mirror(github_mirror, &gh_rel);
+        if gh_mirrored != gh_rel {
+            push_unique(gh_mirrored);
+        }
+        push_unique(gh_rel);
+    }
+
+    out
 }
 
 fn format_utc_hhmm_from_unix(unix_secs: i64) -> String {
@@ -3350,6 +3405,14 @@ fn extract_url_host(url: &str) -> String {
         .to_ascii_lowercase()
 }
 
+pub(crate) struct SubnetSyncOutcome {
+    pub any_changed: bool,
+    pub downloaded: u64,
+    pub cached: u64,
+    pub failed: u64,
+    pub last_error: Option<String>,
+}
+
 pub(crate) fn collect_community_sync_targets(
     d: &crate::store::RouterStoreData,
 ) -> (Vec<String>, Vec<String>) {
@@ -3385,6 +3448,23 @@ pub(crate) fn collect_community_sync_targets(
                 push_subnet(&mut subnet_services, r);
             }
         }
+        for r in c
+            .rule_set
+            .iter()
+            .chain(c.remote_domain_lists.iter())
+            .chain(c.remote_subnet_lists.iter())
+            .chain(c.domain_ip_lists.iter())
+        {
+            if crate::config_gen::is_community_list_token(r) {
+                push_list(&mut list_names, r);
+            }
+        }
+        if c.geoip_codes
+            .iter()
+            .any(|g| g.trim().eq_ignore_ascii_case("ru"))
+        {
+            push_list(&mut list_names, "ru_domains");
+        }
     }
     for s in &d.sections {
         for l in &s.community_lists {
@@ -3398,6 +3478,17 @@ pub(crate) fn collect_community_sync_targets(
                 push_list(&mut list_names, r);
                 push_subnet(&mut subnet_services, r);
             }
+        }
+        for r in s.rule_set_urls.iter().chain(s.domain_ip_lists.iter()) {
+            if crate::config_gen::is_community_list_token(r) {
+                push_list(&mut list_names, r);
+            }
+        }
+        if s.geoip_codes
+            .iter()
+            .any(|g| g.trim().eq_ignore_ascii_case("ru"))
+        {
+            push_list(&mut list_names, "ru_domains");
         }
     }
     for l in &d.settings.smart_detect_exclude_lists {
@@ -3413,11 +3504,16 @@ pub(crate) async fn sync_community_subnet_lists(
     proxy_opt: Option<&str>,
     subnet_services: &[String],
     dead_hosts: &mut HashSet<String>,
-) -> (bool, u64) {
-    let mut any_changed = false;
-    let mut synced = 0u64;
+) -> SubnetSyncOutcome {
+    let mut outcome = SubnetSyncOutcome {
+        any_changed: false,
+        downloaded: 0,
+        cached: 0,
+        failed: 0,
+        last_error: None,
+    };
     if subnet_services.is_empty() {
-        return (false, 0);
+        return outcome;
     }
     let _ = std::fs::create_dir_all(rulesets_dir);
     let tmp_dir = Path::new("/tmp/tachyon-core/rulesets");
@@ -3430,90 +3526,80 @@ pub(crate) async fn sync_community_subnet_lists(
         let Some(base_url) = crate::config_gen::community_subnet_url(canonical) else {
             continue;
         };
-        let mirrored = apply_github_mirror(github_mirror, &base_url);
-        let base_host = extract_url_host(&base_url);
-        let mirror_host = extract_url_host(&mirrored);
-        let all_dead = (mirrored == base_url || dead_hosts.contains(&mirror_host))
-            && dead_hosts.contains(&base_host);
-        if all_dead {
-            continue;
-        }
-        let mut fetched = None;
-        if mirrored != base_url && !dead_hosts.contains(&mirror_host) {
-            match core
-                .curl_fetch_with_doh_fallback(&mirrored, false, 15, proxy_opt)
-                .await
-            {
-                Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                Ok(_) => {}
-                Err(e) => {
-                    let msg = e.to_string();
-                    if !mirror_host.is_empty()
-                        && !msg.contains("HTTP 404")
-                        && !msg.contains("HTTP 400")
-                        && !msg.contains("HTTP 410")
-                    {
-                        dead_hosts.insert(mirror_host);
-                    }
-                }
+        let candidates = build_ruleset_fetch_candidates(&base_url, github_mirror);
+        let mut fetched: Option<Vec<u8>> = None;
+        let mut last_err: Option<String> = None;
+        for cand in &candidates {
+            let host = extract_url_host(cand);
+            if !host.is_empty() && dead_hosts.contains(&host) {
+                continue;
             }
-        }
-        if fetched.is_none() && !dead_hosts.contains(&base_host) {
             match core
-                .curl_fetch_with_doh_fallback(&base_url, false, 15, proxy_opt)
+                .curl_fetch_with_doh_fallback(cand, false, 15, proxy_opt)
                 .await
             {
-                Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                Ok(_) => {}
+                Ok(bytes) => {
+                    if let Ok(text) = std::str::from_utf8(&bytes)
+                        && !crate::config_gen::parse_valid_cidr_list(text).is_empty()
+                    {
+                        fetched = Some(bytes);
+                        break;
+                    }
+                    last_err = Some(format!("invalid CIDR payload from {cand}"));
+                }
                 Err(e) => {
                     let msg = e.to_string();
-                    if !base_host.is_empty()
+                    if !host.is_empty()
                         && !msg.contains("HTTP 404")
                         && !msg.contains("HTTP 400")
                         && !msg.contains("HTTP 410")
                     {
-                        dead_hosts.insert(base_host);
+                        dead_hosts.insert(host);
                     }
+                    last_err = Some(msg);
                 }
             }
         }
 
         let file_name = format!("community-subnets-{canonical}.lst");
         let persist_dst = rulesets_dir.join(&file_name);
-        if let Some(bytes) = fetched
-            && let Ok(text) = std::str::from_utf8(&bytes)
-            && !crate::config_gen::parse_valid_cidr_list(text).is_empty()
-        {
+        if let Some(bytes) = fetched {
             if use_tmp_dir
                 && matches!(
                     crypto_gen::write_file_if_changed(tmp_dir.join(&file_name), &bytes),
                     Ok(true)
                 )
             {
-                any_changed = true;
+                outcome.any_changed = true;
             }
             if bytes.len() <= 524_288 {
                 if matches!(
                     crypto_gen::write_file_if_changed(&persist_dst, &bytes),
                     Ok(true)
                 ) {
-                    any_changed = true;
+                    outcome.any_changed = true;
                 }
             } else {
                 let _ = std::fs::remove_file(&persist_dst);
             }
-            synced += 1;
-        } else if persist_dst.exists() {
-            if use_tmp_dir
-                && let Ok(existing) = std::fs::read(&persist_dst)
-                && !existing.is_empty()
-            {
-                let _ = crypto_gen::write_file_if_changed(tmp_dir.join(&file_name), &existing);
+            outcome.downloaded += 1;
+        } else {
+            outcome.failed += 1;
+            if outcome.last_error.is_none() {
+                outcome.last_error = last_err;
             }
-            synced += 1;
+            if persist_dst.exists() {
+                if use_tmp_dir
+                    && let Ok(existing) = std::fs::read(&persist_dst)
+                    && !existing.is_empty()
+                {
+                    let _ = crypto_gen::write_file_if_changed(tmp_dir.join(&file_name), &existing);
+                }
+                outcome.cached += 1;
+            }
         }
     }
-    (any_changed, synced)
+    outcome
 }
 
 async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
@@ -3538,33 +3624,7 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
     let (rulesets_dir, github_mirror, list_names, subnet_services, proxy_opt) = {
         let d = core.state.data.read().await;
         let (names, subnets) = collect_community_sync_targets(&d);
-        let px = if d.settings.download_lists_via_proxy {
-            d.sections
-                .iter()
-                .find(|s| {
-                    s.enabled
-                        && s.id == d.settings.download_lists_via_proxy_section
-                        && s.mixed_proxy_enabled
-                        && s.mixed_proxy_port > 0
-                })
-                .map(|s| format!("http://127.0.0.1:{}", s.mixed_proxy_port))
-                .or_else(|| {
-                    let cfg_p =
-                        CoreManager::effective_core_config_path_for(&core.state, &d.settings);
-                    let raw = std::fs::read_to_string(cfg_p).ok()?;
-                    let val: Value = serde_json::from_str(&raw).ok()?;
-                    val.get("inbounds")?
-                        .as_array()?
-                        .iter()
-                        .find(|ib| {
-                            ib.get("tag").and_then(Value::as_str) == Some("service-mixed-in")
-                        })
-                        .and_then(|ib| ib.get("listen_port").and_then(Value::as_u64))
-                        .map(|p| format!("http://127.0.0.1:{p}"))
-                })
-        } else {
-            None
-        };
+        let px = CoreManager::resolve_lists_download_proxy_url(&core.state, &d);
         (
             crate::diagnostics::effective_rulesets_dir(&d.settings),
             d.settings.github_mirror.clone(),
@@ -3574,8 +3634,12 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
         )
     };
     let mut any_changed = false;
-    let mut synced_files = 0u64;
+    let mut downloaded_fresh = 0u64;
+    let mut kept_cached = 0u64;
+    let mut failed_count = 0u64;
+    let mut last_error: Option<String> = None;
     let mut dead_hosts: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let attempted_lists = (list_names.len() + subnet_services.len()) as u64;
     if !list_names.is_empty() {
         let _ = std::fs::create_dir_all(&rulesets_dir);
         for clean in &list_names {
@@ -3583,50 +3647,35 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
             let base_url = format!(
                 "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{canonical}.trs"
             );
-            let mirrored = apply_github_mirror(&github_mirror, &base_url);
-            let base_host = extract_url_host(&base_url);
-            let mirror_host = extract_url_host(&mirrored);
-            let all_dead = (mirrored == base_url || dead_hosts.contains(&mirror_host))
-                && dead_hosts.contains(&base_host);
-            if all_dead {
-                continue;
-            }
-            let mut fetched = None;
-            if mirrored != base_url && !dead_hosts.contains(&mirror_host) {
-                match core
-                    .curl_fetch_with_doh_fallback(&mirrored, false, 15, proxy_opt.as_deref())
-                    .await
-                {
-                    Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                    Ok(_) => {}
-                    Err(e) => {
-                        let msg = e.to_string();
-                        if !mirror_host.is_empty()
-                            && !msg.contains("HTTP 404")
-                            && !msg.contains("HTTP 400")
-                            && !msg.contains("HTTP 410")
-                        {
-                            dead_hosts.insert(mirror_host);
-                        }
-                    }
+            let candidates = build_ruleset_fetch_candidates(&base_url, &github_mirror);
+            let mut fetched: Option<Vec<u8>> = None;
+            let mut item_err: Option<String> = None;
+            for cand in &candidates {
+                let host = extract_url_host(cand);
+                if !host.is_empty() && dead_hosts.contains(&host) {
+                    continue;
                 }
-            }
-            if fetched.is_none() && !dead_hosts.contains(&base_host) {
                 match core
-                    .curl_fetch_with_doh_fallback(&base_url, false, 15, proxy_opt.as_deref())
+                    .curl_fetch_with_doh_fallback(cand, false, 15, proxy_opt.as_deref())
                     .await
                 {
-                    Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                    Ok(_) => {}
+                    Ok(bytes) if CoreManager::bytes_have_valid_trs_magic(&bytes) => {
+                        fetched = Some(bytes);
+                        break;
+                    }
+                    Ok(_) => {
+                        item_err = Some(format!("invalid .trs header from {cand}"));
+                    }
                     Err(e) => {
                         let msg = e.to_string();
-                        if !base_host.is_empty()
+                        if !host.is_empty()
                             && !msg.contains("HTTP 404")
                             && !msg.contains("HTTP 400")
                             && !msg.contains("HTTP 410")
                         {
-                            dead_hosts.insert(base_host);
+                            dead_hosts.insert(host);
                         }
+                        item_err = Some(msg);
                     }
                 }
             }
@@ -3634,22 +3683,25 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
             let stale_srs = rulesets_dir.join(format!("{clean}.srs"));
             let _ = std::fs::remove_file(&stale_srs);
             if let Some(bytes) = fetched {
-                if crate::core_mgr::CoreManager::bytes_have_valid_trs_magic(&bytes) {
-                    if matches!(crypto_gen::write_file_if_changed(&dst, &bytes), Ok(true)) {
-                        any_changed = true;
-                    }
-                    synced_files += 1;
-                } else if !crate::core_mgr::CoreManager::file_has_valid_trs_magic(&dst) {
+                if matches!(crypto_gen::write_file_if_changed(&dst, &bytes), Ok(true)) {
+                    any_changed = true;
+                }
+                downloaded_fresh += 1;
+            } else {
+                failed_count += 1;
+                if last_error.is_none() {
+                    last_error = item_err
+                        .or_else(|| Some(format!("все источники недоступны для {canonical}.trs")));
+                }
+                if CoreManager::file_has_valid_trs_magic(&dst) {
+                    kept_cached += 1;
+                } else if dst.exists() {
                     let _ = std::fs::remove_file(&dst);
                 }
-            } else if crate::core_mgr::CoreManager::file_has_valid_trs_magic(&dst) {
-                synced_files += 1;
-            } else if dst.exists() {
-                let _ = std::fs::remove_file(&dst);
             }
         }
     }
-    let (sub_changed, _sub_synced) = sync_community_subnet_lists(
+    let sub_outcome = sync_community_subnet_lists(
         core.as_ref(),
         &rulesets_dir,
         &github_mirror,
@@ -3658,14 +3710,21 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
         &mut dead_hosts,
     )
     .await;
-    if sub_changed {
+    if sub_outcome.any_changed {
         any_changed = true;
+    }
+    downloaded_fresh += sub_outcome.downloaded;
+    kept_cached += sub_outcome.cached;
+    failed_count += sub_outcome.failed;
+    if last_error.is_none() {
+        last_error = sub_outcome.last_error;
     }
     if any_changed && !core.is_manually_stopped() {
         let _ = core.apply_or_reload().await;
     }
-    let cnt = if synced_files > 0 {
-        synced_files
+    let synced_total = downloaded_fresh + kept_cached;
+    let cnt = if synced_total > 0 {
+        synced_total
     } else {
         std::fs::read_dir(&rulesets_dir)
             .map(|rd| {
@@ -3680,10 +3739,53 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
             })
             .unwrap_or(0)
     };
+    if attempted_lists > 0 && downloaded_fresh == 0 && failed_count > 0 {
+        let err_tail = last_error
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or("источники недоступны");
+        let cached_note = if kept_cached > 0 {
+            format!(", использован локальный кеш: {kept_cached}")
+        } else {
+            String::new()
+        };
+        return json!({
+            "ok": false,
+            "result": {
+                "lists_count": cnt,
+                "downloaded_count": downloaded_fresh,
+                "cached_count": kept_cached,
+                "failed_count": failed_count,
+                "changed": any_changed,
+                "last_error": last_error,
+                "rulesets_dir": rulesets_dir.to_string_lossy(),
+                "message": format!("Не удалось скачать списки правил (ошибок: {failed_count} из {attempted_lists}{cached_note}): {err_tail}")
+            }
+        });
+    }
+    if failed_count > 0 {
+        return json!({
+            "ok": true,
+            "result": {
+                "lists_count": cnt,
+                "downloaded_count": downloaded_fresh,
+                "cached_count": kept_cached,
+                "failed_count": failed_count,
+                "partial": true,
+                "changed": any_changed,
+                "last_error": last_error,
+                "rulesets_dir": rulesets_dir.to_string_lossy(),
+                "message": format!("Обновлено списков: {downloaded_fresh}, из кеша: {kept_cached}, ошибок загрузки: {failed_count}")
+            }
+        });
+    }
     json!({
         "ok": true,
         "result": {
             "lists_count": cnt,
+            "downloaded_count": downloaded_fresh,
+            "cached_count": kept_cached,
+            "failed_count": 0,
             "changed": any_changed,
             "rulesets_dir": rulesets_dir.to_string_lossy(),
             "message": format!("Синхронизировано наборов правил (.trs/.srs): {cnt}")
@@ -5023,5 +5125,56 @@ arch mipsel-3.4_kn 20
         assert_eq!(second, 0);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_apply_github_mirror_and_ruleset_fetch_candidates() {
+        let raw_url = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_whitelist.trs";
+        assert_eq!(
+            apply_github_mirror("https://mirror.example/", raw_url),
+            "https://mirror.example/https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_whitelist.trs"
+        );
+        assert_eq!(
+            apply_github_mirror(
+                "https://mirror.example",
+                "https://mirror.example/https://github.com/a/b"
+            ),
+            "https://mirror.example/https://github.com/a/b"
+        );
+
+        let cands = build_ruleset_fetch_candidates(raw_url, "https://ghproxy.example");
+        assert_eq!(
+            cands,
+            vec![
+                "https://ghproxy.example/https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_whitelist.trs",
+                raw_url,
+                "https://cdn.jsdelivr.net/gh/Dushnilin/tachyon-lists@main/release/tachyon/ru_whitelist.trs",
+                "https://ghproxy.example/https://github.com/Dushnilin/tachyon-lists/releases/latest/download/ru_whitelist.trs",
+                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/ru_whitelist.trs",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_community_sync_targets_scans_rule_set_and_geoip_ru() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.conditions.push(crate::store::TrafficCondition {
+            id: "c_bypass".to_string(),
+            enabled: true,
+            rule_set: vec!["ru_whitelist".to_string()],
+            geoip_codes: vec!["ru".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "sec_block".to_string(),
+            enabled: true,
+            domain_ip_lists: vec!["telemetry_block".to_string()],
+            ..Default::default()
+        });
+
+        let (lists, _) = collect_community_sync_targets(&store);
+        assert!(lists.contains(&"ru_whitelist".to_string()));
+        assert!(lists.contains(&"ru_domains".to_string()));
+        assert!(lists.contains(&"telemetry_block".to_string()));
     }
 }
