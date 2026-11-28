@@ -243,7 +243,7 @@ function run_pending_reload_if_requested(path, init_script) {
     // One launch site for both outcomes, so this file does not grow a second
     // background invocation.
     let apply_in_place = reason == PENDING_RELOAD_SOFT_APPLY_REASON;
-    let reload_arg = reason == "force" ? "force" : "pending";
+    let reload_arg = (reason == "force" || reason == "section_fail_policy") ? reason : "pending";
     let command = apply_in_place
         ? command_from_args([
             "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",

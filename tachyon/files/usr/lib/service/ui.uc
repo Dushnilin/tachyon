@@ -1772,10 +1772,12 @@ function run_pending_reload_after_service_action(action, success) {
     if (!consume_pending_reload())
         return;
 
-    let reload_reason = pending_reason == "force" ? "force" : "pending";
-    let started = pending_reason == "force"
-        ? start_service_action("reload", "initd", "force")
-        : start_service_action("reload", "initd", "pending");
+    let reload_reason = (pending_reason == "force" || pending_reason == "section_fail_policy")
+        ? pending_reason
+        : "pending";
+    let started = reload_reason == "pending"
+        ? start_service_action("reload", "initd", "pending")
+        : start_service_action("reload", "initd", reload_reason);
     if (!started.success)
         mark_pending_reload(reload_reason);
 }

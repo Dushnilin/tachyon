@@ -27,8 +27,11 @@ let contains = common.contains;
 let shell_quote = common.shell_quote;
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
+let command_status_from_args = common.command_status_from_args;
 let command_success_from_args = common.command_success_from_args;
 let command_output_from_args = common.command_output_from_args;
+let remove_file = common.remove_file;
+let write_file = common.write_file;
 let write_json = common.write_json;
 let write_json_file = common.write_json_file;
 
@@ -37,6 +40,7 @@ const TACHYON_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const STATE_FILE = getenv("TACHYON_FAILOVER_STATE_FILE") || "/etc/tachyon/failover_section";
 const STREAK_FILE = getenv("TACHYON_FAILOVER_STREAK_FILE") || "/var/run/tachyon/failover_streak";
 const SECTION_FAIL_STATE_FILE = getenv("TACHYON_SECTION_FAIL_STATE_FILE") || "/var/run/tachyon/section-fail-state.json";
+const SECTION_FAIL_RELOAD_PENDING_FILE = getenv("TACHYON_SECTION_FAIL_RELOAD_PENDING_FILE") || SECTION_FAIL_STATE_FILE + ".reload-pending";
 const PROBE_TIMEOUT_MS = getenv("TACHYON_FAILOVER_PROBE_TIMEOUT") || "3000";
 
 const FAILOVER_GROUP_TAG = "tachyon-failover";
@@ -221,6 +225,16 @@ function write_section_fail_state(state_map) {
     write_json_file(SECTION_FAIL_STATE_FILE, object_or_empty(state_map));
 }
 
+function write_section_fail_reload_pending(status_code) {
+    let dir = replace(as_string(SECTION_FAIL_RELOAD_PENDING_FILE), /\/[^\/]+$/, "");
+    if (dir != "" && dir != SECTION_FAIL_RELOAD_PENDING_FILE)
+        command_success_from_args([ "mkdir", "-p", dir ]);
+    write_file(
+        SECTION_FAIL_RELOAD_PENDING_FILE,
+        "reason=section_fail_policy\nstatus=" + as_string(status_code) + "\n"
+    );
+}
+
 function check_section_fail_policies() {
     let prev_map = read_section_fail_state();
     let next_map = {};
@@ -366,8 +380,15 @@ function check_section_fail_policies() {
     if (has_policies || length(keys(prev_map)) > 0)
         write_section_fail_state(next_map);
 
-    if (state_changed && getenv("TACHYON_FAILOVER_SKIP_RELOAD") != "1") {
-        command_success_from_args([ TACHYON_BIN, "reload", "section_fail_policy" ]);
+    let has_pending_reload = fs.stat(SECTION_FAIL_RELOAD_PENDING_FILE) != null;
+    if ((state_changed || has_pending_reload) && getenv("TACHYON_FAILOVER_SKIP_RELOAD") != "1") {
+        let reload_rc = command_status_from_args([ TACHYON_BIN, "reload", "section_fail_policy" ]);
+        if (reload_rc == 0) {
+            remove_file(SECTION_FAIL_RELOAD_PENDING_FILE);
+        } else {
+            write_section_fail_reload_pending(reload_rc);
+            log_message("section fail policy reload deferred or failed (rc=" + as_string(reload_rc) + "); will retry on next check", "warn");
+        }
     }
 }
 

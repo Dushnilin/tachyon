@@ -43,6 +43,7 @@ const SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("TACHYON_SUBSCRIPTION_BOOTS
 const DNS_FAILOVER_STATE_FILE = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") || RUNTIME_STATE_DIR + "/dns-failover.json";
 const DNS_FAILOVER_PID_FILE = getenv("TACHYON_DNS_FAILOVER_PID_FILE") || RUNTIME_STATE_DIR + "/dns-failover.pid";
 const SECTION_FAIL_STATE_FILE = getenv("TACHYON_SECTION_FAIL_STATE_FILE") || RUNTIME_STATE_DIR + "/section-fail-state.json";
+const SECTION_FAIL_RELOAD_PENDING_FILE = getenv("TACHYON_SECTION_FAIL_RELOAD_PENDING_FILE") || SECTION_FAIL_STATE_FILE + ".reload-pending";
 const SECTION_ERRORS_FILE = getenv("TACHYON_SECTION_ERRORS_FILE") || RUNTIME_STATE_DIR + "/section-errors.json";
 const VALIDATOR_QUARANTINED_FILE = getenv("TACHYON_VALIDATOR_QUARANTINED_FILE") || RUNTIME_STATE_DIR + "/validator-quarantined.json";
 const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
@@ -345,6 +346,7 @@ function save_completed_reload_hash() {
 function finish_reload_status(status, initial_fingerprint) {
     status = int(status || 0);
     if (status == 0) {
+        remove_file(SECTION_FAIL_RELOAD_PENDING_FILE);
         // Record the hash the reload acted on so a subsequent no-op reload can be
         // skipped before it forks anything. Only written on success: a failed or
         // aborted reload must not suppress the retry of the same config.
@@ -1236,6 +1238,7 @@ function start_impl() {
     planned_restart_active = false;
     fs.writefile("/var/run/tachyon/starting", as_string(time()));
     remove_file(SECTION_FAIL_STATE_FILE);
+    remove_file(SECTION_FAIL_RELOAD_PENDING_FILE);
     remove_file(SECTION_ERRORS_FILE);
     remove_file(VALIDATOR_QUARANTINED_FILE);
     purge_legacy_steer_runtime();
@@ -1923,8 +1926,9 @@ function reload(reason) {
     if (!module_success(STATE_UC, [ "acquire-runtime-dir-lock", RELOAD_LOCK_DIR, lock_owner ])) {
         log_message("Reload skipped: reload lock is already held by another process", "info");
         reload_skipped_lock_busy = true;
-        mark_pending_reload("reload_busy");
-        return 0;
+        let is_fail_policy = as_string(reason || "") == "section_fail_policy";
+        mark_pending_reload(is_fail_policy ? "section_fail_policy" : "reload_busy");
+        return is_fail_policy ? 75 : 0;
     }
 
     let status = reload_unlocked(reason);
