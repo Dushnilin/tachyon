@@ -10871,7 +10871,7 @@ fn recover_or_load_existing_store(
                     .map(|p| format!("; отвергнутый файл сохранён в {}", p.display()))
                     .unwrap_or_default();
                 let warn_msg = format!(
-                    "Хранилище {} повреждено ({primary_err:#}); выполнен откат на {}{saved_hint}",
+                    "Хранилище {} недоступно или повреждено ({primary_err:#}); выполнен откат на {}{saved_hint}",
                     path.display(),
                     lkg_path.display()
                 );
@@ -11062,7 +11062,8 @@ impl AppState {
         let lkg_path = path.with_file_name("tachyon.known_good.json");
 
         let mut recovery_warning: Option<String> = None;
-        let data = if path.exists() {
+        // Bootstrap defaults only on a fresh installation, where neither store exists.
+        let data = if path.try_exists()? || lkg_path.try_exists()? {
             let (raw, mut parsed, needs_rewrite, warn_opt) =
                 recover_or_load_existing_store(&path, &lkg_path)?;
             recovery_warning = warn_opt;
@@ -13338,6 +13339,46 @@ config outbound_source 'awg31_src'
         assert_eq!(healed.settings.listen_port, 1777);
 
         drop(guard);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_load_or_create_recovers_missing_store_without_overwriting_invalid_backup() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_lkg_missing_primary_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store_path = dir.join("tachyon.json");
+        let lkg_path = dir.join("tachyon.known_good.json");
+
+        let broken_backup = "{corrupt json";
+        std::fs::write(&lkg_path, broken_backup).unwrap();
+        assert!(AppState::load_or_create(&store_path).is_err());
+        assert!(!store_path.exists());
+        assert_eq!(std::fs::read_to_string(&lkg_path).unwrap(), broken_backup);
+
+        let mut backup = RouterStoreData::default();
+        backup.settings.listen_port = 1777;
+        let backup_json = serde_json::to_string_pretty(&backup).unwrap();
+        std::fs::write(&lkg_path, &backup_json).unwrap();
+
+        let state = AppState::load_or_create(&store_path).expect("restore missing store");
+        assert_eq!(state.data.blocking_read().settings.listen_port, 1777);
+        assert!(
+            state
+                .live
+                .blocking_read()
+                .last_store_recovery_warning
+                .is_some()
+        );
+        assert!(!dir.join("tachyon.json.corrupt").exists());
+        let restored: RouterStoreData =
+            serde_json::from_slice(&std::fs::read(&store_path).unwrap()).unwrap();
+        assert_eq!(restored.settings.listen_port, 1777);
+        assert_eq!(std::fs::read_to_string(&lkg_path).unwrap(), backup_json);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
