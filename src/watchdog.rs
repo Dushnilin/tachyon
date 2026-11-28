@@ -635,6 +635,12 @@ pub(crate) fn detect_config_drift(
         wd.drift_confirm_ticks = 0;
         return false;
     }
+    if let Some(disk_digest) = disk_config_digest
+        && disk_digest != desired_digest
+    {
+        wd.drift_confirm_ticks = wd.drift_confirm_ticks.saturating_add(1);
+        return true;
+    }
     if !wd.last_applied_desired_digest.is_empty() {
         if wd.last_applied_desired_digest == desired_digest {
             if wd.last_applied_core_digest.is_empty() {
@@ -1902,6 +1908,20 @@ mod tests {
             "core-canonical-sha-a",
             Some("desired-sha-v1")
         ));
+
+        // Even after recording applied desired digest, stale disk config must still report drift
+        // and must NOT calibrate last_applied_core_digest to an outdated core digest.
+        let mut stale_calib_wd = WatchdogState::default();
+        stale_calib_wd.record_applied_config("desired-sha-v2".to_string());
+        assert!(detect_config_drift(
+            &mut stale_calib_wd,
+            true,
+            true,
+            "desired-sha-v2",
+            "core-canonical-sha-a",
+            Some("desired-sha-v1")
+        ));
+        assert!(stale_calib_wd.last_applied_core_digest.is_empty());
     }
 
     #[test]

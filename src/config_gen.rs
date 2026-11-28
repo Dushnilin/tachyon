@@ -6668,9 +6668,34 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             }
             out.push((tag, Value::Object(obj)));
         }
+        "tor" => {
+            let tag = format!("tor-{}", src.id);
+            let host = if src.server.trim().is_empty() {
+                "127.0.0.1"
+            } else {
+                src.server.trim()
+            };
+            let port = if src.tor_socks_port > 0 {
+                src.tor_socks_port
+            } else if src.server_port > 0 {
+                src.server_port
+            } else {
+                9050
+            };
+            out.push((
+                tag.clone(),
+                json!({
+                    "type": "socks",
+                    "tag": tag,
+                    "server": host,
+                    "server_port": port,
+                    "version": "5",
+                }),
+            ));
+        }
         "anytls" | "naive" | "mieru" | "snell" | "sudoku" | "masque" | "openconnect"
-        | "shadowtls" | "trusttunnel" | "tewfai" | "tor" | "openvpn"
-            if !src.server.trim().is_empty() || src.source_type == "tor" =>
+        | "shadowtls" | "trusttunnel" | "tewfai" | "openvpn"
+            if !src.server.trim().is_empty() =>
         {
             let st = src.source_type.as_str();
             if st == "mieru" && src.server_port == 0 && src.server_ports.is_empty() {
@@ -18592,12 +18617,26 @@ fn collect_custom_dns_section_rules(
         &mut tmp,
     );
 
-    fn rewrite_rule_target(rule: &mut Value, server_tag: &str, rewrite_ttl: u32) {
+    fn rewrite_rule_target(
+        rule: &mut Value,
+        server_tag: &str,
+        rewrite_ttl: u32,
+        enable_ipv6: bool,
+    ) {
         if let Some(obj) = rule.as_object_mut() {
             if let Some(sub_arr) = obj.get_mut("rules").and_then(Value::as_array_mut) {
                 sub_arr.retain(|sub| sub.get("query_type").is_none());
             }
-            if obj.contains_key("query_type") {
+            if server_tag == "dns-fakeip" {
+                obj.insert(
+                    "query_type".into(),
+                    if enable_ipv6 {
+                        json!(["A", "AAAA"])
+                    } else {
+                        json!(["A"])
+                    },
+                );
+            } else if obj.contains_key("query_type") {
                 obj.remove("query_type");
             }
             if obj.get("rcode").is_some() {
@@ -18630,7 +18669,7 @@ fn collect_custom_dns_section_rules(
     ));
 
     for mut rule in tmp {
-        rewrite_rule_target(&mut rule, server_tag, rewrite_ttl);
+        rewrite_rule_target(&mut rule, server_tag, rewrite_ttl, enable_ipv6);
         if rule.as_object().is_some_and(dns_rule_has_matcher) {
             let mut wrapped =
                 wrap_rule_with_inverted_subrules(rule, &sec_exc_dom_and_src_subs, &[]);
@@ -21856,7 +21895,7 @@ fn collect_atomic_condition_parts_with_tables(
     let mut keyword_domains = Vec::new();
     let mut regex_domains = Vec::new();
     for raw in cond.domains.iter().chain(cond.user_domains.iter()) {
-        let trimmed = raw.trim();
+        let trimmed = raw.trim().trim_end_matches(',').trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -22328,6 +22367,9 @@ fn build_condition_rules(
     for branch in parts.branches {
         if pre_resolve_ip
             && (branch.contains_key("domain_suffix")
+                || branch.contains_key("domain")
+                || branch.contains_key("domain_keyword")
+                || branch.contains_key("domain_regex")
                 || extract_dns_domain_rule_sets(&branch, rule_sets).is_some())
         {
             let mut resolve_rule = parts.scope.clone();
@@ -33937,5 +33979,164 @@ proxies:
         let auto_b_members = auto_b["outbounds"].as_array().unwrap();
         assert!(auto_b_members.contains(&json!("🇪🇪 Эстония-1")));
         assert!(auto_b_members.contains(&json!("🇩🇪 Германия-1")));
+    }
+
+    #[test]
+    fn test_issue_534_tor_compiles_to_socks5_outbound() {
+        let tor_default = OutboundSource {
+            id: "src_tor".to_string(),
+            enabled: true,
+            name: "Tor".to_string(),
+            source_type: "tor".to_string(),
+            ..Default::default()
+        };
+        let outs_def = build_source_outbounds(&tor_default);
+        assert_eq!(outs_def.len(), 1);
+        assert_eq!(outs_def[0].0, "tor-src_tor");
+        assert_eq!(outs_def[0].1["type"], "socks");
+        assert_eq!(outs_def[0].1["version"], "5");
+        assert_eq!(outs_def[0].1["server"], "127.0.0.1");
+        assert_eq!(outs_def[0].1["server_port"], 9050);
+
+        let tor_custom = OutboundSource {
+            id: "src_tor2".to_string(),
+            enabled: true,
+            name: "Tor Custom".to_string(),
+            source_type: "tor".to_string(),
+            tor_socks_port: 9150,
+            ..Default::default()
+        };
+        let outs_cust = build_source_outbounds(&tor_custom);
+        assert_eq!(outs_cust[0].1["server_port"], 9150);
+    }
+
+    #[test]
+    fn test_issue_538_default_ncsi_domains_bypass_fakeip() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.outbound_sources = vec![OutboundSource {
+            id: "s1".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443#VPN".to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.sections = vec![RoutingSection {
+            id: "sec1".to_string(),
+            enabled: true,
+            connection_type: "proxy".to_string(),
+            action: "connection".to_string(),
+            outbound_source_refs: vec!["s1".to_string()],
+            match_all: true,
+            ..Default::default()
+        }];
+
+        let cfg = compile_core_config(&store).expect("compile default fakeip config");
+        let dns_rules = cfg["dns"]["rules"].as_array().expect("dns rules");
+        let ncsi_idx = dns_rules
+            .iter()
+            .position(|r| {
+                r["server"] == "dns-remote"
+                    && r["domain_suffix"]
+                        .as_array()
+                        .is_some_and(|a| a.contains(&json!("dns.msftncsi.com")))
+            })
+            .expect("default dns-remote rule for NCSI");
+        let fakeip_idx = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(ncsi_idx < fakeip_idx);
+    }
+
+    #[test]
+    fn test_issue_540_third_regex_condition_works_in_selective_and_full_tproxy() {
+        for selective in [false, true] {
+            let mut store = RouterStoreData::default();
+            store.settings.fakeip_enabled = true;
+            store.settings.selective_tproxy = selective;
+            store.outbound_sources = vec![OutboundSource {
+                id: "s_vpn".to_string(),
+                enabled: true,
+                source_type: "proxy_links".to_string(),
+                proxy_links: vec![
+                    "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443#VPN"
+                        .to_string(),
+                ],
+                ..Default::default()
+            }];
+            store.conditions = vec![
+                TrafficCondition {
+                    id: "c1_services".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    domains: vec!["youtube.com".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "c2_ai".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    domains: vec!["openai.com".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "media_tv".to_string(),
+                    enabled: true,
+                    name: "Media TV".to_string(),
+                    condition_type: "atomic".to_string(),
+                    community_subnets: true,
+                    geoip_mode: "include".to_string(),
+                    domains: vec![
+                        r"regex:(^|\.)kinovibe[0-9]*\.[a-z]+$,".to_string(),
+                        r"regex:(^|\.)browserleaks\.com$,".to_string(),
+                        r"regex:(^|\.)foo[0-9]{1,3}\.org$".to_string(),
+                    ],
+                    ..Default::default()
+                },
+            ];
+            store.sections = vec![RoutingSection {
+                id: "vpn".to_string(),
+                enabled: true,
+                connection_type: "proxy".to_string(),
+                action: "connection".to_string(),
+                outbound_source_refs: vec!["s_vpn".to_string()],
+                condition_refs: vec![
+                    "c1_services".to_string(),
+                    "c2_ai".to_string(),
+                    "media_tv".to_string(),
+                ],
+                ..Default::default()
+            }];
+
+            let cfg = compile_core_config(&store).expect("compile regex condition config");
+            let route_rules = cfg["route"]["rules"].as_array().expect("route rules");
+            assert!(
+                route_rules.iter().any(|r| {
+                    r["outbound"] == "VPN"
+                        && r["domain_regex"].as_array().is_some_and(|arr| {
+                            arr.contains(&json!(r"(^|\.)kinovibe[0-9]*\.[a-z]+$"))
+                                && arr.contains(&json!(r"(^|\.)browserleaks\.com$"))
+                                && arr.contains(&json!(r"(^|\.)foo[0-9]{1,3}\.org$"))
+                        })
+                }),
+                "missing domain_regex route rule for third condition (selective={selective})"
+            );
+
+            if selective {
+                let dns_rules = cfg["dns"]["rules"].as_array().expect("dns rules");
+                assert!(
+                    dns_rules.iter().any(|r| {
+                        r["server"] == "dns-fakeip"
+                            && r["domain_regex"].as_array().is_some_and(|arr| {
+                                arr.contains(&json!(r"(^|\.)browserleaks\.com$"))
+                            })
+                    }),
+                    "missing dns-fakeip domain_regex rule in selective_tproxy mode"
+                );
+            }
+        }
     }
 }

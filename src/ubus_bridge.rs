@@ -1795,6 +1795,21 @@ async fn handle_single_ubus_rpc_with_sync(
     })
 }
 
+fn should_forward_router_ubus_call(object: &str, method: &str) -> bool {
+    matches!(
+        (object, method),
+        (
+            "luci-rpc",
+            "getHostHints"
+                | "getDHCPLeases"
+                | "getNetworkDevices"
+                | "getWirelessDevices"
+                | "getBoardJSON"
+        ) | ("network.interface", _)
+            | ("network", _)
+    )
+}
+
 async fn dispatch_ubus_call_with_sync(
     object: &str,
     method: &str,
@@ -1869,14 +1884,8 @@ async fn dispatch_ubus_call_with_sync(
             handle_uci_call_with_sync(uci_method, args, state, core, sync_after_uci_mutation).await
         }
         ("luci-rpc", _) | ("network.interface", _) | ("network", _) => {
-            if matches!(
-                (object, method),
-                (
-                    "luci-rpc",
-                    "getNetworkDevices" | "getWirelessDevices" | "getBoardJSON"
-                ) | ("network.interface", _)
-                    | ("network", _)
-            ) && let Some(res) = call_router_ubus_cli(object, method, args).await
+            if should_forward_router_ubus_call(object, method)
+                && let Some(res) = call_router_ubus_cli(object, method, args).await
             {
                 return res;
             }
@@ -11013,6 +11022,8 @@ async fn handle_reload_with_disk_sync(state: &Arc<AppState>, core: &Arc<CoreMana
                 "success": true,
                 "reloaded_from_disk": reloaded_from_disk,
                 "config_drift": live.config_drift,
+                "desired_config_digest": live.desired_config_digest,
+                "applied_config_digest": live.applied_config_digest,
             })
         }
         Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
@@ -18610,6 +18621,8 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         ));
         assert!(is_allowed_router_ubus_call("network.interface", "dump"));
         assert!(is_allowed_router_ubus_call("luci-rpc", "getHostHints"));
+        assert!(should_forward_router_ubus_call("luci-rpc", "getHostHints"));
+        assert!(should_forward_router_ubus_call("luci-rpc", "getDHCPLeases"));
     }
 
     #[tokio::test]

@@ -83,6 +83,22 @@ pub struct CoreManager {
 
 static CLASH_CRED_EPOCH: crate::store::PortableAtomicU64 = crate::store::PortableAtomicU64::new(0);
 
+fn should_force_restart_after_hot_reload(
+    prev_core_digest: &str,
+    post_core_digest: Option<&str>,
+    prev_desired_digest: &str,
+    next_desired_digest: &str,
+) -> bool {
+    let Some(post) = post_core_digest.filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    !prev_core_digest.is_empty()
+        && post == prev_core_digest
+        && !prev_desired_digest.is_empty()
+        && !next_desired_digest.is_empty()
+        && prev_desired_digest != next_desired_digest
+}
+
 impl CoreManager {
     pub fn invalidate_clash_cred_cache() {
         CLASH_CRED_EPOCH.fetch_add(1, Ordering::AcqRel);
@@ -2702,12 +2718,43 @@ impl CoreManager {
         } else {
             self.state.live.write().await.nft_table_active = true;
         }
+        let (prev_applied_digest, prev_desired_digest) = {
+            let live = self.state.live.read().await;
+            (
+                live.applied_config_digest.clone(),
+                live.desired_config_digest.clone(),
+            )
+        };
+        let next_desired_digest = if quarantined.is_empty() {
+            crate::watchdog::compute_config_digest(&prepared_cfg)
+        } else {
+            crate::watchdog::compute_desired_digest(&store_snapshot)
+        };
         let body = json!({ "path": cfg_path }).to_string();
         if Box::pin(self.clash_request("PUT", "/configs?force=true", Some(&body)))
             .await
             .is_err()
         {
             // Release reload_lock before falling back to start() to avoid self-deadlock.
+            drop(reload_guard);
+            return self.start_boxed().await;
+        }
+        let post_applied_digest = self
+            .get_core_health()
+            .await
+            .ok()
+            .and_then(|h| {
+                h.pointer("/config_state/digest")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .filter(|s| !s.is_empty());
+        if should_force_restart_after_hot_reload(
+            &prev_applied_digest,
+            post_applied_digest.as_deref(),
+            &prev_desired_digest,
+            &next_desired_digest,
+        ) {
             drop(reload_guard);
             return self.start_boxed().await;
         }
@@ -2719,6 +2766,14 @@ impl CoreManager {
             reload_wan6.wan6_available,
         )
         .await;
+        if let Some(applied) = post_applied_digest {
+            {
+                let mut wd = self.watchdog.lock().await;
+                wd.last_applied_core_digest = applied.clone();
+            }
+            let mut live = self.state.live.write().await;
+            live.applied_config_digest = applied;
+        }
         drop(reload_guard);
         Ok(())
     }
@@ -9826,5 +9881,33 @@ mod core_mgr_tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_should_force_restart_after_hot_reload_on_stale_core_digest() {
+        assert!(should_force_restart_after_hot_reload(
+            "core-old",
+            Some("core-old"),
+            "desired-old",
+            "desired-new",
+        ));
+        assert!(!should_force_restart_after_hot_reload(
+            "core-old",
+            Some("core-new"),
+            "desired-old",
+            "desired-new",
+        ));
+        assert!(!should_force_restart_after_hot_reload(
+            "core-old",
+            Some("core-old"),
+            "desired-same",
+            "desired-same",
+        ));
+        assert!(!should_force_restart_after_hot_reload(
+            "core-old",
+            None,
+            "desired-old",
+            "desired-new",
+        ));
     }
 }

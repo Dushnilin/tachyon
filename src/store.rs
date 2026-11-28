@@ -435,6 +435,29 @@ fn default_fakeip_v4() -> String {
     "198.18.0.0/15".to_string()
 }
 
+pub const DEFAULT_FAKEIP_EXCLUDE_DOMAINS: &[&str] = &[
+    "dns.msftncsi.com",
+    "www.msftncsi.com",
+    "www.msftconnecttest.com",
+    "ipv6.msftconnecttest.com",
+    "ipv6.msftncsi.com",
+    "network-test.debian.org",
+    "nmcheck.gnome.org",
+    "detectportal.firefox.com",
+    "captive.apple.com",
+    "connectivitycheck.gstatic.com",
+    "connectivitycheck.android.com",
+    "clients3.google.com",
+    "resolver1.opendns.com",
+];
+
+fn default_fakeip_exclude() -> Vec<String> {
+    DEFAULT_FAKEIP_EXCLUDE_DOMAINS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect()
+}
+
 fn default_fakeip_v6() -> String {
     "fc00::/18".to_string()
 }
@@ -1188,7 +1211,7 @@ pub struct GlobalSettings {
     pub fakeip_inet4_range: String,
     #[serde(default = "default_fakeip_v6")]
     pub fakeip_inet6_range: String,
-    #[serde(default)]
+    #[serde(default = "default_fakeip_exclude")]
     pub fakeip_exclude: Vec<String>,
 
     #[serde(default)]
@@ -1547,7 +1570,7 @@ impl Default for GlobalSettings {
             fakeip_enabled: true,
             fakeip_inet4_range: "198.18.0.0/15".to_string(),
             fakeip_inet6_range: "fc00::/18".to_string(),
-            fakeip_exclude: Vec::new(),
+            fakeip_exclude: default_fakeip_exclude(),
             hosts_enabled: false,
             hosts_list_urls: Vec::new(),
             hosts_list_auto_update: false,
@@ -6558,7 +6581,8 @@ impl RouterStoreData {
                         tor_socks_port: b
                             .opt("tor_socks_port")
                             .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
+                            .filter(|&p| p > 0)
+                            .unwrap_or(if stype == "tor" { 9050 } else { 0 }),
                         tor_bridges: b.list("tor_bridges"),
                         mtproto_telegram_ws: b.opt("mtproto_telegram_ws").is_some_and(parse_bool),
                         tailscale_mode: b.opt("tailscale_mode").unwrap_or("").to_string(),
@@ -9112,16 +9136,54 @@ fn norm_domain_compare_key(raw: &str) -> String {
 }
 
 fn push_clean_tokens_from_str(raw: &str, out: &mut Vec<String>) {
+    let push_uniq = |tok: &str, out: &mut Vec<String>| {
+        let trimmed = tok.trim();
+        if !trimmed.is_empty() && !out.iter().any(|existing: &String| existing == trimmed) {
+            out.push(trimmed.to_string());
+        }
+    };
     for line in raw.lines() {
         let cleaned = strip_uci_inline_comment(line);
         if cleaned.is_empty() {
             continue;
         }
-        for part in cleaned.split([',', ' ', '\t']) {
-            let tok = part.trim();
-            if !tok.is_empty() && !out.iter().any(|existing: &String| existing == tok) {
-                out.push(tok.to_string());
+        let lower = cleaned.to_ascii_lowercase();
+        if lower.starts_with("regex:") || lower.starts_with("domain_regex:") {
+            // Preserve commas/spaces inside regex quantifiers/groups (e.g. `{1,3}`, `(a|b)`),
+            // while still splitting separate tokens delimited by `,` / whitespace at depth 0.
+            let mut paren = 0usize;
+            let mut brace = 0usize;
+            let mut bracket = 0usize;
+            let mut escaped = false;
+            let mut start = 0usize;
+            for (idx, ch) in cleaned.char_indices() {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                if ch == '\\' {
+                    escaped = true;
+                    continue;
+                }
+                match ch {
+                    '(' if bracket == 0 => paren += 1,
+                    ')' if bracket == 0 => paren = paren.saturating_sub(1),
+                    '{' if bracket == 0 => brace += 1,
+                    '}' if bracket == 0 => brace = brace.saturating_sub(1),
+                    '[' => bracket += 1,
+                    ']' => bracket = bracket.saturating_sub(1),
+                    ',' | ' ' | '\t' if paren == 0 && brace == 0 && bracket == 0 => {
+                        push_uniq(&cleaned[start..idx], out);
+                        start = idx + ch.len_utf8();
+                    }
+                    _ => {}
+                }
             }
+            push_uniq(&cleaned[start..], out);
+            continue;
+        }
+        for part in cleaned.split([',', ' ', '\t']) {
+            push_uniq(part, out);
         }
     }
 }
@@ -14514,5 +14576,87 @@ config outbound_source 'awg31_src'
         ];
         store.import_from_blocks_impl(&reset_blocks, Path::new("/nonexistent"), true);
         assert_eq!(store.settings.warp_proxy_section, "");
+    }
+
+    #[test]
+    fn test_issue_540_multiline_regex_with_commas_and_quantifiers() {
+        let raw = r#"
+config condition 'media_tv'
+	option community_subnets '1'
+	option condition_type 'atomic'
+	option domain 'regex:(^|\.)kinovibe[0-9]*\.[a-z]+$,
+regex:(^|\.)google\.com$,
+regex:(^|\.)example[0-9]{1,3}\.com$,
+regex:(^|\.)(browserleaks)\.com$'
+	option enabled '1'
+	option name 'Media TV'
+"#;
+        let blocks = parse_legacy_uci_blocks(raw);
+        let mut store = RouterStoreData::default();
+        store.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+        let cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "media_tv")
+            .expect("media_tv imported");
+        assert_eq!(
+            cond.domains,
+            vec![
+                r"regex:(^|\.)kinovibe[0-9]*\.[a-z]+$",
+                r"regex:(^|\.)google\.com$",
+                r"regex:(^|\.)example[0-9]{1,3}\.com$",
+                r"regex:(^|\.)(browserleaks)\.com$",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_issue_534_and_538_tor_default_port_and_ncsi_fakeip_exclude() {
+        let store = RouterStoreData::default();
+        assert!(
+            store
+                .settings
+                .fakeip_exclude
+                .iter()
+                .any(|d| d == "dns.msftncsi.com")
+        );
+        assert!(
+            store
+                .settings
+                .fakeip_exclude
+                .iter()
+                .any(|d| d == "network-test.debian.org")
+        );
+        assert!(
+            store
+                .settings
+                .fakeip_exclude
+                .iter()
+                .any(|d| d == "captive.apple.com")
+        );
+
+        let payload = serde_json::json!({
+            "src_tor": {
+                ".type": "outbound_source",
+                ".name": "src_tor",
+                "enabled": "1",
+                "name": "Tor Local",
+                "source_type": "tor"
+            }
+        });
+        let mut s2 = RouterStoreData::default();
+        s2.import_from_json_sections(payload.as_object().unwrap());
+        let tor = s2
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_tor")
+            .expect("src_tor preserved");
+        assert_eq!(tor.source_type, "tor");
+        assert_eq!(tor.tor_socks_port, 9050);
+
+        let roundtrip = sync_store_to_json_sections(&s2, None);
+        let rt_map = roundtrip.as_object().unwrap();
+        assert_eq!(rt_map["src_tor"]["source_type"], "tor");
+        assert_eq!(rt_map["src_tor"]["tor_socks_port"], "9050");
     }
 }

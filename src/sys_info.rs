@@ -701,9 +701,217 @@ fn discover_lan_devices_local() -> Vec<LanDevice> {
         }
     }
 
+    let dhcp_cfg = std::fs::read_to_string("/etc/config/dhcp").ok();
+    let etc_hosts = std::fs::read_to_string("/etc/hosts").ok();
+    enrich_lan_devices_from_hosts(
+        &mut by_ip,
+        dhcp_cfg.as_deref(),
+        etc_hosts.as_deref(),
+        &default_iface,
+    );
+
     let mut list: Vec<LanDevice> = by_ip.into_values().collect();
     list.sort_by(|a, b| a.ip.cmp(&b.ip));
     list
+}
+
+fn parse_uci_option_value(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some(rest) = trimmed.strip_prefix('\'')
+        && let Some(end) = rest.find('\'')
+    {
+        return rest[..end].trim().to_string();
+    }
+    if let Some(rest) = trimmed.strip_prefix('"')
+        && let Some(end) = rest.find('"')
+    {
+        return rest[..end].trim().to_string();
+    }
+    trimmed
+        .split('#')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_matches(['\'', '"'])
+        .to_string()
+}
+
+/// Parse static DHCP host entries (`config host`) from OpenWrt `/etc/config/dhcp`.
+/// Returns `(ip, macs_upper, name)` tuples.
+pub(crate) fn parse_static_dhcp_hosts(raw: &str) -> Vec<(String, Vec<String>, String)> {
+    let mut out = Vec::new();
+    let mut in_host = false;
+    let mut ip = String::new();
+    let mut macs: Vec<String> = Vec::new();
+    let mut name = String::new();
+
+    let flush = |out: &mut Vec<(String, Vec<String>, String)>,
+                 ip: &mut String,
+                 macs: &mut Vec<String>,
+                 name: &mut String| {
+        if !name.is_empty() && name != "*" && (!ip.is_empty() || !macs.is_empty()) {
+            out.push((
+                std::mem::take(ip),
+                std::mem::take(macs),
+                std::mem::take(name),
+            ));
+        } else {
+            ip.clear();
+            macs.clear();
+            name.clear();
+        }
+    };
+
+    for raw_line in raw.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("config ") {
+            if in_host {
+                flush(&mut out, &mut ip, &mut macs, &mut name);
+            }
+            let section_type = rest.split_whitespace().next().unwrap_or("");
+            in_host = section_type == "host";
+            continue;
+        }
+        if !in_host {
+            continue;
+        }
+        let Some(rest) = line
+            .strip_prefix("option ")
+            .or_else(|| line.strip_prefix("list "))
+        else {
+            continue;
+        };
+        let mut parts = rest.splitn(2, char::is_whitespace);
+        let key = parts.next().unwrap_or("").trim();
+        let val = parse_uci_option_value(parts.next().unwrap_or(""));
+        if val.is_empty() {
+            continue;
+        }
+        match key {
+            "ip" => ip = val,
+            "name" | "hostname" => {
+                if name.is_empty() {
+                    name = val;
+                }
+            }
+            "mac" => {
+                for tok in val.split([',', ' ', '\t']) {
+                    let clean = tok.trim().to_ascii_uppercase();
+                    if !clean.is_empty() && !macs.contains(&clean) {
+                        macs.push(clean);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if in_host {
+        flush(&mut out, &mut ip, &mut macs, &mut name);
+    }
+    out
+}
+
+/// Parse `<ip> <hostname>` entries from `/etc/hosts`, skipping loopback addresses/names.
+pub(crate) fn parse_etc_hosts(raw: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for raw_line in raw.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(ip) = parts.next() else {
+            continue;
+        };
+        let Some(host) = parts.next() else {
+            continue;
+        };
+        if ip == "127.0.0.1"
+            || ip == "::1"
+            || ip.starts_with("127.")
+            || host.eq_ignore_ascii_case("localhost")
+            || host.eq_ignore_ascii_case("localhost.localdomain")
+        {
+            continue;
+        }
+        out.push((ip.to_string(), host.to_string()));
+    }
+    out
+}
+
+pub(crate) fn enrich_lan_devices_from_hosts(
+    by_ip: &mut HashMap<String, LanDevice>,
+    dhcp_cfg: Option<&str>,
+    etc_hosts: Option<&str>,
+    default_iface: &str,
+) {
+    if let Some(raw_dhcp) = dhcp_cfg {
+        for (static_ip, static_macs, name) in parse_static_dhcp_hosts(raw_dhcp) {
+            let mut matched = false;
+            if !static_ip.is_empty()
+                && let Some(dev) = by_ip.get_mut(&static_ip)
+            {
+                if dev.hostname.is_empty() {
+                    dev.hostname = name.clone();
+                }
+                if dev.mac.is_empty()
+                    && let Some(first_mac) = static_macs.first()
+                {
+                    dev.mac = first_mac.clone();
+                    if dev.vendor.is_empty() {
+                        dev.vendor = lookup_mac_vendor(&dev.mac);
+                    }
+                }
+                matched = true;
+            }
+            if !static_macs.is_empty() {
+                for dev in by_ip.values_mut() {
+                    if !dev.mac.is_empty()
+                        && static_macs.iter().any(|m| m.eq_ignore_ascii_case(&dev.mac))
+                    {
+                        if dev.hostname.is_empty() {
+                            dev.hostname = name.clone();
+                        }
+                        matched = true;
+                    }
+                }
+            }
+            if !matched && !static_ip.is_empty() {
+                let mac = static_macs.first().cloned().unwrap_or_default();
+                let vendor = if mac.is_empty() {
+                    String::new()
+                } else {
+                    lookup_mac_vendor(&mac)
+                };
+                by_ip.insert(
+                    static_ip.clone(),
+                    LanDevice {
+                        ip: static_ip,
+                        mac,
+                        hostname: name,
+                        vendor,
+                        interface: default_iface.to_string(),
+                        reachable: false,
+                        lease_expires: 0,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+    }
+
+    if let Some(raw_hosts) = etc_hosts {
+        for (host_ip, host_name) in parse_etc_hosts(raw_hosts) {
+            if let Some(dev) = by_ip.get_mut(&host_ip)
+                && dev.hostname.is_empty()
+            {
+                dev.hostname = host_name;
+            }
+        }
+    }
 }
 
 /// Discover LAN devices from `/tmp/dhcp.leases`, `/proc/net/arp`, and cached Keenetic RCI hotspot entries.
@@ -1191,5 +1399,67 @@ cpu1 50 0 50 400 0 0 0 0 0 0
         assert!(!info.platform.is_empty());
         assert!(!info.firewall_backend.is_empty());
         assert!(!info.storage_kind.is_empty());
+    }
+
+    #[test]
+    fn test_enrich_lan_devices_from_static_dhcp_and_etc_hosts_when_leases_empty() {
+        let mut by_ip: HashMap<String, LanDevice> = HashMap::new();
+        by_ip.insert(
+            "192.168.3.5".to_string(),
+            LanDevice {
+                ip: "192.168.3.5".to_string(),
+                mac: "BC:24:11:06:99:2D".to_string(),
+                hostname: String::new(),
+                interface: "br-lan".to_string(),
+                reachable: true,
+                ..Default::default()
+            },
+        );
+        by_ip.insert(
+            "192.168.3.10".to_string(),
+            LanDevice {
+                ip: "192.168.3.10".to_string(),
+                mac: "02:C8:24:83:42:94".to_string(),
+                hostname: String::new(),
+                interface: "br-lan".to_string(),
+                reachable: true,
+                ..Default::default()
+            },
+        );
+        by_ip.insert(
+            "192.168.3.99".to_string(),
+            LanDevice {
+                ip: "192.168.3.99".to_string(),
+                mac: "AA:BB:CC:DD:EE:FF".to_string(),
+                hostname: String::new(),
+                interface: "br-lan".to_string(),
+                reachable: true,
+                ..Default::default()
+            },
+        );
+
+        let dhcp_cfg = r#"
+config host
+	option name 'netbird'
+	option mac 'bc:24:11:06:99:2d'
+	option ip '192.168.3.5'
+
+config host
+	option name 'haos'
+	list mac '02:C8:24:83:42:94'
+
+config host
+	option name 'hermes'
+	option mac 'bc:24:11:d4:45:02'
+	option ip '192.168.3.44'
+"#;
+        let etc_hosts = "127.0.0.1 localhost\n192.168.3.99 nas-local nas\n";
+
+        enrich_lan_devices_from_hosts(&mut by_ip, Some(dhcp_cfg), Some(etc_hosts), "br-lan");
+
+        assert_eq!(by_ip.get("192.168.3.5").unwrap().hostname, "netbird");
+        assert_eq!(by_ip.get("192.168.3.10").unwrap().hostname, "haos");
+        assert_eq!(by_ip.get("192.168.3.44").unwrap().hostname, "hermes");
+        assert_eq!(by_ip.get("192.168.3.99").unwrap().hostname, "nas-local");
     }
 }
