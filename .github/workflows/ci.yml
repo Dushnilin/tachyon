@@ -128,6 +128,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify OpenWrt package service hooks
+        run: python3 tools/test_openwrt_service_state.py
+
       - name: Run ShellCheck on scripts
         run: |
           shellcheck --severity=error \
@@ -141,8 +144,7 @@ jobs:
             entware/ndm/fs.d/100-tachyon.sh \
             .githooks/pre-push
 
-      - name: Verify packager script syntax and packaging tests
+      - name: Verify packager script syntax and Entware packaging tests
         run: |
           python3 -m py_compile tools/build_openwrt_pkg.py tools/build_entware_pkg.py
           python3 tools/test_entware_pkg.py
-          python3 tools/test_openwrt_service_state.py
