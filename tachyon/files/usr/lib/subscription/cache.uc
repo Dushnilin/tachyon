@@ -2312,6 +2312,12 @@ function finalize_downloaded_subscription_cache(
         return 4;
     }
 
+    let cache_profile_changed =
+        read_text(subscription_url_cache_path) != as_string(subscription_url) ||
+        read_text(subscription_user_agent_cache_path) != as_string(effective_user_agent) ||
+        read_text(subscription_hwid_cache_path) != as_string(effective_hwid) ||
+        read_text(subscription_device_headers_cache_path) != as_string(subscription_device_headers_signature);
+
     if (files_equal(normalized_tmpfile, subscription_json_path)) {
         write_text_if_changed(subscription_url_cache_path, subscription_url);
         write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
@@ -2326,8 +2332,8 @@ function finalize_downloaded_subscription_cache(
         unlink_path(headers_tmpfile);
         unlink_path(normalized_tmpfile);
         unlink_path(metadata_tmpfile);
-        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "unchanged");
-        return 2;
+        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, cache_profile_changed ? "imported" : "unchanged");
+        return cache_profile_changed ? 0 : 2;
     }
 
     if (file_nonempty(subscription_json_path) && parser.runtime_outbounds_equal(normalized_tmpfile, subscription_json_path)) {
@@ -2348,8 +2354,8 @@ function finalize_downloaded_subscription_cache(
         unlink_path(raw_tmpfile);
         unlink_path(headers_tmpfile);
         unlink_path(metadata_tmpfile);
-        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "runtime-unchanged");
-        return 2;
+        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, cache_profile_changed ? "imported" : "runtime-unchanged");
+        return cache_profile_changed ? 0 : 2;
     }
 
     if (file_nonempty(subscription_json_path) && subscription_shrink_guard_triggers(subscription_json_path, normalized_tmpfile)) {
@@ -2548,7 +2554,9 @@ function try_fetch_subscription_with_core(
     if (full_obj == null)
         return -1;
 
-    let effective_user_agent = as_string(full_obj.user_agent || get_subscription_user_agent(subscription_user_agent));
+    let effective_user_agent = subscription_user_agent != ""
+        ? as_string(subscription_user_agent)
+        : as_string(full_obj.user_agent || get_subscription_user_agent(""));
     let raw_body = type(full_obj.raw_body) == "string" ? full_obj.raw_body : "";
     let body_has_stubs = type(parser.body_has_invalid_stub_host) == "function" && parser.body_has_invalid_stub_host(raw_body);
 
