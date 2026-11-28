@@ -143,7 +143,10 @@ type ChildType =
   | 'outbound_group'
   | 'balancer';
 
-const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
+const DASHBOARD_SECTION_CACHE_DIRS = [
+  '/var/run/tachyon/section-cache',
+  '/tmp/tachyon-rs/section-cache',
+];
 // Written by tachyon_core/runtime.uc when it quarantines a section that
 // tachyon-core refused to load; absent (or stale-empty) when every section
 // loaded fine.
@@ -2257,40 +2260,47 @@ async function readDashboardSectionCache(
     return undefined;
   }
 
-  const path = `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`;
+  const directFs = fs as unknown as {
+    read_direct?: (p: string, type?: string) => Promise<string>;
+    exec_direct?: (
+      cmd: string,
+      args?: string[],
+      type?: string,
+    ) => Promise<string>;
+  };
 
-  try {
-    const raw = await fs.read(path).catch(async (err: unknown) => {
-      if (isFsNotFoundError(err)) {
-        return '';
+  for (const cacheDir of DASHBOARD_SECTION_CACHE_DIRS) {
+    const path = `${cacheDir}/${sectionName}.json`;
+    try {
+      const raw = await fs.read(path).catch(async (err: unknown) => {
+        if (isFsNotFoundError(err)) {
+          return '';
+        }
+        if (typeof directFs.read_direct === 'function') {
+          return directFs.read_direct(path, 'text');
+        }
+        if (typeof directFs.exec_direct === 'function') {
+          return directFs.exec_direct('/bin/cat', [path], 'text');
+        }
+        const res = await fs.exec('/bin/cat', [path]);
+        return res?.stdout || '';
+      });
+      if (!raw) {
+        continue;
       }
-      const directFs = fs as unknown as {
-        read_direct?: (p: string, type?: string) => Promise<string>;
-        exec_direct?: (
-          cmd: string,
-          args?: string[],
-          type?: string,
-        ) => Promise<string>;
-      };
-      if (typeof directFs.read_direct === 'function') {
-        return directFs.read_direct(path, 'text');
-      }
-      if (typeof directFs.exec_direct === 'function') {
-        return directFs.exec_direct('/bin/cat', [path], 'text');
-      }
-      const res = await fs.exec('/bin/cat', [path]);
-      return res?.stdout || '';
-    });
-    const parsed = JSON.parse(raw) as DashboardSectionCache;
+      const parsed = JSON.parse(raw) as DashboardSectionCache;
 
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return undefined;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        continue;
+      }
+
+      return parsed;
+    } catch (_error) {
+      continue;
     }
-
-    return parsed;
-  } catch (_error) {
-    return undefined;
   }
+
+  return undefined;
 }
 
 // One flat map { section: reason } from the runtime's quarantine record.
@@ -3905,6 +3915,13 @@ function collectSectionProxyTags(
     const selector = resolveSectionRuntimeSelector(proxyByCode, secName, sec);
     if (selector) {
       walkEntry(selector.code);
+    } else {
+      const activeTag = (
+        sec as Tachyon.ConfigSection & { active_selected_tag?: unknown }
+      ).active_selected_tag;
+      if (typeof activeTag === 'string' && proxyByCode.has(activeTag)) {
+        walkEntry(activeTag);
+      }
     }
     if (proxies && sourceById) {
       const single = resolveSingleEndpointProxy(
