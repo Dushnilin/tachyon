@@ -6019,18 +6019,26 @@ impl RouterStoreData {
                         remote_domain_lists: b.clean_tokens(&[
                             "rule_set",
                             "remote_domain_lists",
+                            "local_domain_lists",
                             "rule_set_urls",
                         ]),
                         rule_set: b.clean_tokens(&[
                             "rule_set",
                             "remote_domain_lists",
+                            "local_domain_lists",
                             "rule_set_urls",
                         ]),
                         rule_set_with_subnets: b.clean_tokens(&["rule_set_with_subnets"]),
-                        remote_subnet_lists: b
-                            .clean_tokens(&["domain_ip_lists", "remote_subnet_lists"]),
-                        domain_ip_lists: b
-                            .clean_tokens(&["domain_ip_lists", "remote_subnet_lists"]),
+                        remote_subnet_lists: b.clean_tokens(&[
+                            "domain_ip_lists",
+                            "remote_subnet_lists",
+                            "local_subnet_lists",
+                        ]),
+                        domain_ip_lists: b.clean_tokens(&[
+                            "domain_ip_lists",
+                            "remote_subnet_lists",
+                            "local_subnet_lists",
+                        ]),
                         geoip_codes: b.clean_tokens(&["geoip_country", "geoip_codes"]),
                         geoip_mode: b.opt("geoip_mode").unwrap_or("include").to_string(),
                         geosite_codes: b.clean_tokens(&["geosite_codes"]),
@@ -7053,9 +7061,18 @@ impl RouterStoreData {
                         subscription_url_settings: b.list("subscription_url_settings"),
                         community_lists: sec_comm_lists,
                         community_subnets: sec_comm_subnets,
-                        rule_set_urls: b.clean_tokens(&["rule_set"]),
+                        rule_set_urls: b.clean_tokens(&[
+                            "rule_set",
+                            "remote_domain_lists",
+                            "local_domain_lists",
+                            "rule_set_urls",
+                        ]),
                         rule_set_with_subnets: b.clean_tokens(&["rule_set_with_subnets"]),
-                        domain_ip_lists: b.clean_tokens(&["domain_ip_lists"]),
+                        domain_ip_lists: b.clean_tokens(&[
+                            "domain_ip_lists",
+                            "remote_subnet_lists",
+                            "local_subnet_lists",
+                        ]),
                         domains,
                         user_domains,
                         exclude_domains,
@@ -14658,5 +14675,68 @@ regex:(^|\.)(browserleaks)\.com$'
         let rt_map = roundtrip.as_object().unwrap();
         assert_eq!(rt_map["src_tor"]["source_type"], "tor");
         assert_eq!(rt_map["src_tor"]["tor_socks_port"], "9050");
+    }
+
+    #[test]
+    fn test_issue_567_uci_import_remote_and_local_list_aliases_on_section_and_condition() {
+        let raw = r#"
+config condition 'cond_discord'
+	option name 'Discord Condition'
+	list remote_domain_lists 'https://example.test/remote-domains.lst'
+	list local_domain_lists '/etc/tachyon/local-domains.lst'
+	list remote_subnet_lists 'https://example.test/remote-subnets.lst'
+	list local_subnet_lists '/etc/tachyon/local-subnets.lst'
+
+config section 'Discord'
+	option enabled '1'
+	option action 'connection'
+	list remote_domain_lists 'https://example.test/sec-remote-domains.lst'
+	list local_domain_lists '/etc/tachyon/sec-local-domains.lst'
+	list remote_subnet_lists 'https://example.test/sec-remote-subnets.lst'
+	list local_subnet_lists '/etc/tachyon/sec-local-subnets.lst'
+"#;
+        let blocks = parse_legacy_uci_blocks(raw);
+        let mut store = RouterStoreData::default();
+        store.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+
+        let cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_discord")
+            .expect("cond_discord imported");
+        assert_eq!(
+            cond.rule_set,
+            vec![
+                "https://example.test/remote-domains.lst",
+                "/etc/tachyon/local-domains.lst"
+            ]
+        );
+        assert_eq!(
+            cond.domain_ip_lists,
+            vec![
+                "https://example.test/remote-subnets.lst",
+                "/etc/tachyon/local-subnets.lst"
+            ]
+        );
+
+        let sec = store
+            .sections
+            .iter()
+            .find(|s| s.id == "Discord")
+            .expect("Discord section imported");
+        assert_eq!(
+            sec.rule_set_urls,
+            vec![
+                "https://example.test/sec-remote-domains.lst",
+                "/etc/tachyon/sec-local-domains.lst"
+            ]
+        );
+        assert_eq!(
+            sec.domain_ip_lists,
+            vec![
+                "https://example.test/sec-remote-subnets.lst",
+                "/etc/tachyon/sec-local-subnets.lst"
+            ]
+        );
     }
 }
